@@ -14,6 +14,12 @@ pub const OTHER_MESSENGER: [u8; 20] = [
 ];
 
 #[constant]
+// L2StandardBridge at 0x... (will need to update this after deployment)
+pub const OTHER_BRIDGE: [u8; 20] = [
+    95, 241, 55, 212, 176, 253, 205, 73, 220, 163, 12, 124, 245, 126, 87, 138, 2, 109, 39, 137,
+];
+
+#[constant]
 /// @notice Constant overhead added to the base gas for a message.
 pub const RELAY_CONSTANT_OVERHEAD: u64 = 200_000;
 

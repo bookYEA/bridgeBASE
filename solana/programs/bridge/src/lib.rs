@@ -17,15 +17,14 @@ pub mod bridge {
         Ok(())
     }
 
-    pub fn deposit_transaction(
-        ctx: Context<DepositTransaction>,
+    pub fn bridge_sol_to(
+        ctx: Context<BridgeSolTo>,
         to: [u8; 20],
         value: u64,
-        gas_limit: u64,
-        is_creation: bool,
-        data: Vec<u8>,
+        min_gas_limit: u32,
+        extra_data: Vec<u8>,
     ) -> Result<()> {
-        portal::deposit_transaction_handler(ctx, to, value, gas_limit, is_creation, data)
+        standard_bridge::bridge_sol_to_handler(ctx, to, value, min_gas_limit, extra_data)
     }
 
     pub fn send_message(
@@ -36,5 +35,16 @@ pub mod bridge {
         min_gas_limit: u32,
     ) -> Result<()> {
         messenger::send_message_handler(ctx, target, message, value, min_gas_limit)
+    }
+
+    pub fn deposit_transaction(
+        ctx: Context<DepositTransaction>,
+        to: [u8; 20],
+        value: u64,
+        gas_limit: u64,
+        is_creation: bool,
+        data: Vec<u8>,
+    ) -> Result<()> {
+        portal::deposit_transaction_handler(ctx, to, value, gas_limit, is_creation, data)
     }
 }

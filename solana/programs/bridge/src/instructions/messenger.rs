@@ -60,18 +60,42 @@ pub fn send_message_handler(
     value: u64,
     min_gas_limit: u32,
 ) -> Result<()> {
+    send_message_internal(
+        &ctx.accounts.system_program,
+        &ctx.accounts.user.to_account_info(),
+        &ctx.accounts.vault.to_account_info(),
+        &mut ctx.accounts.msg_state,
+        target,
+        message,
+        value,
+        min_gas_limit,
+    )
+}
+
+pub fn send_message_internal<'info>(
+    system_program: &Program<'info, System>,
+    user: &AccountInfo<'info>,
+    vault: &AccountInfo<'info>,
+    msg_state: &mut Account<'info, Messenger>,
+    target: [u8; 20],
+    message: Vec<u8>,
+    value: u64,
+    min_gas_limit: u32,
+) -> Result<()> {
     // Triggers a message to the other messenger. Note that the amount of gas provided to the
     // message is the amount of gas requested by the user PLUS the base gas value. We want to
     // guarantee the property that the call to the target contract will always have at least
     // the minimum gas limit specified by the user.
     send_message(
-        &ctx,
+        system_program,
+        user,
+        vault,
         OTHER_MESSENGER,
         base_gas(message.len() as u64, min_gas_limit),
         value,
         encode_with_selector(
-            message_nonce(ctx.accounts.msg_state.msg_nonce),
-            ctx.accounts.user.key(),
+            message_nonce(msg_state.msg_nonce),
+            user.key(),
             target,
             value,
             min_gas_limit,
@@ -81,14 +105,14 @@ pub fn send_message_handler(
 
     emit!(SentMessage {
         target,
-        sender: ctx.accounts.user.key(),
+        sender: user.key(),
         message,
-        message_nonce: message_nonce(ctx.accounts.msg_state.msg_nonce),
+        message_nonce: message_nonce(msg_state.msg_nonce),
         value,
         gas_limit: min_gas_limit as u64,
     });
 
-    ctx.accounts.msg_state.msg_nonce += 1;
+    msg_state.msg_nonce += 1;
 
     Ok(())
 }
@@ -99,24 +123,25 @@ pub fn send_message_handler(
 /// @param _gasLimit Minimum gas limit the message can be executed with.
 /// @param _value    Amount of ETH to send with the message.
 /// @param _data     Message data.
-fn send_message(
-    ctx: &Context<SendMessage>,
+fn send_message<'info>(
+    system_program: &Program<'info, System>,
+    user: &AccountInfo<'info>,
+    vault: &AccountInfo<'info>,
     to: [u8; 20],
     gas_limit: u64,
     value: u64,
     data: Vec<u8>,
 ) -> Result<()> {
     portal::deposit_transaction_internal(
-        &ctx.accounts.system_program,
-        &ctx.accounts.user.to_account_info(),
-        &ctx.accounts.vault.to_account_info(),
+        system_program,
+        user,
+        vault,
         to,
         value,
         gas_limit,
         false,
         data,
-    )?;
-    Ok(())
+    )
 }
 
 /// @notice Computes the amount of gas required to guarantee that a given message will be
