@@ -1,10 +1,10 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
-import { Bridge } from "../target/types/bridge";
+import { Bridge } from "../../target/types/bridge";
 import { expect } from "chai";
 import { PublicKey } from "@solana/web3.js";
 
-describe("bridge", () => {
+describe("portal", () => {
   // Configure the client to use the local cluster.
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
@@ -29,9 +29,12 @@ describe("bridge", () => {
     let listener = null;
     let [event, slot]: [any, number] = await new Promise(
       async (resolve, _reject) => {
-        listener = program.addEventListener("messageSent", (event, slot) => {
-          resolve([event, slot]);
-        });
+        listener = program.addEventListener(
+          "transactionDeposited",
+          (event, slot) => {
+            resolve([event, slot]);
+          }
+        );
 
         const tx = await program.methods
           .depositTransaction(

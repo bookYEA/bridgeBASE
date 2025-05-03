@@ -1,4 +1,4 @@
-use crate::constants::DEPOSIT_VERSION;
+use crate::{constants::DEPOSIT_VERSION, VAULT_SEED};
 use anchor_lang::prelude::*;
 
 #[derive(Accounts)]
@@ -11,7 +11,7 @@ pub struct DepositTransaction<'info> {
     /// verified by the seeds constraint.
     #[account(
         mut,
-        seeds = [b"bridge_vault"],
+        seeds = [VAULT_SEED],
         bump
     )]
     pub vault: AccountInfo<'info>,
@@ -20,15 +20,48 @@ pub struct DepositTransaction<'info> {
 }
 
 #[event]
-pub struct MessageSent {
-    pub from: Pubkey,         // Solana address initiating the deposit
+// Emitted when a transaction is deposited from L1 to L2. The parameters of this event
+// are read by the rollup node and used to derive deposit transactions on L2.
+pub struct TransactionDeposited {
+    pub from: Pubkey,         // Solana key that triggered the deposit transaction.
     pub to: [u8; 20],         // Target EVM address on Base
     pub version: u64,         // Version of this deposit transaction event
-    pub opaque_data: Vec<u8>, // Data payload for the Base EVM call
+    pub opaque_data: Vec<u8>, // ABI encoded deposit data to be parsed offchain.
 }
 
+/// @notice Accepts deposits of SOL and data, and emits a TransactionDeposited event for use in
+///         deriving deposit transactions. Consider using the CrossDomainMessenger contracts for
+///         a simpler developer experience.
+///
+/// @param _to         Target address on L2.
+/// @param _value      SOL value to send to the recipient.
+/// @param _gasLimit   Amount of L2 gas to purchase by burning gas on L1.
+/// @param _isCreation Whether or not the transaction is a contract creation.
+/// @param _data       Data to trigger the recipient with.
 pub fn deposit_transaction_handler(
     ctx: Context<DepositTransaction>,
+    to: [u8; 20],
+    value: u64,
+    gas_limit: u64,
+    is_creation: bool,
+    data: Vec<u8>,
+) -> Result<()> {
+    deposit_transaction_internal(
+        &ctx.accounts.system_program,
+        &ctx.accounts.user.to_account_info(),
+        &ctx.accounts.vault.to_account_info(),
+        to,
+        value,
+        gas_limit,
+        is_creation,
+        data,
+    )
+}
+
+pub fn deposit_transaction_internal<'info>(
+    system_program: &Program<'info, System>,
+    user: &AccountInfo<'info>,
+    vault: &AccountInfo<'info>,
     to: [u8; 20],
     value: u64,
     gas_limit: u64,
@@ -38,10 +71,10 @@ pub fn deposit_transaction_handler(
     if value > 0 {
         // Transfer lamports from user to vault PDA
         let cpi_context = CpiContext::new(
-            ctx.accounts.system_program.to_account_info(),
+            system_program.to_account_info(),
             anchor_lang::system_program::Transfer {
-                from: ctx.accounts.user.to_account_info(),
-                to: ctx.accounts.vault.to_account_info(),
+                from: user.clone(),
+                to: vault.clone(),
             },
         );
         anchor_lang::system_program::transfer(cpi_context, value)?;
@@ -50,13 +83,13 @@ pub fn deposit_transaction_handler(
     // Just to be safe, make sure that people specify address(0) as the target when doing
     // contract creations.
     if is_creation && to != [0; 20] {
-        return err!(DepositTransactionError::BadTarget);
+        return err!(PortalError::BadTarget);
     }
 
     // Prevent depositing transactions that have too small of a gas limit. Users should pay
     // more for more resource usage.
     if gas_limit < minimum_gas_limit(data.len() as u64) {
-        return err!(DepositTransactionError::GasLimitTooLow);
+        return err!(PortalError::GasLimitTooLow);
     }
 
     // Compute the opaque data that will be emitted as part of the TransactionDeposited event.
@@ -65,8 +98,8 @@ pub fn deposit_transaction_handler(
     let opaque_data = encode_packed(value, value, gas_limit, is_creation, data);
 
     // Emit event for the relayer
-    emit!(MessageSent {
-        from: ctx.accounts.user.key(),
+    emit!(TransactionDeposited {
+        from: user.key(),
         to,
         version: DEPOSIT_VERSION,
         opaque_data,
@@ -96,7 +129,7 @@ fn encode_packed(
 }
 
 #[error_code]
-pub enum DepositTransactionError {
+pub enum PortalError {
     #[msg("Bad target")]
     BadTarget,
     #[msg("Gas limit too low")]

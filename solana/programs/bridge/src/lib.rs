@@ -12,6 +12,11 @@ declare_id!("Gwi8c92gteE63Z9i78nXmStWWP9tf6wLN5jaXC9tdGjp");
 pub mod bridge {
     use super::*;
 
+    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
+        msg!("Initializing: {:?}", ctx.program_id);
+        Ok(())
+    }
+
     pub fn deposit_transaction(
         ctx: Context<DepositTransaction>,
         to: [u8; 20],
@@ -20,13 +25,16 @@ pub mod bridge {
         is_creation: bool,
         data: Vec<u8>,
     ) -> Result<()> {
-        deposit_transaction::deposit_transaction_handler(
-            ctx,
-            to,
-            value,
-            gas_limit,
-            is_creation,
-            data,
-        )
+        portal::deposit_transaction_handler(ctx, to, value, gas_limit, is_creation, data)
+    }
+
+    pub fn send_message(
+        ctx: Context<SendMessage>,
+        target: [u8; 20],
+        message: Vec<u8>,
+        value: u64,
+        min_gas_limit: u32,
+    ) -> Result<()> {
+        messenger::send_message_handler(ctx, target, message, value, min_gas_limit)
     }
 }
