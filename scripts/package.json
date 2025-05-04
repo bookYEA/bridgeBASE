@@ -1,0 +1,14 @@
+{
+  "name": "scripts",
+  "module": "index.ts",
+  "type": "module",
+  "dependencies": {
+    "@coral-xyz/anchor": "^0.30.1"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

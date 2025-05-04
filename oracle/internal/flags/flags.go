@@ -5,12 +5,18 @@ import (
 )
 
 var (
-	MockFlag = &cli.StringFlag{
-		Name:     "mock-flag",
-		Usage:    "This is a dummy mock flag",
-		EnvVars:  []string{"MOCK_FLAG"},
+	TargetAddressFlag = &cli.StringFlag{
+		Name:     "target-address",
+		Usage:    "Solana address to monitor",
 		Required: true,
+		EnvVars:  []string{"TARGET_ADDRESS"},
+	}
+	IsMainnetFlag = &cli.BoolFlag{
+		Name:     "is-mainnet",
+		Usage:    "Subscribes to mainnet if prod environment",
+		Required: false,
+		EnvVars:  []string{"IS_MAINNET"},
 	}
 )
 
-var Flags = []cli.Flag{MockFlag}
+var Flags = []cli.Flag{TargetAddressFlag, IsMainnetFlag}

@@ -7,6 +7,8 @@ skip-lint = false
 
 [programs.localnet]
 bridge = "Fb7KKBmjgKJh1N3aDUxLTj6TR3exH8Xi368bJ3AcDd5T"
+[programs.devnet]
+bridge = "Fb7KKBmjgKJh1N3aDUxLTj6TR3exH8Xi368bJ3AcDd5T"
 
 [registry]
 url = "https://api.apr.dev"

@@ -6,7 +6,7 @@ use anchor_lang::prelude::*;
 pub use constants::*;
 pub use instructions::*;
 
-declare_id!("Gwi8c92gteE63Z9i78nXmStWWP9tf6wLN5jaXC9tdGjp");
+declare_id!("Fb7KKBmjgKJh1N3aDUxLTj6TR3exH8Xi368bJ3AcDd5T");
 
 #[program]
 pub mod bridge {
