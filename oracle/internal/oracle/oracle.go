@@ -2,16 +2,19 @@ package oracle
 
 import (
 	"context"
-	"crypto/sha256" // For event discriminator
+	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"math/big"
 	"os"
-	"strings" // For log parsing
+	"strings"
 	"time"
 
 	"github.com/base/alt-l1-bridge/oracle/internal/flags"
+	"github.com/base/alt-l1-bridge/oracle/internal/utils"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
-	bin "github.com/gagliardetto/binary" // For Borsh decoding
+	bin "github.com/gagliardetto/binary"
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/gagliardetto/solana-go/rpc/ws"
@@ -26,6 +29,39 @@ type TransactionDepositedEvent struct {
 	OpaqueData []byte
 }
 
+type DepositTx struct {
+	// SourceHash uniquely identifies the source of the deposit
+	SourceHash common.Hash
+	// From is exposed through the types.Signer, not through TxData
+	From common.Address
+	// nil means contract creation
+	To *common.Address `rlp:"nil"`
+	// Mint is minted on L2, locked on L1, nil if no minting.
+	Mint *big.Int `rlp:"nil"`
+	// Value is transferred from L2 balance, executed after Mint (if any)
+	Value *big.Int
+	// gas limit
+	Gas uint64
+	// Field indicating if this transaction is exempt from the L2 gas limit.
+	IsSystemTransaction bool
+	// Normal Tx data
+	Data []byte
+}
+
+func (t *DepositTx) Print() {
+	log.Info(
+		"----Decoded Transaction----",
+		"SourceHash", t.SourceHash,
+		"From", t.From,
+		"To", t.To,
+		"Mint", t.Mint,
+		"Value", t.Value,
+		"Gas", t.Gas,
+		"IsSystemTransaction", t.IsSystemTransaction,
+		"Data", common.Bytes2Hex(t.Data),
+	)
+}
+
 // Anchor event discriminator prefix
 const anchorEventPrefix = "Program data: "
 
@@ -36,6 +72,8 @@ var transactionDepositedDiscriminator = func() []byte {
 	h.Write([]byte("event:TransactionDeposited"))
 	return h.Sum(nil)[:8]
 }()
+
+var DepositEventVersion0 = uint64(0)
 
 func Main(ctx *cli.Context) error {
 	log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.LevelInfo, true)))
@@ -158,9 +196,74 @@ func startIndexer(ctx context.Context, wsUrl string, programAddr solana.PublicKe
 					"opaque_data_len", len(event.OpaqueData),
 					"opaque_data", fmt.Sprintf("0x%x", event.OpaqueData),
 				)
-				// TODO: Add further processing for the event here
+
+				var dep DepositTx
+
+				// source := UserDepositSource{
+				// 	L1BlockHash: ev.BlockHash,
+				// 	LogIndex:    uint64(ev.Index),
+				// }
+				// dep.SourceHash = source.SourceHash()
+				dep.From = utils.SolanaPubkeyToEvmAddress(event.From)
+				dep.IsSystemTransaction = false
+
+				var err error
+				switch event.Version {
+				case DepositEventVersion0:
+					err = parseOpaqueData(&dep, event.To, event.OpaqueData)
+				default:
+					return fmt.Errorf("invalid deposit version, got %v", int(event.Version))
+				}
+				if err != nil {
+					return fmt.Errorf("failed to decode deposit (version %v): %w", int(event.Version), err)
+				}
+
+				dep.Print()
 			}
-			// else: could check for other event discriminators if needed
 		}
 	}
+}
+
+func parseOpaqueData(dep *DepositTx, to common.Address, opaqueData []byte) error {
+	if len(opaqueData) < 8+8+8+1 {
+		return fmt.Errorf("unexpected opaqueData length: %d", len(opaqueData))
+	}
+	offset := uint64(0)
+
+	// uint256 mint
+	dep.Mint = new(big.Int).SetBytes(opaqueData[offset : offset+8])
+	// 0 mint is represented as nil to skip minting code
+	if dep.Mint.Cmp(new(big.Int)) == 0 {
+		dep.Mint = nil
+	}
+	offset += 8
+
+	// uint256 value
+	dep.Value = new(big.Int).SetBytes(opaqueData[offset : offset+8])
+	offset += 8
+
+	// uint64 gas
+	gas := new(big.Int).SetBytes(opaqueData[offset : offset+8])
+	if !gas.IsUint64() {
+		return fmt.Errorf("bad gas value: %x", opaqueData[offset:offset+8])
+	}
+	dep.Gas = gas.Uint64()
+	offset += 8
+
+	// uint8 isCreation
+	// isCreation: If the boolean byte is 1 then dep.To will stay nil,
+	// and it will create a contract using L2 account nonce to determine the created address.
+	if opaqueData[offset] == 0 {
+		dep.To = &to
+	}
+	offset += 1
+
+	// The remainder of the opaqueData is the transaction data (without length prefix).
+	// The data may be padded to a multiple of 32 bytes
+	txDataLen := uint64(len(opaqueData)) - offset
+
+	// remaining bytes fill the data
+	dep.Data = opaqueData[offset : offset+txDataLen]
+
+	return nil
 }
