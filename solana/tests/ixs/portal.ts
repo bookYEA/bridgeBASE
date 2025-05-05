@@ -70,9 +70,9 @@ describe("portal", () => {
 
     // abi.encodePacked(value, value, gasLimit, isCreation, data)
     const expectedOpaqueData = Buffer.concat([
-      Buffer.from(value.toArray("le", 8)), // msg_value (8 bytes, little-endian)
-      Buffer.from(value.toArray("le", 8)), // value (8 bytes, little-endian)
-      Buffer.from(gasLimit.toArray("le", 8)), // gas_limit (8 bytes, little-endian)
+      Buffer.from(value.toArray("be", 8)), // msg_value (8 bytes, big-endian)
+      Buffer.from(value.toArray("be", 8)), // value (8 bytes, big-endian)
+      Buffer.from(gasLimit.toArray("be", 8)), // gas_limit (8 bytes, big-endian)
       Buffer.from([isCreation ? 1 : 0]), // is_creation (1 byte)
       data, // data payload
     ]);

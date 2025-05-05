@@ -122,9 +122,9 @@ fn encode_packed(
     data: Vec<u8>,
 ) -> Vec<u8> {
     let mut opaque_data = Vec::new();
-    opaque_data.extend_from_slice(&msg_value.to_le_bytes()); // Equivalent to msg.value in Solidity
-    opaque_data.extend_from_slice(&value.to_le_bytes()); // Equivalent to _value
-    opaque_data.extend_from_slice(&gas_limit.to_le_bytes()); // Equivalent to _gasLimit
+    opaque_data.extend_from_slice(&msg_value.to_be_bytes()); // Equivalent to msg.value in Solidity
+    opaque_data.extend_from_slice(&value.to_be_bytes()); // Equivalent to _value
+    opaque_data.extend_from_slice(&gas_limit.to_be_bytes()); // Equivalent to _gasLimit
     opaque_data.push(is_creation as u8); // Equivalent to _isCreation
     opaque_data.extend_from_slice(&data); // Equivalent to _data
     return opaque_data;
