@@ -17,34 +17,42 @@ pub mod bridge {
         Ok(())
     }
 
-    pub fn bridge_sol_to(
+    pub fn bridge_tokens_to(
         ctx: Context<BridgeSolTo>,
+        local_token: Pubkey,
+        remote_token: [u8; 20],
         to: [u8; 20],
-        value: u64,
+        amount: u64,
         min_gas_limit: u32,
         extra_data: Vec<u8>,
     ) -> Result<()> {
-        standard_bridge::bridge_sol_to_handler(ctx, to, value, min_gas_limit, extra_data)
+        standard_bridge::bridge_tokens_to_handler(
+            ctx,
+            local_token,
+            remote_token,
+            to,
+            amount,
+            min_gas_limit,
+            extra_data,
+        )
     }
 
     pub fn send_message(
         ctx: Context<SendMessage>,
         target: [u8; 20],
         message: Vec<u8>,
-        value: u64,
         min_gas_limit: u32,
     ) -> Result<()> {
-        messenger::send_message_handler(ctx, target, message, value, min_gas_limit)
+        messenger::send_message_handler(ctx, target, message, min_gas_limit)
     }
 
     pub fn deposit_transaction(
         ctx: Context<DepositTransaction>,
         to: [u8; 20],
-        value: u64,
         gas_limit: u64,
         is_creation: bool,
         data: Vec<u8>,
     ) -> Result<()> {
-        portal::deposit_transaction_handler(ctx, to, value, gas_limit, is_creation, data)
+        portal::deposit_transaction_handler(ctx, to, gas_limit, is_creation, data)
     }
 }

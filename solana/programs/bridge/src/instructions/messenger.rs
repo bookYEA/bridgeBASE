@@ -2,7 +2,7 @@ use crate::{
     constants::OTHER_MESSENGER, ENCODING_OVERHEAD, FLOOR_CALLDATA_OVERHEAD, MESSAGE_VERSION,
     MESSENGER_SEED, MIN_GAS_CALLDATA_OVERHEAD, MIN_GAS_DYNAMIC_OVERHEAD_DENOMINATOR,
     MIN_GAS_DYNAMIC_OVERHEAD_NUMERATOR, RELAY_CALL_OVERHEAD, RELAY_CONSTANT_OVERHEAD,
-    RELAY_GAS_CHECK_BUFFER, RELAY_RESERVED_GAS, TX_BASE_GAS, VAULT_SEED,
+    RELAY_GAS_CHECK_BUFFER, RELAY_RESERVED_GAS, TX_BASE_GAS,
 };
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::keccak;
@@ -14,20 +14,8 @@ pub struct SendMessage<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
 
-    /// CHECK: This is the vault PDA. We are only using it to transfer SOL via CPI
-    /// to the system program, so no data checks are required. The address is
-    /// verified by the seeds constraint.
-    #[account(
-        mut,
-        seeds = [VAULT_SEED],
-        bump
-    )]
-    pub vault: AccountInfo<'info>,
-
     #[account(mut, seeds = [MESSENGER_SEED], bump)]
     pub msg_state: Account<'info, Messenger>,
-
-    pub system_program: Program<'info, System>,
 }
 
 #[derive(InitSpace)]
@@ -58,34 +46,27 @@ pub fn send_message_handler(
     ctx: Context<SendMessage>,
     target: [u8; 20],
     message: Vec<u8>,
-    value: u64,
     min_gas_limit: u32,
 ) -> Result<()> {
     let program_id: &[u8] = ctx.program_id.as_ref();
     send_message_internal(
         program_id,
-        &ctx.accounts.system_program,
         &ctx.accounts.user.to_account_info(),
-        &ctx.accounts.vault.to_account_info(),
         &mut ctx.accounts.msg_state,
         ctx.accounts.user.key(),
         target,
         message,
-        value,
         min_gas_limit,
     )
 }
 
 pub fn send_message_internal<'info>(
     program_id: &[u8],
-    system_program: &Program<'info, System>,
     user: &AccountInfo<'info>,
-    vault: &AccountInfo<'info>,
     msg_state: &mut Account<'info, Messenger>,
     from: Pubkey,
     target: [u8; 20],
     message: Vec<u8>,
-    value: u64,
     min_gas_limit: u32,
 ) -> Result<()> {
     // Triggers a message to the other messenger. Note that the amount of gas provided to the
@@ -94,17 +75,13 @@ pub fn send_message_internal<'info>(
     // the minimum gas limit specified by the user.
     send_message(
         program_id,
-        system_program,
-        user,
-        vault,
         OTHER_MESSENGER,
         base_gas(message.len() as u64, min_gas_limit),
-        value,
         encode_with_selector(
             message_nonce(msg_state.msg_nonce),
             from,
             target,
-            value,
+            0,
             min_gas_limit,
             message.clone(),
         ),
@@ -115,7 +92,7 @@ pub fn send_message_internal<'info>(
         sender: user.key(),
         message,
         message_nonce: message_nonce(msg_state.msg_nonce),
-        value,
+        value: 0,
         gas_limit: min_gas_limit as u64,
     });
 
@@ -128,16 +105,11 @@ pub fn send_message_internal<'info>(
 ///
 /// @param _to       Recipient of the message on the other chain.
 /// @param _gasLimit Minimum gas limit the message can be executed with.
-/// @param _value    Amount of ETH to send with the message.
 /// @param _data     Message data.
 fn send_message<'info>(
     program_id: &[u8],
-    system_program: &Program<'info, System>,
-    user: &AccountInfo<'info>,
-    vault: &AccountInfo<'info>,
     to: [u8; 20],
     gas_limit: u64,
-    value: u64,
     data: Vec<u8>,
 ) -> Result<()> {
     // Equivalent to keccak256(abi.encodePacked(programId, "messenger"));
@@ -147,12 +119,8 @@ fn send_message<'info>(
     let hash = keccak::hash(&data_to_hash);
 
     portal::deposit_transaction_internal(
-        system_program,
-        user,
-        vault,
         Pubkey::new_from_array(hash.to_bytes()),
         to,
-        value,
         gas_limit,
         false,
         data,

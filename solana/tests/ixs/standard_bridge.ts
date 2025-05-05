@@ -25,8 +25,13 @@ describe("standard bridge", () => {
     )
   );
 
+  const solLocalAddress = PublicKey.default;
+  const solRemoteAddress = Uint8Array.from(
+    Buffer.from("E398D7afe84A6339783718935087a4AcE6F6DFE8", "hex")
+  ) as unknown as number[]; // random address for testing
+
   // Generate a dummy EVM address (20 bytes)
-  const dummyEvmAddress = Array.from({ length: 20 }, (_, i) => i);
+  const toAddress = Array.from({ length: 20 }, (_, i) => i);
   const otherMessengerAddress = [
     95, 241, 55, 212, 176, 253, 205, 73, 220, 163, 12, 124, 245, 126, 87, 138,
     2, 109, 39, 137,
@@ -60,14 +65,19 @@ describe("standard bridge", () => {
           }
         );
 
-        console.log("Sending");
         try {
           const tx = await program.methods
-            .bridgeSolTo(dummyEvmAddress, value, minGasLimit, extraData)
+            .bridgeTokensTo(
+              solLocalAddress,
+              solRemoteAddress,
+              toAddress,
+              value,
+              minGasLimit,
+              extraData
+            )
             .accounts({ user: user.publicKey })
             .rpc();
 
-          console.log("Deposit transaction signature", tx);
           const latestBlockHash =
             await provider.connection.getLatestBlockhash();
           await provider.connection.confirmTransaction(
@@ -96,7 +106,7 @@ describe("standard bridge", () => {
     const message = Buffer.concat([
       Buffer.from([22, 53, 245, 253]), // function selector
       user.publicKey.toBuffer(), // from
-      Buffer.from([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...dummyEvmAddress]), // target
+      Buffer.from([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...toAddress]), // target
       Buffer.from(value.toArray("be", 32)), // value
       Buffer.from(Array.from({ length: 32 }, (_, i) => (i == 31 ? 96 : 0))), // extra_data offset
       Buffer.from(
@@ -123,7 +133,7 @@ describe("standard bridge", () => {
       ), // nonce
       expectedBridgePubkey.toBuffer(), // sender
       Buffer.from([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...otherBridgeAddress]), // target
-      Buffer.from(value.toArray("be", 32)), // value
+      Buffer.from(new anchor.BN(0).toArray("be", 32)), // value
       Buffer.from(new anchor.BN(minGasLimit).toArray("be", 32)), // min gas
       Buffer.from(Array.from({ length: 32 }, (_, i) => (i == 31 ? 192 : 0))), // message offset
       Buffer.from(new anchor.BN(Buffer.from(message).length).toArray("be", 32)), // message length
@@ -141,10 +151,8 @@ describe("standard bridge", () => {
         total_message_size * 40
       );
 
-    // abi.encodePacked(value, value, gasLimit, isCreation, data)
+    // abi.encodePacked(gasLimit, isCreation, data)
     const expectedOpaqueData = Buffer.concat([
-      Buffer.from(value.toArray("be", 8)), // msg_value (8 bytes, big-endian)
-      Buffer.from(value.toArray("be", 8)), // value (8 bytes, big-endian)
       Buffer.from(new anchor.BN(gasLimit).toArray("be", 8)), // gas_limit (8 bytes, big-endian)
       Buffer.from([0]), // is_creation (1 byte)
       data, // data payload
@@ -164,7 +172,14 @@ describe("standard bridge", () => {
     const vaultBalanceBefore = vaultAccountInfo?.lamports ?? 0;
 
     await program.methods
-      .bridgeSolTo(dummyEvmAddress, value, minGasLimit, extraData)
+      .bridgeTokensTo(
+        solLocalAddress,
+        solRemoteAddress,
+        toAddress,
+        value,
+        minGasLimit,
+        extraData
+      )
       .accounts({ user: user.publicKey })
       .rpc();
 
@@ -184,7 +199,14 @@ describe("standard bridge", () => {
     const vaultBalanceBefore = userAccountInfo?.lamports ?? 0;
 
     await program.methods
-      .bridgeSolTo(dummyEvmAddress, value, minGasLimit, extraData)
+      .bridgeTokensTo(
+        solLocalAddress,
+        solRemoteAddress,
+        toAddress,
+        value,
+        minGasLimit,
+        extraData
+      )
       .accounts({ user: user.publicKey })
       .rpc();
 

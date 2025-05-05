@@ -27,69 +27,97 @@ pub struct BridgeSolTo<'info> {
 }
 
 #[event]
-/// @notice Emitted when a SOL bridge is initiated to the other chain.
-pub struct SOLBridgeInitiated {
+/// @notice Emitted when an SPL or SOL bridge is initiated to Base.
+pub struct TokenBridgeInitiated {
+    pub local_token: Pubkey, // Address of the token on this chain. Default pubkey signifies SOL.
+    pub remote_token: [u8; 20], // Address of the ERC20 on Base.
     pub from: Pubkey,        // Address of the sender.
     pub to: [u8; 20],        // Address of the receiver.
     pub amount: u64,         // Amount of ETH sent.
     pub extra_data: Vec<u8>, // Extra data sent with the transaction.
 }
 
-/// @notice Sends SOL to a receiver's address on the other chain. Note that if SOL is sent to a
-///         smart contract and the call fails, the SOL will be temporarily locked in the
-///         StandardBridge on the other chain until the call is replayed. If the call cannot be
-///         replayed with any amount of gas (call always reverts), then the SOL will be
-///         permanently locked in the StandardBridge on the other chain. SOL will also
-///         be locked if the receiver is the other bridge, because finalizeBridgeSOL will revert
-///         in that case.
+/// @notice Sends SPL tokens or SOL to a receiver's address on Base.
+///
+/// @param _localToken  Address of the SPL on this chain.
+/// @param _remoteToken Address of the corresponding token on Base.
 /// @param _to          Address of the receiver.
+/// @param _amount      Amount of local tokens to deposit.
 /// @param _minGasLimit Minimum amount of gas that the bridge can be relayed with.
 /// @param _extraData   Extra data to be sent with the transaction. Note that the recipient will
 ///                     not be triggered with this data, but it will be emitted and can be used
 ///                     to identify the transaction.
-pub fn bridge_sol_to_handler(
+pub fn bridge_tokens_to_handler(
     ctx: Context<BridgeSolTo>,
+    local_token: Pubkey,
+    remote_token: [u8; 20],
     to: [u8; 20],
-    value: u64,
+    amount: u64,
     min_gas_limit: u32,
     extra_data: Vec<u8>,
 ) -> Result<()> {
     let program_id: &[u8] = ctx.program_id.as_ref();
-    initiate_bridge_sol(
+    initiate_bridge_tokens(
         program_id,
         &ctx.accounts.system_program,
         &ctx.accounts.user.to_account_info(),
         &ctx.accounts.vault.to_account_info(),
         &mut ctx.accounts.msg_state,
         ctx.accounts.user.key(),
+        local_token,
+        remote_token,
         to,
-        value,
+        amount,
         min_gas_limit,
         extra_data,
     )
 }
 
-/// @notice Initiates a bridge of SOL through the CrossDomainMessenger.
-/// @param _from        Address of the sender.
+/// @notice Sends SPL tokens or SOL to a receiver's address on Base.
+///
+/// @param _localToken  Address of the SPL on this chain.
+/// @param _remoteToken Address of the corresponding token on Base.
 /// @param _to          Address of the receiver.
-/// @param _amount      Amount of SOL being bridged.
+/// @param _amount      Amount of local tokens to deposit.
 /// @param _minGasLimit Minimum amount of gas that the bridge can be relayed with.
 /// @param _extraData   Extra data to be sent with the transaction. Note that the recipient will
 ///                     not be triggered with this data, but it will be emitted and can be used
 ///                     to identify the transaction.
-fn initiate_bridge_sol<'info>(
+fn initiate_bridge_tokens<'info>(
     program_id: &[u8],
     system_program: &Program<'info, System>,
     user: &AccountInfo<'info>,
     vault: &AccountInfo<'info>,
     msg_state: &mut Account<'info, Messenger>,
     from: Pubkey,
+    local_token: Pubkey,
+    remote_token: [u8; 20],
     to: [u8; 20],
     amount: u64,
     min_gas_limit: u32,
     extra_data: Vec<u8>,
 ) -> Result<()> {
-    emit!(SOLBridgeInitiated {
+    // Transfer `amount` of local_token from user to vault
+    if local_token == Pubkey::default() {
+        // Transfer lamports from user to vault PDA
+        let cpi_context = CpiContext::new(
+            system_program.to_account_info(),
+            anchor_lang::system_program::Transfer {
+                from: user.clone(),
+                to: vault.clone(),
+            },
+        );
+        anchor_lang::system_program::transfer(cpi_context, amount)?;
+    } else {
+        // TODO: implement support for SPL tokens
+        return err!(BridgeError::SplTokensNotSupported);
+    }
+
+    // TODO: Update stored deposit for `local_token` / `remote_token` pair
+
+    emit!(TokenBridgeInitiated {
+        local_token,
+        remote_token,
         from,
         to,
         amount,
@@ -104,14 +132,11 @@ fn initiate_bridge_sol<'info>(
 
     messenger::send_message_internal(
         program_id,
-        system_program,
         user,
-        vault,
         msg_state,
         Pubkey::new_from_array(hash.to_bytes()),
         OTHER_BRIDGE,
         encode_with_selector(from, to, amount, extra_data),
-        amount,
         min_gas_limit,
     )
 }
@@ -158,4 +183,10 @@ fn encode_with_selector(from: Pubkey, to: [u8; 20], amount: u64, extra_data: Vec
     msg!("actual: {:?}", encoded);
 
     return encoded;
+}
+
+#[error_code]
+pub enum BridgeError {
+    #[msg("SPL Tokens not supported")]
+    SplTokensNotSupported,
 }
