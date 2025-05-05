@@ -50,6 +50,7 @@ pub fn deposit_transaction_handler(
         &ctx.accounts.system_program,
         &ctx.accounts.user.to_account_info(),
         &ctx.accounts.vault.to_account_info(),
+        ctx.accounts.user.key(),
         to,
         value,
         gas_limit,
@@ -62,6 +63,7 @@ pub fn deposit_transaction_internal<'info>(
     system_program: &Program<'info, System>,
     user: &AccountInfo<'info>,
     vault: &AccountInfo<'info>,
+    from: Pubkey,
     to: [u8; 20],
     value: u64,
     gas_limit: u64,
@@ -99,7 +101,7 @@ pub fn deposit_transaction_internal<'info>(
 
     // Emit event for the relayer
     emit!(TransactionDeposited {
-        from: user.key(),
+        from: from,
         to,
         version: DEPOSIT_VERSION,
         opaque_data,

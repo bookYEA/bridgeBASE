@@ -12,6 +12,13 @@ describe("messenger", () => {
   const program = anchor.workspace.Bridge as Program<Bridge>;
   const user = provider.wallet as anchor.Wallet;
 
+  const expectedMessengerPubkey = new PublicKey(
+    Buffer.from(
+      "7e273983f136714ba93a740a050279b541d6f25ebc6bbc6fc67616d0d5529cea",
+      "hex"
+    )
+  );
+
   // Generate a dummy EVM address (20 bytes)
   const dummyEvmAddress = Array.from({ length: 20 }, (_, i) => i);
   const otherMessengerAddress = [
@@ -43,7 +50,6 @@ describe("messenger", () => {
           }
         );
 
-        console.log("Sending");
         try {
           const tx = await program.methods
             .sendMessage(dummyEvmAddress, message, value, minGasLimit)
@@ -79,14 +85,14 @@ describe("messenger", () => {
     const data = Buffer.concat([
       Buffer.from([215, 100, 173, 11]), // function selector
       Buffer.from(Array.from({ length: 32 }, (_, i) => (i === 1 ? 1 : 0))), // nonce
-      user.publicKey.toBuffer(),
-      Buffer.from([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...dummyEvmAddress]),
-      Buffer.from(value.toArray("be", 32)),
-      Buffer.from(new anchor.BN(minGasLimit).toArray("be", 32)),
-      Buffer.from(Array.from({ length: 32 }, (_, i) => (i == 31 ? 192 : 0))),
-      Buffer.from(new anchor.BN(Buffer.from(message).length).toArray("be", 32)),
-      message,
-      Buffer.from(Array.from({ length: paddingBytes }, () => 0)),
+      user.publicKey.toBuffer(), // sender
+      Buffer.from([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...dummyEvmAddress]), // target
+      Buffer.from(value.toArray("be", 32)), // value
+      Buffer.from(new anchor.BN(minGasLimit).toArray("be", 32)), // minGasLimit
+      Buffer.from(Array.from({ length: 32 }, (_, i) => (i == 31 ? 192 : 0))), // message offset
+      Buffer.from(new anchor.BN(Buffer.from(message).length).toArray("be", 32)), // message length
+      message, // message
+      Buffer.from(Array.from({ length: paddingBytes }, () => 0)), // padding to ensure message length is multiple of 32 bytes
     ]);
     const execution_gas =
       200_000 + 40_000 + 40_000 + 5_000 + (minGasLimit * 64) / 63;
@@ -111,7 +117,7 @@ describe("messenger", () => {
     await program.removeEventListener(listener);
 
     expect(slot).to.be.gt(0);
-    expect(event.from.equals(user.publicKey)).to.be.true;
+    expect(event.from.equals(expectedMessengerPubkey)).to.be.true;
     expect(event.to).to.deep.equal(otherMessengerAddress);
     expect(event.version.eq(new anchor.BN(0))).to.be.true;
     expect(Buffer.from(event.opaqueData)).to.eql(expectedOpaqueData);

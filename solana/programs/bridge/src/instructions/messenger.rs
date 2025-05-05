@@ -5,6 +5,7 @@ use crate::{
     RELAY_GAS_CHECK_BUFFER, RELAY_RESERVED_GAS, TX_BASE_GAS, VAULT_SEED,
 };
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::keccak;
 
 use super::portal;
 
@@ -60,11 +61,14 @@ pub fn send_message_handler(
     value: u64,
     min_gas_limit: u32,
 ) -> Result<()> {
+    let program_id: &[u8] = ctx.program_id.as_ref();
     send_message_internal(
+        program_id,
         &ctx.accounts.system_program,
         &ctx.accounts.user.to_account_info(),
         &ctx.accounts.vault.to_account_info(),
         &mut ctx.accounts.msg_state,
+        ctx.accounts.user.key(),
         target,
         message,
         value,
@@ -73,10 +77,12 @@ pub fn send_message_handler(
 }
 
 pub fn send_message_internal<'info>(
+    program_id: &[u8],
     system_program: &Program<'info, System>,
     user: &AccountInfo<'info>,
     vault: &AccountInfo<'info>,
     msg_state: &mut Account<'info, Messenger>,
+    from: Pubkey,
     target: [u8; 20],
     message: Vec<u8>,
     value: u64,
@@ -87,6 +93,7 @@ pub fn send_message_internal<'info>(
     // guarantee the property that the call to the target contract will always have at least
     // the minimum gas limit specified by the user.
     send_message(
+        program_id,
         system_program,
         user,
         vault,
@@ -95,7 +102,7 @@ pub fn send_message_internal<'info>(
         value,
         encode_with_selector(
             message_nonce(msg_state.msg_nonce),
-            user.key(),
+            from,
             target,
             value,
             min_gas_limit,
@@ -124,6 +131,7 @@ pub fn send_message_internal<'info>(
 /// @param _value    Amount of ETH to send with the message.
 /// @param _data     Message data.
 fn send_message<'info>(
+    program_id: &[u8],
     system_program: &Program<'info, System>,
     user: &AccountInfo<'info>,
     vault: &AccountInfo<'info>,
@@ -132,10 +140,17 @@ fn send_message<'info>(
     value: u64,
     data: Vec<u8>,
 ) -> Result<()> {
+    // Equivalent to keccak256(abi.encodePacked(programId, "messenger"));
+    let mut data_to_hash = Vec::new();
+    data_to_hash.extend_from_slice(program_id);
+    data_to_hash.extend_from_slice(b"messenger");
+    let hash = keccak::hash(&data_to_hash);
+
     portal::deposit_transaction_internal(
         system_program,
         user,
         vault,
+        Pubkey::new_from_array(hash.to_bytes()),
         to,
         value,
         gas_limit,

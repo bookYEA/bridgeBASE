@@ -12,7 +12,7 @@ bridge = "Fb7KKBmjgKJh1N3aDUxLTj6TR3exH8Xi368bJ3AcDd5T"
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "Devnet"
+cluster = "Localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

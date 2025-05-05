@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::keccak;
 
 use crate::{messenger, MESSENGER_SEED, OTHER_BRIDGE, VAULT_SEED};
 
@@ -53,7 +54,9 @@ pub fn bridge_sol_to_handler(
     min_gas_limit: u32,
     extra_data: Vec<u8>,
 ) -> Result<()> {
+    let program_id: &[u8] = ctx.program_id.as_ref();
     initiate_bridge_sol(
+        program_id,
         &ctx.accounts.system_program,
         &ctx.accounts.user.to_account_info(),
         &ctx.accounts.vault.to_account_info(),
@@ -75,6 +78,7 @@ pub fn bridge_sol_to_handler(
 ///                     not be triggered with this data, but it will be emitted and can be used
 ///                     to identify the transaction.
 fn initiate_bridge_sol<'info>(
+    program_id: &[u8],
     system_program: &Program<'info, System>,
     user: &AccountInfo<'info>,
     vault: &AccountInfo<'info>,
@@ -92,11 +96,19 @@ fn initiate_bridge_sol<'info>(
         extra_data: extra_data.clone()
     });
 
+    // Equivalent to keccak256(abi.encodePacked(programId, "bridge"));
+    let mut data_to_hash = Vec::new();
+    data_to_hash.extend_from_slice(program_id);
+    data_to_hash.extend_from_slice(b"bridge");
+    let hash = keccak::hash(&data_to_hash);
+
     messenger::send_message_internal(
+        program_id,
         system_program,
         user,
         vault,
         msg_state,
+        Pubkey::new_from_array(hash.to_bytes()),
         OTHER_BRIDGE,
         encode_with_selector(from, to, amount, extra_data),
         amount,

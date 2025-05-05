@@ -3,7 +3,6 @@ import { Program } from "@coral-xyz/anchor";
 import { Bridge } from "../../target/types/bridge";
 import { expect } from "chai";
 import { PublicKey } from "@solana/web3.js";
-import { writeFileSync } from "fs";
 
 describe("standard bridge", () => {
   // Configure the client to use the local cluster.
@@ -12,6 +11,19 @@ describe("standard bridge", () => {
 
   const program = anchor.workspace.Bridge as Program<Bridge>;
   const user = provider.wallet as anchor.Wallet;
+
+  const expectedMessengerPubkey = new PublicKey(
+    Buffer.from(
+      "7e273983f136714ba93a740a050279b541d6f25ebc6bbc6fc67616d0d5529cea",
+      "hex"
+    )
+  );
+  const expectedBridgePubkey = new PublicKey(
+    Buffer.from(
+      "7a25452c36304317d6fe970091c383b0d45e9b0b06485d2561156f025c6936af",
+      "hex"
+    )
+  );
 
   // Generate a dummy EVM address (20 bytes)
   const dummyEvmAddress = Array.from({ length: 20 }, (_, i) => i);
@@ -109,7 +121,7 @@ describe("standard bridge", () => {
           return 0;
         })
       ), // nonce
-      user.publicKey.toBuffer(), // sender
+      expectedBridgePubkey.toBuffer(), // sender
       Buffer.from([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...otherBridgeAddress]), // target
       Buffer.from(value.toArray("be", 32)), // value
       Buffer.from(new anchor.BN(minGasLimit).toArray("be", 32)), // min gas
@@ -140,17 +152,8 @@ describe("standard bridge", () => {
 
     await program.removeEventListener(listener);
 
-    writeFileSync(
-      "expected.json",
-      JSON.stringify(Uint8Array.from(expectedOpaqueData))
-    );
-    writeFileSync(
-      "actual.json",
-      JSON.stringify(Uint8Array.from(Buffer.from(event.opaqueData)))
-    );
-
     expect(slot).to.be.gt(0);
-    expect(event.from.equals(user.publicKey)).to.be.true;
+    expect(event.from.equals(expectedMessengerPubkey)).to.be.true;
     expect(event.to).to.deep.equal(otherMessengerAddress);
     expect(event.version.eq(new anchor.BN(0))).to.be.true;
     expect(Buffer.from(event.opaqueData)).to.eql(expectedOpaqueData);
