@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/base/alt-l1-bridge/oracle/internal/flags"
+	"github.com/base/alt-l1-bridge/oracle/internal/relayer"
+	"github.com/base/alt-l1-bridge/oracle/internal/types"
 	"github.com/base/alt-l1-bridge/oracle/internal/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
@@ -27,39 +29,6 @@ type TransactionDepositedEvent struct {
 	To         [20]byte
 	Version    uint64
 	OpaqueData []byte
-}
-
-type DepositTx struct {
-	// SourceHash uniquely identifies the source of the deposit
-	SourceHash common.Hash
-	// From is exposed through the types.Signer, not through TxData
-	From common.Address
-	// nil means contract creation
-	To *common.Address `rlp:"nil"`
-	// Mint is minted on L2, locked on L1, nil if no minting.
-	Mint *big.Int `rlp:"nil"`
-	// Value is transferred from L2 balance, executed after Mint (if any)
-	Value *big.Int
-	// gas limit
-	Gas uint64
-	// Field indicating if this transaction is exempt from the L2 gas limit.
-	IsSystemTransaction bool
-	// Normal Tx data
-	Data []byte
-}
-
-func (t *DepositTx) Print() {
-	log.Info(
-		"----Decoded Transaction----",
-		"SourceHash", t.SourceHash,
-		"From", t.From,
-		"To", t.To,
-		"Mint", t.Mint,
-		"Value", t.Value,
-		"Gas", t.Gas,
-		"IsSystemTransaction", t.IsSystemTransaction,
-		"Data", common.Bytes2Hex(t.Data),
-	)
 }
 
 // Anchor event discriminator prefix
@@ -91,9 +60,14 @@ func Main(ctx *cli.Context) error {
 		return err
 	}
 
+	r, err := relayer.New(ctx)
+	if err != nil {
+		log.Crit("Error creating relayer", "err", err)
+	}
+
 	log.Info("Starting Solana event indexer", "url", wsUrl, "program", programAddr.String())
 
-	err = startIndexer(ctx.Context, wsUrl, programAddr)
+	err = startIndexer(ctx.Context, wsUrl, programAddr, r)
 	if err != nil {
 		log.Crit("Indexer failed", "err", err)
 		return err
@@ -104,7 +78,7 @@ func Main(ctx *cli.Context) error {
 }
 
 // startIndexer connects to the Solana WebSocket endpoint and subscribes to program logs.
-func startIndexer(ctx context.Context, wsUrl string, programAddr solana.PublicKey) error {
+func startIndexer(ctx context.Context, wsUrl string, programAddr solana.PublicKey, r *relayer.Relayer) error {
 	wsClient, err := ws.Connect(ctx, wsUrl)
 	if err != nil {
 		return fmt.Errorf("failed to connect to WebSocket %s: %w", wsUrl, err)
@@ -197,7 +171,7 @@ func startIndexer(ctx context.Context, wsUrl string, programAddr solana.PublicKe
 					"opaque_data", fmt.Sprintf("0x%x", event.OpaqueData),
 				)
 
-				var dep DepositTx
+				var dep types.DepositTx
 
 				// source := UserDepositSource{
 				// 	L1BlockHash: ev.BlockHash,
@@ -219,28 +193,33 @@ func startIndexer(ctx context.Context, wsUrl string, programAddr solana.PublicKe
 				}
 
 				dep.Print()
+				err = r.SendTransactionToBase(dep)
+				if err != nil {
+					return err
+				}
 			}
 		}
 	}
 }
 
-func parseOpaqueData(dep *DepositTx, to common.Address, opaqueData []byte) error {
-	if len(opaqueData) < 8+8+8+1 {
+func parseOpaqueData(dep *types.DepositTx, to common.Address, opaqueData []byte) error {
+	if len(opaqueData) < 8+1 {
 		return fmt.Errorf("unexpected opaqueData length: %d", len(opaqueData))
 	}
 	offset := uint64(0)
 
-	// uint256 mint
-	dep.Mint = new(big.Int).SetBytes(opaqueData[offset : offset+8])
-	// 0 mint is represented as nil to skip minting code
-	if dep.Mint.Cmp(new(big.Int)) == 0 {
-		dep.Mint = nil
-	}
-	offset += 8
+	// // uint256 mint
+	// dep.Mint = new(big.Int).SetBytes(opaqueData[offset : offset+8])
+	// // 0 mint is represented as nil to skip minting code
+	// if dep.Mint.Cmp(new(big.Int)) == 0 {
+	// 	dep.Mint = nil
+	// }
+	// offset += 8
 
 	// uint256 value
-	dep.Value = new(big.Int).SetBytes(opaqueData[offset : offset+8])
-	offset += 8
+	// dep.Value = new(big.Int).SetBytes(opaqueData[offset : offset+8])
+	// offset += 8
+	dep.Value = new(big.Int)
 
 	// uint64 gas
 	gas := new(big.Int).SetBytes(opaqueData[offset : offset+8])
