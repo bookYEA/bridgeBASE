@@ -5,8 +5,8 @@ import { PublicKey } from "@solana/web3.js";
 
 const LOCAL_TOKEN_ADDRESS = PublicKey.default;
 const REMOTE_TOKEN_ADDRESS = Uint8Array.from(
-  Buffer.from("E398D7afe84A6339783718935087a4AcE6F6DFE8", "hex")
-) as unknown as number[]; // random address for testing
+  Buffer.from("0xb6cE6C1c204ECd29a67d32C241c2cC6B52B5C117", "hex")
+) as unknown as number[]; // wrapped SOL on Base Sepolia
 
 async function main() {
   const provider = anchor.AnchorProvider.env();
