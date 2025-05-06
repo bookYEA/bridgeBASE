@@ -53,7 +53,7 @@ contract CrossChainMessenger is Initializable {
     ///                       Public Functions                 ///
     //////////////////////////////////////////////////////////////
 
-    /// @notice Constructs the BaseCrossChainMessenger contract.
+    /// @notice Constructs the CrossChainMessenger contract.
     constructor() {
         _disableInitializers();
     }
@@ -62,7 +62,14 @@ contract CrossChainMessenger is Initializable {
     ///
     /// @param remoteMessenger_ Address of the messenger on the remote chain.
     function initialize(address remoteMessenger_) external initializer {
-        __CrossChainMessenger_init(remoteMessenger_);
+        // We only want to set the xChainMsgSender to the default value if it hasn't been initialized yet, meaning that
+        // this is a fresh contract deployment. This prevents resetting the xChainMsgSender to the default value during
+        // an upgrade, which would enable a reentrant withdrawal to sandwhich the upgrade replay a withdrawal twice.
+        if (xChainMsgSender == address(0)) {
+            xChainMsgSender = Constants.DEFAULT_L2_SENDER;
+        }
+
+        remoteMessenger = remoteMessenger_;
     }
 
     /// @notice Relays a message that was sent by the other CrossChainMessenger contract. Can only be executed via
@@ -148,20 +155,6 @@ contract CrossChainMessenger is Initializable {
     //////////////////////////////////////////////////////////////
     ///                       Internal Functions               ///
     //////////////////////////////////////////////////////////////
-
-    /// @notice Initializer.
-    ///
-    /// @param remoteMessenger_ Address of the messenger on the remote chain.
-    function __CrossChainMessenger_init(address remoteMessenger_) internal onlyInitializing {
-        // We only want to set the xChainMsgSender to the default value if it hasn't been initialized yet, meaning that
-        // this is a fresh contract deployment. This prevents resetting the xChainMsgSender to the default value during
-        // an upgrade, which would enable a reentrant withdrawal to sandwhich the upgrade replay a withdrawal twice.
-        if (xChainMsgSender == address(0)) {
-            xChainMsgSender = Constants.DEFAULT_L2_SENDER;
-        }
-
-        remoteMessenger = remoteMessenger_;
-    }
 
     /// @notice Checks whether the message is coming from the other messenger. Implemented by child contracts because
     ///         the logic for this depends on the network where the messenger is being deployed.
