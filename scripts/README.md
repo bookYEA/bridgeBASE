@@ -2,16 +2,22 @@
 
 Scripts for invoking the bridge
 
-To install dependencies:
+## Usage
+
+Install dependencies:
 
 ```bash
 bun install
 ```
 
-To run:
+Generate solana build artifacts:
 
 ```bash
-bun run index.ts
+make build
 ```
 
-This project was created using `bun init` in bun v1.1.29. [Bun](https://bun.sh) is a fast all-in-one JavaScript runtime.
+Bridge SOL from Solana to Base:
+
+```bash
+make bridge-sol-to-base
+```
