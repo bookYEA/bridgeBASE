@@ -1,5 +1,8 @@
 -include .env
 
+BASE_RPC=https://base-sepolia.cbhq.net
+# BASE_RPC=https://mainnet.base.org
+
 .PHONY: deps
 deps: clean-lib forge-deps checkout-op-commit
 
@@ -24,3 +27,11 @@ checkout-op-commit:
 	git remote add origin https://github.com/ethereum-optimism/optimism.git; \
 	git fetch --depth=1 origin $(OP_COMMIT); \
 	git reset --hard FETCH_HEAD
+
+.PHONY: deploy
+deploy:
+	forge script DeployScript --account testnet-admin --rpc-url $(BASE_RPC) --broadcast -vvvv
+
+.PHONY: create-token
+create-token:
+	forge script CreateTokenScript --account testnet-admin --rpc-url $(BASE_RPC) --broadcast -vvvv

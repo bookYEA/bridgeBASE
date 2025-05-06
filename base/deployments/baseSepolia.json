@@ -1,0 +1,5 @@
+{
+  "L2CrossDomainMessenger": "0x0580a385912cb1894b4369be2f94f2f3d6bd939a",
+  "L2StandardBridge": "0xedb3c5ab354fdd99a6e1a796117f6dc15eaf316c",
+  "OptimismMintableERC20Factory": "0x584a9c5b035adce9f2bbfac3c741e8edf9c517ce"
+}

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.13;
+pragma solidity 0.8.28;
 
 import {CREATE3} from "solady/utils/CREATE3.sol";
 import {Initializable} from "solady/utils/Initializable.sol";
