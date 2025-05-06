@@ -136,25 +136,40 @@ fn initiate_bridge_tokens<'info>(
         msg_state,
         Pubkey::new_from_array(hash.to_bytes()),
         OTHER_BRIDGE,
-        encode_with_selector(from, to, amount, extra_data),
+        encode_with_selector(local_token, remote_token, from, to, amount, extra_data),
         min_gas_limit,
     )
 }
 
-fn encode_with_selector(from: Pubkey, to: [u8; 20], amount: u64, extra_data: Vec<u8>) -> Vec<u8> {
+fn encode_with_selector(
+    local_token: Pubkey,
+    remote_token: [u8; 20],
+    from: Pubkey,
+    to: [u8; 20],
+    amount: u64,
+    extra_data: Vec<u8>,
+) -> Vec<u8> {
     // Create a vector to hold the encoded data
     let mut encoded = Vec::new();
 
-    // Add selector for Base.L2StandardBridge.finalizeBridgeETH 0x1635f5fd (4 bytes)
-    encoded.extend_from_slice(&[22, 53, 245, 253]);
+    // Add selector for Base.L2StandardBridge.finalizeBridgeERC20 0x0166a07a (4 bytes)
+    encoded.extend_from_slice(&[1, 102, 160, 122]);
+
+    // Add local_token (32 bytes) - Pubkey is already 32 bytes
+    encoded.extend_from_slice(local_token.as_ref());
+
+    // Add remote_token (32 bytes) - pad 20-byte address to 32 bytes
+    let mut remote_token_bytes = [0u8; 32];
+    remote_token_bytes[12..32].copy_from_slice(&remote_token);
+    encoded.extend_from_slice(&remote_token_bytes);
 
     // Add from (32 bytes) - Pubkey is already 32 bytes
     encoded.extend_from_slice(from.as_ref());
 
     // Add target (32 bytes) - pad 20-byte address to 32 bytes
-    let mut target_bytes = [0u8; 32];
-    target_bytes[12..32].copy_from_slice(&to);
-    encoded.extend_from_slice(&target_bytes);
+    let mut to_bytes = [0u8; 32];
+    to_bytes[12..32].copy_from_slice(&to);
+    encoded.extend_from_slice(&to_bytes);
 
     // Add amount (32 bytes) - pad u64 to 32 bytes
     let mut value_bytes = [0u8; 32];
@@ -164,8 +179,8 @@ fn encode_with_selector(from: Pubkey, to: [u8; 20], amount: u64, extra_data: Vec
     // Add message length and data (dynamic type)
     // First add offset to message data (32 bytes)
     let mut offset_bytes = [0u8; 32];
-    // Offset is 3 * 32 = 96 bytes (3 previous parameters of 32 bytes each)
-    offset_bytes[31] = 96;
+    // Offset is 5 * 32 = 160 bytes (3 previous parameters of 32 bytes each)
+    offset_bytes[31] = 160;
     encoded.extend_from_slice(&offset_bytes);
 
     // Add extra_data length (32 bytes)

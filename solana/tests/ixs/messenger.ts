@@ -22,8 +22,8 @@ describe("messenger", () => {
   // Generate a dummy EVM address (20 bytes)
   const dummyEvmAddress = Array.from({ length: 20 }, (_, i) => i);
   const otherMessengerAddress = [
-    95, 241, 55, 212, 176, 253, 205, 73, 220, 163, 12, 124, 245, 126, 87, 138,
-    2, 109, 39, 137,
+    5, 128, 163, 133, 145, 44, 177, 137, 75, 67, 105, 190, 47, 148, 242, 243,
+    214, 189, 147, 154,
   ];
   const message = Buffer.from("sample data payload", "utf-8");
   const minGasLimit = 100000;

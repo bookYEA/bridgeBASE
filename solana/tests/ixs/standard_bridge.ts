@@ -33,12 +33,12 @@ describe("standard bridge", () => {
   // Generate a dummy EVM address (20 bytes)
   const toAddress = Array.from({ length: 20 }, (_, i) => i);
   const otherMessengerAddress = [
-    95, 241, 55, 212, 176, 253, 205, 73, 220, 163, 12, 124, 245, 126, 87, 138,
-    2, 109, 39, 137,
+    5, 128, 163, 133, 145, 44, 177, 137, 75, 67, 105, 190, 47, 148, 242, 243,
+    214, 189, 147, 154,
   ];
   const otherBridgeAddress = [
-    95, 241, 55, 212, 176, 253, 205, 73, 220, 163, 12, 124, 245, 126, 87, 138,
-    2, 109, 39, 137,
+    237, 179, 197, 171, 53, 79, 221, 153, 166, 225, 167, 150, 17, 127, 109, 193,
+    94, 175, 49, 108,
   ];
   const extraData = Buffer.from("sample data payload", "utf-8");
   const value = new anchor.BN(1 * anchor.web3.LAMPORTS_PER_SOL); // 1 SOL
@@ -104,11 +104,13 @@ describe("standard bridge", () => {
 
     const extraDataPaddingBytes = 32 - (extraData.length % 32);
     const message = Buffer.concat([
-      Buffer.from([22, 53, 245, 253]), // function selector
+      Buffer.from([1, 102, 160, 122]), // function selector
+      solLocalAddress.toBuffer(), // local token
+      Buffer.from([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...solRemoteAddress]), // remote token
       user.publicKey.toBuffer(), // from
       Buffer.from([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...toAddress]), // target
       Buffer.from(value.toArray("be", 32)), // value
-      Buffer.from(Array.from({ length: 32 }, (_, i) => (i == 31 ? 96 : 0))), // extra_data offset
+      Buffer.from(Array.from({ length: 32 }, (_, i) => (i == 31 ? 160 : 0))), // extra_data offset
       Buffer.from(
         new anchor.BN(Buffer.from(extraData).length).toArray("be", 32)
       ),

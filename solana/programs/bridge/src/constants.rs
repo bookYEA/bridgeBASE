@@ -8,15 +8,15 @@ pub const DEPOSIT_VERSION: u64 = 0;
 pub const MESSAGE_VERSION: u16 = 1;
 
 #[constant]
-// L2CrossDomainMessenger at 0x... (will need to update this after deployment)
+// L2CrossDomainMessenger at 0x0580a385912cb1894b4369be2f94f2f3d6bd939a (baseSepolia)
 pub const OTHER_MESSENGER: [u8; 20] = [
-    95, 241, 55, 212, 176, 253, 205, 73, 220, 163, 12, 124, 245, 126, 87, 138, 2, 109, 39, 137,
+    5, 128, 163, 133, 145, 44, 177, 137, 75, 67, 105, 190, 47, 148, 242, 243, 214, 189, 147, 154,
 ];
 
 #[constant]
-// L2StandardBridge at 0x... (will need to update this after deployment)
+// L2StandardBridge at 0xedb3c5ab354fdd99a6e1a796117f6dc15eaf316c (baseSepolia)
 pub const OTHER_BRIDGE: [u8; 20] = [
-    95, 241, 55, 212, 176, 253, 205, 73, 220, 163, 12, 124, 245, 126, 87, 138, 2, 109, 39, 137,
+    237, 179, 197, 171, 53, 79, 221, 153, 166, 225, 167, 150, 17, 127, 109, 193, 94, 175, 49, 108,
 ];
 
 #[constant]
