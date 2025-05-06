@@ -7,8 +7,6 @@ import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {CrossChainMessenger} from "./CrossChainMessenger.sol";
 import {ICrossChainERC20} from "./interfaces/ICrossChainERC20.sol";
 
-/// @custom:upgradeable
-/// @title Bridge
 contract Bridge is Initializable {
     //////////////////////////////////////////////////////////////
     ///                       Events                           ///
@@ -57,6 +55,11 @@ contract Bridge is Initializable {
     ///                       Public Functions                 ///
     //////////////////////////////////////////////////////////////
 
+    /// @notice Constructs the Bridge contract.
+    constructor() {
+        _disableInitializers();
+    }
+
     /// @notice Initializer.
     ///
     /// @param messenger_ Messenger contract on this chain.
@@ -66,8 +69,8 @@ contract Bridge is Initializable {
         remoteBridge = remoteBridge_;
     }
 
-    /// @notice Finalizes a token bridge on this chain. Can only be triggered by the other Bridge contract on
-    ///         the remote chain.
+    /// @notice Finalizes a token bridge on this chain. Can only be triggered by the Bridge contract on the remote
+    ///         chain.
     ///
     /// @param localToken Address of the ERC20 on this chain.
     /// @param remoteToken Address of the corresponding token on the remote chain.

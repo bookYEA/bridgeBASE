@@ -10,11 +10,6 @@ import {Predeploys} from "optimism/packages/contracts-bedrock/src/libraries/Pred
 
 import {CrossChainERC20} from "./CrossChainERC20.sol";
 
-/// @custom:proxied
-///
-/// @title CrossChainERC20Factory
-///
-/// @notice CrossChainERC20Factory is a factory contract that deploys CrossChainERC20 Beacon Proxies using CREATE3.
 contract CrossChainERC20Factory is ISemver {
     //////////////////////////////////////////////////////////////
     ///                       Constants                        ///
