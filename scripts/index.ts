@@ -1,6 +1,12 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import type { Bridge } from "./target/types/bridge";
+import { PublicKey } from "@solana/web3.js";
+
+const LOCAL_TOKEN_ADDRESS = PublicKey.default;
+const REMOTE_TOKEN_ADDRESS = Uint8Array.from(
+  Buffer.from("E398D7afe84A6339783718935087a4AcE6F6DFE8", "hex")
+) as unknown as number[]; // random address for testing
 
 async function main() {
   const provider = anchor.AnchorProvider.env();
@@ -16,7 +22,14 @@ async function main() {
   const extraData = Buffer.from("sample data payload", "utf-8");
 
   const tx = await program.methods
-    .bridgeSolTo(to, value, minGasLimit, extraData)
+    .bridgeTokensTo(
+      LOCAL_TOKEN_ADDRESS,
+      REMOTE_TOKEN_ADDRESS,
+      to,
+      value,
+      minGasLimit,
+      extraData
+    )
     .accounts({})
     .rpc();
 
