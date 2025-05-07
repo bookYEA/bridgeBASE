@@ -112,7 +112,7 @@ func (r *Relayer) SendTransactionToBase(dep localTypes.DepositTx) error {
 		return fmt.Errorf("transaction %s failed to mine with status %d", signedTx.Hash().Hex(), receipt.Status)
 	}
 
-	log.Info("Transaction sent", "hash", tx.Hash().Hex())
+	log.Info("Transaction sent", "hash", signedTx.Hash().Hex())
 
 	return nil
 }
