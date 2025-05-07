@@ -13,13 +13,12 @@ import {CrossChainMessenger} from "../src/CrossChainMessenger.sol";
 
 contract DeployScript is Script {
     address public constant PROXY_ADMIN = 0x0fe884546476dDd290eC46318785046ef68a0BA9;
-    address public constant ORACLE = 0x0e9a877906EBc3b7098DA2404412BF0Ed1A5EFb4;
-    address public constant OTHER_BRIDGE = 0x7a25452C36304317D6FE970091C383B0d45e9B0b;
+
+    bytes32 public constant REMOTE_MESSENGER = 0x0000000000000000000000000e9a877906EBc3b7098DA2404412BF0Ed1A5EFb4;
+    bytes32 public constant OTHER_BRIDGE = 0x7a25452c36304317d6fe970091c383b0d45e9b0b06485d2561156f025c6936af;
 
     function setUp() public {
         vm.label(PROXY_ADMIN, "PROXY_ADMIN");
-        vm.label(ORACLE, "ORACLE");
-        vm.label(OTHER_BRIDGE, "OTHER_BRIDGE");
         vm.label(ERC1967FactoryConstants.ADDRESS, "ERC1967_FACTORY");
     }
 
@@ -53,7 +52,7 @@ contract DeployScript is Script {
             ERC1967Factory(ERC1967FactoryConstants.ADDRESS).deployAndCall({
                 implementation: address(messengerImpl),
                 admin: PROXY_ADMIN,
-                data: abi.encodeCall(CrossChainMessenger.initialize, (_addressToBytes32(ORACLE)))
+                data: abi.encodeCall(CrossChainMessenger.initialize, (REMOTE_MESSENGER))
             })
         );
 
@@ -66,7 +65,7 @@ contract DeployScript is Script {
             ERC1967Factory(ERC1967FactoryConstants.ADDRESS).deployAndCall({
                 implementation: address(bridgeImpl),
                 admin: PROXY_ADMIN,
-                data: abi.encodeCall(Bridge.initialize, (messenger, _addressToBytes32(OTHER_BRIDGE)))
+                data: abi.encodeCall(Bridge.initialize, (messenger, OTHER_BRIDGE))
             })
         );
 
