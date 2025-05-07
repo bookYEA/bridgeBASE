@@ -3,9 +3,14 @@ import { Program } from "@coral-xyz/anchor";
 import type { Bridge } from "./target/types/bridge";
 import { PublicKey } from "@solana/web3.js";
 
-const LOCAL_TOKEN_ADDRESS = PublicKey.default;
+const LOCAL_TOKEN_ADDRESS = new PublicKey(
+  Buffer.from(
+    "0501550155015501550155015501550155015501550155015501550155015501",
+    "hex"
+  )
+);
 const REMOTE_TOKEN_ADDRESS = Uint8Array.from(
-  Buffer.from("0xb6cE6C1c204ECd29a67d32C241c2cC6B52B5C117", "hex")
+  Buffer.from("2DBE6a59cA75EAaeC4FE78D0Cc8AAdAa6519Ce20", "hex")
 ) as unknown as number[]; // wrapped SOL on Base Sepolia
 
 async function main() {
@@ -15,7 +20,7 @@ async function main() {
   const program = anchor.workspace.Bridge as Program<Bridge>;
 
   const to = Uint8Array.from(
-    Buffer.from("0x9986ccaf9e3de0ffef82a0f7fa3a06d5afe07252", "hex")
+    Buffer.from("9986ccaf9e3de0ffef82a0f7fa3a06d5afe07252", "hex")
   ) as unknown as number[];
   const value = new anchor.BN(0.001 * anchor.web3.LAMPORTS_PER_SOL);
   const minGasLimit = 100000;

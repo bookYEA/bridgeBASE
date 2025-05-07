@@ -1,4 +1,4 @@
-const hexAddress = "0xedb3c5ab354fdd99a6e1a796117f6dc15eaf316c";
+const hexAddress = process.env.ADDRESS as string;
 
 const solRemoteAddress = Uint8Array.from(
   Buffer.from(hexAddress.slice(2), "hex")
