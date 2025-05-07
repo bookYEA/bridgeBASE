@@ -43,6 +43,7 @@ var transactionDepositedDiscriminator = func() []byte {
 }()
 
 var DepositEventVersion0 = uint64(0)
+var SeenSignatures = map[string]bool{}
 
 func Main(ctx *cli.Context) error {
 	log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.LevelInfo, true)))
@@ -160,6 +161,10 @@ func startIndexer(ctx context.Context, wsUrl string, programAddr solana.PublicKe
 					continue
 				}
 
+				if SeenSignatures[got.Value.Signature.String()] {
+					continue
+				}
+
 				// Log the decoded event
 				log.Info("<<< TransactionDeposited Event >>>",
 					"slot", got.Context.Slot,
@@ -170,6 +175,8 @@ func startIndexer(ctx context.Context, wsUrl string, programAddr solana.PublicKe
 					"opaque_data_len", len(event.OpaqueData),
 					"opaque_data", fmt.Sprintf("0x%x", event.OpaqueData),
 				)
+
+				SeenSignatures[got.Value.Signature.String()] = true
 
 				var dep types.DepositTx
 
