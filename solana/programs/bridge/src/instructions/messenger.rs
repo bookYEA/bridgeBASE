@@ -6,6 +6,7 @@ use crate::{
 };
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::keccak;
+use hex_literal::hex;
 
 use super::portal;
 
@@ -182,8 +183,8 @@ fn encode_with_selector(
     // Create a vector to hold the encoded data
     let mut encoded = Vec::new();
 
-    // Add selector for Base.L2CrossDomainMessenger.relayMessage 0xd764ad0b (4 bytes)
-    encoded.extend_from_slice(&[215, 100, 173, 11]);
+    // Add selector for Base.CrossChainMessenger.relayMessage 0x54aa43a3 (4 bytes)
+    encoded.extend_from_slice(&hex!("54aa43a3"));
 
     // Add nonce (32 bytes) - nonce is already 32 bytes
     encoded.extend_from_slice(&nonce);

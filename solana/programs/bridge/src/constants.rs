@@ -8,15 +8,15 @@ pub const DEPOSIT_VERSION: u64 = 0;
 pub const MESSAGE_VERSION: u16 = 1;
 
 #[constant]
-// L2CrossDomainMessenger at 0x0580a385912cb1894b4369be2f94f2f3d6bd939a (baseSepolia)
+// L2CrossDomainMessenger at 0xf84212833806ba37257781117c119108F2145009 (baseSepolia)
 pub const OTHER_MESSENGER: [u8; 20] = [
-    5, 128, 163, 133, 145, 44, 177, 137, 75, 67, 105, 190, 47, 148, 242, 243, 214, 189, 147, 154,
+    248, 66, 18, 131, 56, 6, 186, 55, 37, 119, 129, 17, 124, 17, 145, 8, 242, 20, 80, 9,
 ];
 
 #[constant]
-// L2StandardBridge at 0xedb3c5ab354fdd99a6e1a796117f6dc15eaf316c (baseSepolia)
+// L2StandardBridge at 0xb8947d2725D3E9De9b19fC720f053300c50981e5 (baseSepolia)
 pub const OTHER_BRIDGE: [u8; 20] = [
-    237, 179, 197, 171, 53, 79, 221, 153, 166, 225, 167, 150, 17, 127, 109, 193, 94, 175, 49, 108,
+    184, 148, 125, 39, 37, 211, 233, 222, 155, 25, 252, 114, 15, 5, 51, 0, 197, 9, 129, 229,
 ];
 
 #[constant]
@@ -69,3 +69,6 @@ pub const VAULT_SEED: &[u8] = b"bridge_vault";
 
 #[constant]
 pub const MESSENGER_SEED: &[u8] = b"messenger_state";
+
+#[constant]
+pub const NATIVE_SOL_PUBKEY: Pubkey = pubkey!("LYDZWqhCarLgXtQsmWFr4DaqRE7c21xd49fpdVUUaBr");

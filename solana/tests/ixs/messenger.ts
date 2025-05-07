@@ -22,8 +22,8 @@ describe("messenger", () => {
   // Generate a dummy EVM address (20 bytes)
   const dummyEvmAddress = Array.from({ length: 20 }, (_, i) => i);
   const otherMessengerAddress = [
-    5, 128, 163, 133, 145, 44, 177, 137, 75, 67, 105, 190, 47, 148, 242, 243,
-    214, 189, 147, 154,
+    248, 66, 18, 131, 56, 6, 186, 55, 37, 119, 129, 17, 124, 17, 145, 8, 242,
+    20, 80, 9,
   ];
   const message = Buffer.from("sample data payload", "utf-8");
   const minGasLimit = 100000;
@@ -81,7 +81,7 @@ describe("messenger", () => {
 
     const paddingBytes = 32 - (message.length % 32);
     const data = Buffer.concat([
-      Buffer.from([215, 100, 173, 11]), // function selector
+      Buffer.from([84, 170, 67, 163]), // function selector
       Buffer.from(Array.from({ length: 32 }, (_, i) => (i === 1 ? 1 : 0))), // nonce
       user.publicKey.toBuffer(), // sender
       Buffer.from([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...dummyEvmAddress]), // target

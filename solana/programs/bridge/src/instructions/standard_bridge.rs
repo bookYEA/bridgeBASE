@@ -1,7 +1,8 @@
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::keccak;
+use hex_literal::hex;
 
-use crate::{messenger, MESSENGER_SEED, OTHER_BRIDGE, VAULT_SEED};
+use crate::{messenger, MESSENGER_SEED, NATIVE_SOL_PUBKEY, OTHER_BRIDGE, VAULT_SEED};
 
 use super::Messenger;
 
@@ -98,7 +99,7 @@ fn initiate_bridge_tokens<'info>(
     extra_data: Vec<u8>,
 ) -> Result<()> {
     // Transfer `amount` of local_token from user to vault
-    if local_token == Pubkey::default() {
+    if local_token == NATIVE_SOL_PUBKEY {
         // Transfer lamports from user to vault PDA
         let cpi_context = CpiContext::new(
             system_program.to_account_info(),
@@ -136,14 +137,14 @@ fn initiate_bridge_tokens<'info>(
         msg_state,
         Pubkey::new_from_array(hash.to_bytes()),
         OTHER_BRIDGE,
-        encode_with_selector(local_token, remote_token, from, to, amount, extra_data),
+        encode_with_selector(remote_token, local_token, from, to, amount, extra_data),
         min_gas_limit,
     )
 }
 
 fn encode_with_selector(
-    local_token: Pubkey,
     remote_token: [u8; 20],
+    local_token: Pubkey,
     from: Pubkey,
     to: [u8; 20],
     amount: u64,
@@ -152,16 +153,16 @@ fn encode_with_selector(
     // Create a vector to hold the encoded data
     let mut encoded = Vec::new();
 
-    // Add selector for Base.L2StandardBridge.finalizeBridgeERC20 0x0166a07a (4 bytes)
-    encoded.extend_from_slice(&[1, 102, 160, 122]);
-
-    // Add local_token (32 bytes) - Pubkey is already 32 bytes
-    encoded.extend_from_slice(local_token.as_ref());
+    // Add selector for Base.Bridge.finalizeBridgeToken 0x2d916920 (4 bytes)
+    encoded.extend_from_slice(&hex!("2d916920"));
 
     // Add remote_token (32 bytes) - pad 20-byte address to 32 bytes
     let mut remote_token_bytes = [0u8; 32];
     remote_token_bytes[12..32].copy_from_slice(&remote_token);
     encoded.extend_from_slice(&remote_token_bytes);
+
+    // Add local_token (32 bytes) - Pubkey is already 32 bytes
+    encoded.extend_from_slice(local_token.as_ref());
 
     // Add from (32 bytes) - Pubkey is already 32 bytes
     encoded.extend_from_slice(from.as_ref());
@@ -179,8 +180,8 @@ fn encode_with_selector(
     // Add message length and data (dynamic type)
     // First add offset to message data (32 bytes)
     let mut offset_bytes = [0u8; 32];
-    // Offset is 5 * 32 = 160 bytes (3 previous parameters of 32 bytes each)
-    offset_bytes[31] = 160;
+    // Offset is 6 * 32 = 192 bytes (6 previous parameters of 32 bytes each)
+    offset_bytes[31] = 192;
     encoded.extend_from_slice(&offset_bytes);
 
     // Add extra_data length (32 bytes)
@@ -194,8 +195,6 @@ fn encode_with_selector(
     // Pad extra data to multiple of 32 bytes
     let padding_bytes = (32 - (extra_data.len() % 32)) % 32;
     encoded.extend_from_slice(&vec![0u8; padding_bytes]);
-
-    msg!("actual: {:?}", encoded);
 
     return encoded;
 }

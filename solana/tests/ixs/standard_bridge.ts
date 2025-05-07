@@ -25,7 +25,12 @@ describe("standard bridge", () => {
     )
   );
 
-  const solLocalAddress = PublicKey.default;
+  const solLocalAddress = new PublicKey(
+    Buffer.from(
+      "0501550155015501550155015501550155015501550155015501550155015501",
+      "hex"
+    )
+  );
   const solRemoteAddress = Uint8Array.from(
     Buffer.from("E398D7afe84A6339783718935087a4AcE6F6DFE8", "hex")
   ) as unknown as number[]; // random address for testing
@@ -33,12 +38,12 @@ describe("standard bridge", () => {
   // Generate a dummy EVM address (20 bytes)
   const toAddress = Array.from({ length: 20 }, (_, i) => i);
   const otherMessengerAddress = [
-    5, 128, 163, 133, 145, 44, 177, 137, 75, 67, 105, 190, 47, 148, 242, 243,
-    214, 189, 147, 154,
+    248, 66, 18, 131, 56, 6, 186, 55, 37, 119, 129, 17, 124, 17, 145, 8, 242,
+    20, 80, 9,
   ];
   const otherBridgeAddress = [
-    237, 179, 197, 171, 53, 79, 221, 153, 166, 225, 167, 150, 17, 127, 109, 193,
-    94, 175, 49, 108,
+    184, 148, 125, 39, 37, 211, 233, 222, 155, 25, 252, 114, 15, 5, 51, 0, 197,
+    9, 129, 229,
   ];
   const extraData = Buffer.from("sample data payload", "utf-8");
   const value = new anchor.BN(1 * anchor.web3.LAMPORTS_PER_SOL); // 1 SOL
@@ -104,13 +109,13 @@ describe("standard bridge", () => {
 
     const extraDataPaddingBytes = 32 - (extraData.length % 32);
     const message = Buffer.concat([
-      Buffer.from([1, 102, 160, 122]), // function selector
-      solLocalAddress.toBuffer(), // local token
+      Buffer.from("2d916920", "hex"), // function selector
       Buffer.from([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...solRemoteAddress]), // remote token
+      solLocalAddress.toBuffer(), // local token
       user.publicKey.toBuffer(), // from
       Buffer.from([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...toAddress]), // target
       Buffer.from(value.toArray("be", 32)), // value
-      Buffer.from(Array.from({ length: 32 }, (_, i) => (i == 31 ? 160 : 0))), // extra_data offset
+      Buffer.from(Array.from({ length: 32 }, (_, i) => (i == 31 ? 192 : 0))), // extra_data offset
       Buffer.from(
         new anchor.BN(Buffer.from(extraData).length).toArray("be", 32)
       ),
@@ -122,7 +127,7 @@ describe("standard bridge", () => {
 
     const paddingBytes = 32 - (message.length % 32);
     const data = Buffer.concat([
-      Buffer.from([215, 100, 173, 11]), // function selector
+      Buffer.from([84, 170, 67, 163]), // function selector
       Buffer.from(
         Array.from({ length: 32 }, (_, i) => {
           if (i === 1) {
