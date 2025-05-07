@@ -1,16 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {CREATE3} from "solady/utils/CREATE3.sol";
-import {Initializable} from "solady/utils/Initializable.sol";
-import {LibClone} from "solady/utils/LibClone.sol";
-
 import {ISemver} from "optimism/packages/contracts-bedrock/interfaces/universal/ISemver.sol";
-import {Predeploys} from "optimism/packages/contracts-bedrock/src/libraries/Predeploys.sol";
+import {Initializable} from "solady/utils/Initializable.sol";
 
 import {CrossChainERC20} from "./CrossChainERC20.sol";
 
-contract CrossChainERC20Factory is ISemver {
+contract CrossChainERC20Factory is ISemver, Initializable {
     //////////////////////////////////////////////////////////////
     ///                       Constants                        ///
     //////////////////////////////////////////////////////////////
@@ -34,6 +30,9 @@ contract CrossChainERC20Factory is ISemver {
     ///                       Storage                          ///
     //////////////////////////////////////////////////////////////
 
+    /// @notice Address of the Bridge contract.
+    address public bridge;
+
     /// @notice Mapping of the deployed CrossChainERC20 to the remote token address.
     ///         This is used to keep track of the token deployments.
     mapping(address localToken => address remoteToken) public deployments;
@@ -41,6 +40,18 @@ contract CrossChainERC20Factory is ISemver {
     //////////////////////////////////////////////////////////////
     ///                       Public Functions                 ///
     //////////////////////////////////////////////////////////////
+
+    /// @notice Constructs the Bridge contract.
+    constructor() {
+        _disableInitializers();
+    }
+
+    /// @notice Initializer.
+    ///
+    /// @param bridge_ Address of the Bridge contract.
+    function initialize(address bridge_) external initializer {
+        bridge = bridge_;
+    }
 
     /// @notice Deploys a CrossChainERC20 Beacon Proxy using CREATE3.
     ///
@@ -54,16 +65,21 @@ contract CrossChainERC20Factory is ISemver {
         external
         returns (address crossChainERC20)
     {
-        bytes32 salt = keccak256(abi.encode(remoteToken, name, symbol, decimals));
+        require(remoteToken != address(0), "CrossChainERC20Factory: must provide remote token address");
 
-        bytes memory initCode = LibClone.initCodeERC1967BeaconProxy(
-            Predeploys.OPTIMISM_SUPERCHAIN_ERC20_BEACON,
-            abi.encodeCall(CrossChainERC20.initialize, (remoteToken, name, symbol, decimals))
+        bytes32 salt = keccak256(abi.encode(remoteToken, name, symbol, decimals));
+        address localToken = address(
+            new CrossChainERC20{salt: salt}({
+                bridge_: bridge,
+                remoteToken_: remoteToken,
+                name_: name,
+                symbol_: symbol,
+                decimals_: decimals
+            })
         );
 
-        crossChainERC20 = CREATE3.deployDeterministic({salt: salt, initCode: initCode});
-        deployments[crossChainERC20] = remoteToken;
+        emit CrossChainERC20Created(localToken, remoteToken, msg.sender);
 
-        emit CrossChainERC20Created({localToken: crossChainERC20, remoteToken: remoteToken, deployer: msg.sender});
+        return localToken;
     }
 }

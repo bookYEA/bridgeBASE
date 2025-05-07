@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {Initializable} from "solady/utils/Initializable.sol";
-
 import {Constants} from "optimism/packages/contracts-bedrock/src/libraries/Constants.sol";
 import {SafeCall} from "optimism/packages/contracts-bedrock/src/libraries/SafeCall.sol";
+import {Initializable} from "solady/utils/Initializable.sol";
 
 contract CrossChainMessenger is Initializable {
     //////////////////////////////////////////////////////////////
@@ -44,7 +43,7 @@ contract CrossChainMessenger is Initializable {
     ///         once. A message will not be present in this mapping if it successfully executed on the first attempt.
     mapping(bytes32 messageHash => bool failed) public failedMessages;
 
-    /// @notice Address of the sender of the currently executing message on the other chain. If the value of this
+    /// @notice Address of the sender of the currently executing message on the remote chain. If the value of this
     ///         variable is the default value (0x00000000...dead) then no message is currently being executed. Use the
     ///         xChainMsgSender getter which will throw an error if this is the case.
     address public xChainMsgSender;
@@ -72,8 +71,8 @@ contract CrossChainMessenger is Initializable {
         remoteMessenger = remoteMessenger_;
     }
 
-    /// @notice Relays a message that was sent by the other CrossChainMessenger contract. Can only be executed via
-    ///         cross-chain call from the other messenger OR if the message was already received once and is currently
+    /// @notice Relays a message that was sent by the remote CrossChainMessenger contract. Can only be executed via
+    ///         cross-chain call from the remote messenger OR if the message was already received once and is currently
     ///         being replayed.
     ///
     /// @param nonce Nonce of the message being relayed.
@@ -93,7 +92,7 @@ contract CrossChainMessenger is Initializable {
         bytes32 messageHash =
             keccak256(abi.encodeCall(this.relayMessage, (nonce, sender, target, value, minGasLimit, message)));
 
-        if (_isOtherMessenger()) {
+        if (_isRemoteMessenger()) {
             require(msg.value == value, "CrossChainMessenger: value must be equal to the value sent");
             require(!failedMessages[messageHash], "CrossChainMessenger: message cannot be replayed");
         } else {
@@ -156,11 +155,11 @@ contract CrossChainMessenger is Initializable {
     ///                       Internal Functions               ///
     //////////////////////////////////////////////////////////////
 
-    /// @notice Checks whether the message is coming from the other messenger. Implemented by child contracts because
+    /// @notice Checks whether the message is coming from the remote messenger. Implemented by child contracts because
     ///         the logic for this depends on the network where the messenger is being deployed.
     ///
-    /// @return Whether the message is coming from the other messenger.
-    function _isOtherMessenger() internal view virtual returns (bool) {
+    /// @return Whether the message is coming from the remote messenger.
+    function _isRemoteMessenger() internal view virtual returns (bool) {
         return remoteMessenger == msg.sender;
     }
 

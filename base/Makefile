@@ -13,7 +13,7 @@ clean-lib:
 .PHONY: forge-deps
 forge-deps:
 	forge install --no-git github.com/foundry-rs/forge-std \
-		github.com/Vectorized/solady@502cc1ea718e6fa73b380635ee0868b0740595f0 \
+		github.com/Vectorized/solady@92e647bb2b387e952480a5a37800e9b4d54f7a06 \
 		github.com/OpenZeppelin/openzeppelin-contracts@v4.9.3 \
 		github.com/OpenZeppelin/openzeppelin-contracts-upgradeable@v4.7.3
 

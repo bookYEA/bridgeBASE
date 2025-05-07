@@ -4,8 +4,8 @@ pragma solidity 0.8.28;
 import {Initializable} from "solady/utils/Initializable.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 
+import {CrossChainERC20} from "./CrossChainERC20.sol";
 import {CrossChainMessenger} from "./CrossChainMessenger.sol";
-import {ICrossChainERC20} from "./interfaces/ICrossChainERC20.sol";
 
 contract Bridge is Initializable {
     //////////////////////////////////////////////////////////////
@@ -88,7 +88,7 @@ contract Bridge is Initializable {
         bytes calldata extraData
     ) public onlyRemoteBridge {
         if (_isCrossChainERC20(localToken)) {
-            ICrossChainERC20 localToken_ = ICrossChainERC20(localToken);
+            CrossChainERC20 localToken_ = CrossChainERC20(localToken);
 
             require(
                 _isCorrectTokenPair({localToken: localToken_, remoteToken: remoteToken}),
@@ -121,7 +121,8 @@ contract Bridge is Initializable {
     ///
     /// @return True if the token is an CrossChainERC20.
     function _isCrossChainERC20(address token) internal view returns (bool) {
-        return ICrossChainERC20(token).supportsInterface(type(ICrossChainERC20).interfaceId);
+        (bool success, bytes memory data) = token.staticcall(abi.encodeCall(CrossChainERC20.remoteToken, ()));
+        return success && data.length == 32;
     }
 
     /// @notice Checks if the remote token is the correct pair token for the CrossChainERC20.
@@ -130,7 +131,7 @@ contract Bridge is Initializable {
     /// @param remoteToken Pair token to check.
     ///
     /// @return True if the remote token is the correct pair token for the CrossChainERC20.
-    function _isCorrectTokenPair(ICrossChainERC20 localToken, address remoteToken) internal view returns (bool) {
+    function _isCorrectTokenPair(CrossChainERC20 localToken, address remoteToken) internal view returns (bool) {
         return localToken.remoteToken() == remoteToken;
     }
 }
