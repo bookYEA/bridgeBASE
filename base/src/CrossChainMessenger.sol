@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {Constants} from "optimism/packages/contracts-bedrock/src/libraries/Constants.sol";
 import {SafeCall} from "optimism/packages/contracts-bedrock/src/libraries/SafeCall.sol";
 import {Initializable} from "solady/utils/Initializable.sol";
 
@@ -10,11 +9,23 @@ contract CrossChainMessenger is Initializable {
     ///                       Constants                        ///
     //////////////////////////////////////////////////////////////
 
+    /// @notice Special address to be used as the tx origin for gas estimation calls in the
+    ///         OptimismPortal and CrossDomainMessenger calls. You only need to use this address if
+    ///         the minimum gas limit specified by the user is not actually enough to execute the
+    ///         given message and you're attempting to estimate the actual necessary gas limit. We
+    ///         use address(1) because it's the ecrecover precompile and therefore guaranteed to
+    ///         never have any code on any EVM chain.
+    address internal constant ESTIMATION_ADDRESS = address(1);
+
     /// @notice Gas reserved for finalizing the execution of `relayMessage` after the safe call.
     uint64 public constant RELAY_RESERVED_GAS = 40_000;
 
     /// @notice Gas reserved for the execution between the `hasMinGas` check and the external call in `relayMessage`.
     uint64 public constant RELAY_GAS_CHECK_BUFFER = 5_000;
+
+    /// @notice This value is non-zero to reduce the gas cost of message passing transactions.
+    bytes32 internal constant DEFAULT_L2_SENDER =
+        bytes32(0x000000000000000000000000000000000000000000000000000000000000dEaD);
 
     //////////////////////////////////////////////////////////////
     ///                       Events                           ///
@@ -33,7 +44,9 @@ contract CrossChainMessenger is Initializable {
     //////////////////////////////////////////////////////////////
 
     /// @notice Messenger on the remote chain.
-    address public remoteMessenger;
+    ///
+    /// @dev Stored as a bytes32 to handle non EVM addresses which may not fit into 20 bytes.
+    bytes32 public remoteMessenger;
 
     /// @notice Mapping of message hashes to boolean receipt values. Note that a message will only be present in this
     ///         mapping if it has successfully been relayed on this chain, and can therefore not be relayed again.
@@ -43,10 +56,13 @@ contract CrossChainMessenger is Initializable {
     ///         once. A message will not be present in this mapping if it successfully executed on the first attempt.
     mapping(bytes32 messageHash => bool failed) public failedMessages;
 
-    /// @notice Address of the sender of the currently executing message on the remote chain. If the value of this
-    ///         variable is the default value (0x00000000...dead) then no message is currently being executed. Use the
-    ///         xChainMsgSender getter which will throw an error if this is the case.
-    address public xChainMsgSender;
+    /// @notice Address of the message sender that interacted with the messenger on the remote chain.
+    ///
+    /// @dev If the value of this variable is DEFAULT_L2_SENDER then no message is currently being executed. Use the
+    ///      xChainMsgSender() getter which will throw an error if this is the case.
+    ///
+    /// @dev Stored as a bytes32 to handle non EVM addresses which may not fit into 20 bytes.
+    bytes32 private _xChainMsgSender;
 
     //////////////////////////////////////////////////////////////
     ///                       Public Functions                 ///
@@ -57,15 +73,25 @@ contract CrossChainMessenger is Initializable {
         _disableInitializers();
     }
 
+    /// @notice Retrieves the address of the sender that interacted with the messenger on the remote chain.
+    ///
+    /// @dev Will throw an error if there is no message currently being executed.
+    ///
+    /// @return Address of the message sender that interacted with the messenger on the remote chain.
+    function xChainMsgSender() external view returns (bytes32) {
+        require(_xChainMsgSender != DEFAULT_L2_SENDER, "CrossChainMessenger: xChainMsgSender is not set");
+        return _xChainMsgSender;
+    }
+
     /// @notice Initializer.
     ///
     /// @param remoteMessenger_ Address of the messenger on the remote chain.
-    function initialize(address remoteMessenger_) external initializer {
+    function initialize(bytes32 remoteMessenger_) external initializer {
         // We only want to set the xChainMsgSender to the default value if it hasn't been initialized yet, meaning that
         // this is a fresh contract deployment. This prevents resetting the xChainMsgSender to the default value during
         // an upgrade, which would enable a reentrant withdrawal to sandwhich the upgrade replay a withdrawal twice.
-        if (xChainMsgSender == address(0)) {
-            xChainMsgSender = Constants.DEFAULT_L2_SENDER;
+        if (_xChainMsgSender == 0) {
+            _xChainMsgSender = DEFAULT_L2_SENDER;
         }
 
         remoteMessenger = remoteMessenger_;
@@ -83,7 +109,7 @@ contract CrossChainMessenger is Initializable {
     /// @param message Message to send to the target.
     function relayMessage(
         uint256 nonce,
-        address sender,
+        bytes32 sender,
         address target,
         uint256 value,
         uint256 minGasLimit,
@@ -111,11 +137,11 @@ contract CrossChainMessenger is Initializable {
         //   1.a. The RELAY_CALL_OVERHEAD is included in `hasMinGas`.
         // 2. Finish the execution after the external call (RELAY_RESERVED_GAS).
         //
-        // If `xChainMsgSender` is not the default L2 sender, this functionis being re-entered. This marks the message
+        // If `_xChainMsgSender` is not the default L2 sender, this functionis being re-entered. This marks the message
         // as failed to allow it to be replayed.
         if (
             !SafeCall.hasMinGas(minGasLimit, RELAY_RESERVED_GAS + RELAY_GAS_CHECK_BUFFER)
-                || xChainMsgSender != Constants.DEFAULT_L2_SENDER
+                || _xChainMsgSender != DEFAULT_L2_SENDER
         ) {
             failedMessages[messageHash] = true;
             emit FailedRelayedMessage(messageHash);
@@ -124,13 +150,13 @@ contract CrossChainMessenger is Initializable {
             // possible during gas estimation or we have bigger problems. Reverting here will make the behavior of gas
             // estimation change such that the gas limit computed will be the amount required to relay the message, even
             // if that amount is greater than the minimum gas limit specified by the user.
-            require(tx.origin != Constants.ESTIMATION_ADDRESS, "CrossChainMessenger: failed to relay message");
+            require(tx.origin != ESTIMATION_ADDRESS, "CrossChainMessenger: failed to relay message");
             return;
         }
 
-        xChainMsgSender = sender;
+        _xChainMsgSender = sender;
         bool success = SafeCall.call(target, gasleft() - RELAY_RESERVED_GAS, value, message);
-        xChainMsgSender = Constants.DEFAULT_L2_SENDER;
+        _xChainMsgSender = DEFAULT_L2_SENDER;
 
         if (success) {
             // This check is identical to one above, but it ensures that the same message cannot be relayed
@@ -147,7 +173,7 @@ contract CrossChainMessenger is Initializable {
             // possible during gas estimation or we have bigger problems. Reverting here will make the behavior of gas
             // estimation change such that the gas limit computed will be the amount required to relay the message, even
             // if that amount is greater than the minimum gas limit specified by the user.
-            require(tx.origin != Constants.ESTIMATION_ADDRESS, "CrossChainMessenger: failed to relay message");
+            require(tx.origin != ESTIMATION_ADDRESS, "CrossChainMessenger: failed to relay message");
         }
     }
 
@@ -155,12 +181,11 @@ contract CrossChainMessenger is Initializable {
     ///                       Internal Functions               ///
     //////////////////////////////////////////////////////////////
 
-    /// @notice Checks whether the message is coming from the remote messenger. Implemented by child contracts because
-    ///         the logic for this depends on the network where the messenger is being deployed.
+    /// @notice Checks whether the message is coming from the remote messenger.
     ///
     /// @return Whether the message is coming from the remote messenger.
     function _isRemoteMessenger() internal view virtual returns (bool) {
-        return remoteMessenger == msg.sender;
+        return _bytes32ToAddress(remoteMessenger) == msg.sender;
     }
 
     /// @notice Checks whether a given call target is a system address that could cause the messenger to peform an
@@ -179,7 +204,24 @@ contract CrossChainMessenger is Initializable {
     ///                       Private Functions                ///
     //////////////////////////////////////////////////////////////
 
+    /// @notice Returns the maximum of two uint256 values.
+    ///
+    /// @param a First value.
+    /// @param b Second value.
+    ///
+    /// @return Maximum of the two values.
     function _max(uint256 a, uint256 b) private pure returns (uint256) {
         return a > b ? a : b;
+    }
+
+    /// @notice Converts a bytes32 value to an address.
+    ///
+    /// @dev Truncates the bytes32 value to an address by taking the last 20 bytes.
+    ///
+    /// @param value Bytes32 value to convert.
+    ///
+    /// @return Converted address.
+    function _bytes32ToAddress(bytes32 value) private pure returns (address) {
+        return address(uint160(uint256(value)));
     }
 }

@@ -11,7 +11,7 @@ contract CrossChainERC20 is ERC20 {
     //////////////////////////////////////////////////////////////
 
     address private immutable _bridge;
-    address private immutable _remoteToken;
+    bytes32 private immutable _remoteToken;
     uint8 private immutable _decimals;
 
     //////////////////////////////////////////////////////////////
@@ -56,7 +56,7 @@ contract CrossChainERC20 is ERC20 {
     /// @param name_ ERC20 name.
     /// @param symbol_ ERC20 symbol.
     /// @param decimals_ ERC20 decimals.
-    constructor(address bridge_, address remoteToken_, string memory name_, string memory symbol_, uint8 decimals_) {
+    constructor(address bridge_, bytes32 remoteToken_, string memory name_, string memory symbol_, uint8 decimals_) {
         _bridge = bridge_;
         _remoteToken = remoteToken_;
         _name = name_;
@@ -76,7 +76,7 @@ contract CrossChainERC20 is ERC20 {
     }
 
     /// @dev Returns the remote token address.
-    function remoteToken() public view returns (address) {
+    function remoteToken() public view returns (bytes32) {
         return _remoteToken;
     }
 

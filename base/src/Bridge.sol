@@ -22,7 +22,7 @@ contract Bridge is Initializable {
     /// @param extraData Extra data to be sent with the transaction. Note that the recipient will not be triggered with
     ///                  this data, but it will be emitted and can be used to identify the transaction.
     event TokenBridgeFinalized(
-        address localToken, address remoteToken, address from, address to, uint256 amount, bytes extraData
+        address localToken, bytes32 remoteToken, address from, address to, uint256 amount, bytes extraData
     );
 
     //////////////////////////////////////////////////////////////
@@ -33,10 +33,12 @@ contract Bridge is Initializable {
     address public messenger;
 
     /// @notice Bridge contract on the remote chain.
-    address public remoteBridge;
+    ///
+    /// @dev Stored as a bytes32 to handle non EVM addresses which may not fit into 20 bytes.
+    bytes32 public remoteBridge;
 
     /// @notice Mapping that stores deposits for a given pair of local and remote tokens.
-    mapping(address localToken => mapping(address remoteToken => uint256 amount)) public deposits;
+    mapping(address localToken => mapping(bytes32 remoteToken => uint256 amount)) public deposits;
 
     //////////////////////////////////////////////////////////////
     ///                       Modifiers                        ///
@@ -45,7 +47,7 @@ contract Bridge is Initializable {
     /// @notice Ensures that the caller is the bridge on the remote chain.
     modifier onlyRemoteBridge() {
         require(
-            msg.sender == messenger && CrossChainMessenger(messenger).xChainMsgSender() == address(remoteBridge),
+            msg.sender == messenger && CrossChainMessenger(messenger).xChainMsgSender() == remoteBridge,
             "Bridge: function can only be called from the other bridge"
         );
         _;
@@ -64,7 +66,7 @@ contract Bridge is Initializable {
     ///
     /// @param messenger_ Messenger contract on this chain.
     /// @param remoteBridge_ Bridge contract on the remote chain.
-    function initialize(address messenger_, address remoteBridge_) external initializer {
+    function initialize(address messenger_, bytes32 remoteBridge_) external initializer {
         messenger = messenger_;
         remoteBridge = remoteBridge_;
     }
@@ -81,7 +83,7 @@ contract Bridge is Initializable {
     ///                  this data, but it will be emitted and can be used to identify the transaction.
     function finalizeBridgeToken(
         address localToken,
-        address remoteToken,
+        bytes32 remoteToken,
         address from,
         address to,
         uint256 amount,
@@ -131,7 +133,7 @@ contract Bridge is Initializable {
     /// @param remoteToken Pair token to check.
     ///
     /// @return True if the remote token is the correct pair token for the CrossChainERC20.
-    function _isCorrectTokenPair(CrossChainERC20 localToken, address remoteToken) internal view returns (bool) {
+    function _isCorrectTokenPair(CrossChainERC20 localToken, bytes32 remoteToken) internal view returns (bool) {
         return localToken.remoteToken() == remoteToken;
     }
 }

@@ -15,9 +15,9 @@ import {CrossChainMessenger} from "../src/CrossChainMessenger.sol";
 contract Poc is Test {
     address proxyAdmin;
 
-    address remoteMessenger;
-    address remoteBridge;
-    address remoteToken;
+    bytes32 remoteMessenger;
+    bytes32 remoteBridge;
+    bytes32 remoteToken;
 
     CrossChainMessenger messengerProxy;
     Bridge bridgeProxy;
@@ -27,9 +27,9 @@ contract Poc is Test {
     function setUp() public {
         proxyAdmin = makeAddr("PROXY_ADMIN");
 
-        remoteMessenger = makeAddr("ORACLE");
-        remoteBridge = makeAddr("REMOTE_BRIDGE");
-        remoteToken = makeAddr("REMOTE_TOKEN");
+        remoteMessenger = bytes32(uint256(uint160(makeAddr("REMOTE_MESSENGER"))));
+        remoteBridge = bytes32(uint256(uint160(makeAddr("REMOTE_BRIDGE"))));
+        remoteToken = bytes32(uint256(uint160(makeAddr("REMOTE_TOKEN"))));
 
         // Deploy the ERC1967Factory
         vm.etch(ERC1967FactoryConstants.ADDRESS, ERC1967FactoryConstants.BYTECODE);
@@ -76,7 +76,7 @@ contract Poc is Test {
         uint256 amount = 42;
         bytes memory extraData = "";
 
-        vm.prank(remoteMessenger);
+        vm.prank(_bytes32ToAddress(remoteMessenger));
         messengerProxy.relayMessage({
             nonce: 0,
             sender: remoteBridge,
@@ -87,5 +87,9 @@ contract Poc is Test {
         });
 
         vm.assertEq(cbSOL.balanceOf(to), amount);
+    }
+
+    function _bytes32ToAddress(bytes32 value) private pure returns (address) {
+        return address(uint160(uint256(value)));
     }
 }

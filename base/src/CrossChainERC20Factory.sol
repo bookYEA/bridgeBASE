@@ -24,7 +24,7 @@ contract CrossChainERC20Factory is ISemver, Initializable {
     /// @param localToken Address of the CrossChainERC20 deployment.
     /// @param remoteToken Address of the corresponding token on the remote chain.
     /// @param deployer Address of the account that deployed the token.
-    event CrossChainERC20Created(address indexed localToken, address indexed remoteToken, address deployer);
+    event CrossChainERC20Created(address indexed localToken, bytes32 indexed remoteToken, address deployer);
 
     //////////////////////////////////////////////////////////////
     ///                       Storage                          ///
@@ -35,7 +35,7 @@ contract CrossChainERC20Factory is ISemver, Initializable {
 
     /// @notice Mapping of the deployed CrossChainERC20 to the remote token address.
     ///         This is used to keep track of the token deployments.
-    mapping(address localToken => address remoteToken) public deployments;
+    mapping(address localToken => bytes32 remoteToken) public deployments;
 
     //////////////////////////////////////////////////////////////
     ///                       Public Functions                 ///
@@ -61,11 +61,11 @@ contract CrossChainERC20Factory is ISemver, Initializable {
     /// @param decimals Decimals of the CrossChainERC20.
     ///
     /// @return crossChainERC20 Address of the CrossChainERC20 deployment.
-    function deploy(address remoteToken, string memory name, string memory symbol, uint8 decimals)
+    function deploy(bytes32 remoteToken, string memory name, string memory symbol, uint8 decimals)
         external
         returns (address crossChainERC20)
     {
-        require(remoteToken != address(0), "CrossChainERC20Factory: must provide remote token address");
+        require(remoteToken != bytes32(0), "CrossChainERC20Factory: must provide remote token address");
 
         bytes32 salt = keccak256(abi.encode(remoteToken, name, symbol, decimals));
         address localToken = address(
@@ -78,7 +78,7 @@ contract CrossChainERC20Factory is ISemver, Initializable {
             })
         );
 
-        emit CrossChainERC20Created(localToken, remoteToken, msg.sender);
+        emit CrossChainERC20Created({localToken: localToken, remoteToken: remoteToken, deployer: msg.sender});
 
         return localToken;
     }
