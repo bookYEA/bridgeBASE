@@ -4,13 +4,13 @@
 
 1. Ensure you have followed the `Setup` instructions for both the [oracle](oracle/README.md) and [scripts](scripts/README.md) directories.
 
-2. On your terminal, start the oracle
+2. In your terminal, start the oracle
 
 ```bash
 cd oracle && make run-dev
 ```
 
-3. Invoke the bridge script
+3. In a separate terminal, invoke the bridge script
 
 ```bash
 cd scripts && make bridge-sol-to-base

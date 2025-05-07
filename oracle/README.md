@@ -13,8 +13,6 @@ The oracle monitors events or states on one chain (e.g., Solana) and posts relev
 ### Prerequisites
 
 - Go programming language installed.
-- Access to a Solana RPC endpoint.
-- Access to a Base RPC endpoint (Sepolia for dev, Mainnet for prod).
 - Funded EOA account on Base for submitting transactions from.
 
 ### Configuration
