@@ -70,7 +70,7 @@ contract Poc is Test {
     }
 
     function testTokenBridge() public {
-        address from = makeAddr("ALICE_SOL");
+        bytes32 from = bytes32(uint256(uint160(makeAddr("ALICE_SOL"))));
         address to = makeAddr("ALICE_BASE");
         uint256 amount = 42;
         bytes memory extraData = "";

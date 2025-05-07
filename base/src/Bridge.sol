@@ -22,7 +22,7 @@ contract Bridge is Initializable {
     /// @param extraData Extra data to be sent with the transaction. Note that the recipient will not be triggered with
     ///                  this data, but it will be emitted and can be used to identify the transaction.
     event TokenBridgeFinalized(
-        address localToken, bytes32 remoteToken, address from, address to, uint256 amount, bytes extraData
+        address localToken, bytes32 remoteToken, bytes32 from, address to, uint256 amount, bytes extraData
     );
 
     //////////////////////////////////////////////////////////////
@@ -84,7 +84,7 @@ contract Bridge is Initializable {
     function finalizeBridgeToken(
         address localToken,
         bytes32 remoteToken,
-        address from,
+        bytes32 from,
         address to,
         uint256 amount,
         bytes calldata extraData
