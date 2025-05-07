@@ -1,6 +1,24 @@
 # Base <> alt-L1 Bridge
 
-## Base Contracts Deployment
+## Test the bridge
+
+1. Ensure you have followed the `Setup` instructions for both the [oracle](oracle/README.md) and [scripts](scripts/README.md) directories.
+
+2. On your terminal, start the oracle
+
+```bash
+cd oracle && make run-dev
+```
+
+3. Invoke the bridge script
+
+```bash
+cd scripts && make bridge-sol-to-base
+```
+
+## Useful Procedures
+
+### Base Contracts Deployment
 
 1. Enter base directory
 

@@ -4,6 +4,8 @@ Scripts for invoking the bridge
 
 ## Usage
 
+### Setup
+
 Install dependencies:
 
 ```bash
@@ -15,6 +17,8 @@ Generate solana build artifacts:
 ```bash
 make build
 ```
+
+### Commands
 
 Bridge SOL from Solana to Base:
 

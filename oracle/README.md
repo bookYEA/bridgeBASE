@@ -8,14 +8,16 @@ The oracle monitors events or states on one chain (e.g., Solana) and posts relev
 
 **For the first iteration of our bridge, this serves as a Coinbase-run trusted oracle. It is a temporary solution and will be quickly phased out with upcoming protocol-level updates in the OP stack.**
 
-## Prerequisites
+## Setup
+
+### Prerequisites
 
 - Go programming language installed.
 - Access to a Solana RPC endpoint.
 - Access to a Base RPC endpoint (Sepolia for dev, Mainnet for prod).
 - Funded EOA account on Base for submitting transactions from.
 
-## Configuration
+### Configuration
 
 Key configuration parameters are managed via environment variables and command-line flags. The `Makefile` provides convenience targets that pass the necessary flags.
 
@@ -36,6 +38,12 @@ Other environment variables that are typically set (e.g., in the `.env` file or 
 - `BASE_MAINNET_RPC_URL`: RPC URL for the Base main network.
 
 The application uses `urfave/cli` for command-line argument parsing. The specific flags can be found in [`internal/flags/flags.go`](./internal/flags/flags.go).
+
+### Install Dependencies
+
+```bash
+go mod tidy
+```
 
 ## Running the Oracle
 
