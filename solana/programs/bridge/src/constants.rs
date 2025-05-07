@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use hex_literal::hex;
 
 #[constant]
 pub const DEPOSIT_VERSION: u64 = 0;
@@ -9,15 +10,11 @@ pub const MESSAGE_VERSION: u16 = 1;
 
 #[constant]
 // L2CrossDomainMessenger at 0xf84212833806ba37257781117c119108F2145009 (baseSepolia)
-pub const OTHER_MESSENGER: [u8; 20] = [
-    248, 66, 18, 131, 56, 6, 186, 55, 37, 119, 129, 17, 124, 17, 145, 8, 242, 20, 80, 9,
-];
+pub const OTHER_MESSENGER: [u8; 20] = hex!("f84212833806ba37257781117c119108F2145009");
 
 #[constant]
 // L2StandardBridge at 0xb8947d2725D3E9De9b19fC720f053300c50981e5 (baseSepolia)
-pub const OTHER_BRIDGE: [u8; 20] = [
-    184, 148, 125, 39, 37, 211, 233, 222, 155, 25, 252, 114, 15, 5, 51, 0, 197, 9, 129, 229,
-];
+pub const OTHER_BRIDGE: [u8; 20] = hex!("b8947d2725D3E9De9b19fC720f053300c50981e5");
 
 #[constant]
 /// @notice Constant overhead added to the base gas for a message.
