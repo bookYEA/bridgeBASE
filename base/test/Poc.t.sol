@@ -8,7 +8,6 @@ import {ERC1967FactoryConstants} from "solady/utils/ERC1967FactoryConstants.sol"
 
 import {Bridge} from "../src/Bridge.sol";
 import {CrossChainERC20} from "../src/CrossChainERC20.sol";
-
 import {CrossChainERC20Factory} from "../src/CrossChainERC20Factory.sol";
 import {CrossChainMessenger} from "../src/CrossChainMessenger.sol";
 

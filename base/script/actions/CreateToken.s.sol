@@ -1,44 +1,39 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.15;
+pragma solidity 0.8.28;
 
 import {Script} from "forge-std/Script.sol";
 import {stdJson} from "forge-std/StdJson.sol";
 import {console} from "forge-std/console.sol";
 
-import {OptimismMintableERC20Factory} from "optimism/packages/contracts-bedrock/src/universal/OptimismMintableERC20Factory.sol";
+import {ERC1967Factory} from "solady/utils/ERC1967Factory.sol";
+import {ERC1967FactoryConstants} from "solady/utils/ERC1967FactoryConstants.sol";
+
+import {CrossChainERC20Factory} from "../../src/CrossChainERC20Factory.sol";
 
 contract CreateTokenScript is Script {
     using stdJson for string;
 
-    OptimismMintableERC20Factory public immutable FACTORY;
-    address public immutable REMOTE_TOKEN;
-    string public NAME;
-    string public SYMBOL;
+    bytes32 constant REMOTE_TOKEN = 0x0501550155015501550155015501550155015501550155015501550155015501;
+    string constant NAME = "Test Token";
+    string constant SYMBOL = "TT";
 
-    constructor() {
+    CrossChainERC20Factory crossChainERC20Factory;
+
+    function setUp() public {
+        Chain memory chain = getChain(block.chainid);
+        console.log("Creating token on chain: %s", chain.name);
+
         string memory rootPath = vm.projectRoot();
-        string memory path = string.concat(rootPath, "/deployments/", _getChainName(), ".json");
-        FACTORY = OptimismMintableERC20Factory(vm.readFile(path).readAddress(".OptimismMintableERC20Factory"));
-
-        REMOTE_TOKEN = vm.envAddress("REMOTE_TOKEN");
-        NAME = vm.envString("NAME");
-        SYMBOL = vm.envString("SYMBOL");
+        string memory path = string.concat(rootPath, "/deployments/", chain.chainAlias, ".json");
+        address factory = vm.readFile(path).readAddress(".CrossChainERC20Factory");
+        crossChainERC20Factory = CrossChainERC20Factory(factory);
     }
 
     function run() public {
         vm.startBroadcast();
-        address token = FACTORY.createOptimismMintableERC20(REMOTE_TOKEN, NAME, SYMBOL);
-        console.log("Token address: %s", token);
+        address token =
+            crossChainERC20Factory.deploy({remoteToken: REMOTE_TOKEN, name: NAME, symbol: SYMBOL, decimals: 9});
+        console.log("Deployed Token at: %s", token);
         vm.stopBroadcast();
-    }
-
-    function _getChainName() private view returns (string memory) {
-        if (block.chainid == 84532) {
-            return "baseSepolia";
-        } else if (block.chainid == 8453) {
-            return "baseMainnet";
-        }
-
-        revert("Unsupported chain");
     }
 }

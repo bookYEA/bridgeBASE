@@ -65,8 +65,6 @@ contract CrossChainERC20Factory is ISemver, Initializable {
         external
         returns (address crossChainERC20)
     {
-        require(remoteToken != bytes32(0), "CrossChainERC20Factory: must provide remote token address");
-
         bytes32 salt = keccak256(abi.encode(remoteToken, name, symbol, decimals));
         address localToken = address(
             new CrossChainERC20{salt: salt}({

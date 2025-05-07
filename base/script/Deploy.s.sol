@@ -1,84 +1,100 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.15;
+pragma solidity 0.8.28;
 
 import {Script} from "forge-std/Script.sol";
+import {console} from "forge-std/console.sol";
 
-import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
-import {L2CrossDomainMessenger, CrossDomainMessenger} from "optimism/packages/contracts-bedrock/src/L2/L2CrossDomainMessenger.sol";
-import {L2StandardBridge, StandardBridge} from "optimism/packages/contracts-bedrock/src/L2/L2StandardBridge.sol";
-import {OptimismMintableERC20Factory} from "optimism/packages/contracts-bedrock/src/universal/OptimismMintableERC20Factory.sol";
-import {Proxy} from "optimism/packages/contracts-bedrock/src/universal/Proxy.sol";
+import {ERC1967Factory} from "solady/utils/ERC1967Factory.sol";
+import {ERC1967FactoryConstants} from "solady/utils/ERC1967FactoryConstants.sol";
+
+import {Bridge} from "../src/Bridge.sol";
+import {CrossChainERC20Factory} from "../src/CrossChainERC20Factory.sol";
+import {CrossChainMessenger} from "../src/CrossChainMessenger.sol";
 
 contract DeployScript is Script {
+    address public constant PROXY_ADMIN = 0x0fe884546476dDd290eC46318785046ef68a0BA9;
     address public constant ORACLE = 0x0e9a877906EBc3b7098DA2404412BF0Ed1A5EFb4;
-    address public immutable ADMIN;
-    address public immutable OTHER_BRIDGE;
+    address public constant OTHER_BRIDGE = 0x7a25452C36304317D6FE970091C383B0d45e9B0b;
 
-    constructor() {
-        ADMIN = vm.envAddress("ADMIN");
-        OTHER_BRIDGE = vm.envAddress("OTHER_BRIDGE");
+    function setUp() public {
+        vm.label(PROXY_ADMIN, "PROXY_ADMIN");
+        vm.label(ORACLE, "ORACLE");
+        vm.label(OTHER_BRIDGE, "OTHER_BRIDGE");
+        vm.label(ERC1967FactoryConstants.ADDRESS, "ERC1967_FACTORY");
     }
 
     function run() public {
-        string memory out = "{";
+        Chain memory chain = getChain(block.chainid);
+        console.log("Deploying on chain: %s", chain.name);
 
         vm.startBroadcast();
         address messenger = _deployMessenger();
-        out = _record(out, messenger, "L2CrossDomainMessenger");
-
         address bridge = _deployBridge(messenger);
-        out = _record(out, bridge, "L2StandardBridge");
-
         address factory = _deployFactory(bridge);
-        out = _record(out, factory, "OptimismMintableERC20Factory");
         vm.stopBroadcast();
 
+        console.log("Deployed CrossChainMessenger at: %s", messenger);
+        console.log("Deployed Bridge at: %s", bridge);
+        console.log("Deployed CrossChainERC20Factory at: %s", factory);
+
+        string memory out = "{";
+        out = _record(out, "CrossChainMessenger", messenger, false);
+        out = _record(out, "Bridge", bridge, false);
+        out = _record(out, "CrossChainERC20Factory", factory, true);
         out = string.concat(out, "}");
-        vm.writeFile(string.concat("deployments/", _getChainName(), ".json"), out);
+
+        vm.createDir("deployments", true);
+        vm.writeFile(string.concat("deployments/", chain.chainAlias, ".json"), out);
     }
 
     function _deployMessenger() private returns (address) {
-        bytes memory messengerCall = abi.encodeCall(L2CrossDomainMessenger.initialize, (CrossDomainMessenger(ORACLE)));
+        CrossChainMessenger messengerImpl = new CrossChainMessenger();
+        CrossChainMessenger messengerProxy = CrossChainMessenger(
+            ERC1967Factory(ERC1967FactoryConstants.ADDRESS).deployAndCall({
+                implementation: address(messengerImpl),
+                admin: PROXY_ADMIN,
+                data: abi.encodeCall(CrossChainMessenger.initialize, (_addressToBytes32(ORACLE)))
+            })
+        );
 
-        L2CrossDomainMessenger messengerImpl = new L2CrossDomainMessenger();
-
-        Proxy messengerProxy = new Proxy(ADMIN);
-        messengerProxy.upgradeToAndCall(address(messengerImpl), messengerCall);
         return address(messengerProxy);
     }
 
     function _deployBridge(address messenger) private returns (address) {
-        bytes memory bridgeCall = "";
-        // bytes memory bridgeCall = abi.encodeCall(L2StandardBridge.initialize, (StandardBridge(payable(OTHER_BRIDGE)), messenger));
+        Bridge bridgeImpl = new Bridge();
+        Bridge bridgeProxy = Bridge(
+            ERC1967Factory(ERC1967FactoryConstants.ADDRESS).deployAndCall({
+                implementation: address(bridgeImpl),
+                admin: PROXY_ADMIN,
+                data: abi.encodeCall(Bridge.initialize, (messenger, _addressToBytes32(OTHER_BRIDGE)))
+            })
+        );
 
-        L2StandardBridge l2BridgeImpl = new L2StandardBridge();
-
-        Proxy bridgeProxy = new Proxy(ADMIN);
-        bridgeProxy.upgradeToAndCall(address(l2BridgeImpl), bridgeCall);
         return address(bridgeProxy);
     }
 
     function _deployFactory(address bridge) private returns (address) {
-        bytes memory factoryCall = abi.encodeCall(OptimismMintableERC20Factory.initialize, (bridge));
+        CrossChainERC20Factory xChainERC20FactoryImpl = new CrossChainERC20Factory();
+        CrossChainERC20Factory xChainERC20Factory = CrossChainERC20Factory(
+            ERC1967Factory(ERC1967FactoryConstants.ADDRESS).deployAndCall({
+                implementation: address(xChainERC20FactoryImpl),
+                admin: PROXY_ADMIN,
+                data: abi.encodeCall(CrossChainERC20Factory.initialize, (bridge))
+            })
+        );
 
-        OptimismMintableERC20Factory factoryImpl = new OptimismMintableERC20Factory();
-
-        Proxy factoryProxy = new Proxy(ADMIN);
-        factoryProxy.upgradeToAndCall(address(factoryImpl), factoryCall);
-        return address(factoryProxy);
+        return address(xChainERC20Factory);
     }
 
-    function _record(string memory out, address contractAddr, string memory key) private pure returns (string memory) {
-        return string.concat(out, "\"", key, "\": \"", Strings.toHexString(contractAddr), "\",");
+    function _record(string memory out, string memory key, address addr, bool isLast)
+        private
+        pure
+        returns (string memory)
+    {
+        return string.concat(out, "\"", key, "\": \"", vm.toString(addr), isLast ? "\"" : "\",");
     }
 
-    function _getChainName() private view returns (string memory) {
-        if (block.chainid == 84532) {
-            return "baseSepolia";
-        } else if (block.chainid == 8453) {
-            return "baseMainnet";
-        }
-
-        revert("Unsupported chain");
+    function _addressToBytes32(address value) private pure returns (bytes32) {
+        return bytes32(uint256(uint160(value)));
     }
 }
