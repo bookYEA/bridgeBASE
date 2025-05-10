@@ -40,64 +40,44 @@ make deploy
 
 4. Check the deployed addresses file in `base/deployments` for the new addresses
 
-5. Enter the scripts directory
+5. Copy the messenger and bridge addresses into [`solana/programs/bridge/src/constants.rs`](solana/programs/bridge/src/constants.rs) for `OTHER_MESSENGER` and `OTHER_BRIDGE`
 
-```bash
-cd ../scripts
-```
+6. Copy the messenger address into [`solana/tests/ixs/messenger.ts`](solana/tests/ixs/messenger.ts) for `otherMessengerAddress` and into [`solana/tests/ixs/standard_bridge.ts`](solana/tests/ixs/standard_bridge.ts) for `otherMessengerAddress`.
 
-6. Convert the messenger address to a number array
+7. Copy the bridge address into [`solana/tests/ixs/standard_bridge.ts`](solana/tests/ixs/standard_bridge.ts) for `otherBridgeAddress`.
 
-```bash
-ADDRESS=<messenger address from base/deployments file> make convert-address
-```
-
-7. Copy the output of that command into [`solana/programs/bridge/src/constants.rs`](solana/programs/bridge/src/constants.rs) for `OTHER_MESSENGER`
-
-8. Copy the same output into [`solana/tests/ixs/messenger.ts`](solana/tests/ixs/messenger.ts) for `otherMessengerAddress` and into [`solana/tests/ixs/standard_bridge.ts`](solana/tests/ixs/standard_bridge.ts) for `otherMessengerAddress`.
-
-9. Convert the bridge address to a number array
-
-```bash
-ADDRESS=<bridge address from base/deployments file> make convert-address
-```
-
-10. Copy the output of that command into [`solana/programs/bridge/src/constants.rs`](solana/programs/bridge/src/constants.rs) for `OTHER_BRIDGE`
-
-11. Copy the same output into [`solana/tests/ixs/standard_bridge.ts`](solana/tests/ixs/standard_bridge.ts) for `otherBridgeAddress`.
-
-12. Enter solana directory
+8. Enter solana directory
 
 ```bash
 cd ../solana
 ```
 
-13. Re-build the program
+9. Re-build the program
 
 ```bash
 anchor build
 ```
 
-14. Run tests to ensure they all still pass
+10. Run tests to ensure they all still pass
 
 ```bash
 anchor test
 ```
 
-15. Set target cluster in [`Anchor.toml`](solana/Anchor.toml) to `Devnet`
+11. Set target cluster in [`Anchor.toml`](solana/Anchor.toml) to `Devnet`
 
 ```toml
 [provider]
 cluster = "Devnet"
 ```
 
-16. Re-deploy program
+12. Re-deploy program
 
 ```bash
 anchor deploy
 ```
 
-17. Reset target cluster in [`Anchor.toml`](solana/Anchor.toml) back to `Localnet`.
+13. Reset target cluster in [`Anchor.toml`](solana/Anchor.toml) back to `Localnet`.
 
 ```toml
 [provider]

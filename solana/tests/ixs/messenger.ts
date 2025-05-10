@@ -22,17 +22,13 @@ describe("messenger", () => {
   // Generate a dummy EVM address (20 bytes)
   const dummyEvmAddress = Array.from({ length: 20 }, (_, i) => i);
   const otherMessengerAddress = [
-    248, 66, 18, 131, 56, 6, 186, 55, 37, 119, 129, 17, 124, 17, 145, 8, 242,
-    20, 80, 9,
+    ...Buffer.from(
+      "0xf84212833806ba37257781117c119108F2145009".slice(2),
+      "hex"
+    ),
   ];
   const message = Buffer.from("sample data payload", "utf-8");
   const minGasLimit = 100000;
-
-  // Find the vault PDA
-  const [vaultPda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("bridge_vault")],
-    program.programId
-  );
 
   before(async () => {
     await program.methods.initialize().accounts({ user: user.publicKey }).rpc();

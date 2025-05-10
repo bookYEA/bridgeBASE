@@ -38,12 +38,16 @@ describe("standard bridge", () => {
   // Generate a dummy EVM address (20 bytes)
   const toAddress = Array.from({ length: 20 }, (_, i) => i);
   const otherMessengerAddress = [
-    248, 66, 18, 131, 56, 6, 186, 55, 37, 119, 129, 17, 124, 17, 145, 8, 242,
-    20, 80, 9,
+    ...Buffer.from(
+      "0xf84212833806ba37257781117c119108F2145009".slice(2),
+      "hex"
+    ),
   ];
   const otherBridgeAddress = [
-    184, 148, 125, 39, 37, 211, 233, 222, 155, 25, 252, 114, 15, 5, 51, 0, 197,
-    9, 129, 229,
+    ...Buffer.from(
+      "0xb8947d2725D3E9De9b19fC720f053300c50981e5".slice(2),
+      "hex"
+    ),
   ];
   const extraData = Buffer.from("sample data payload", "utf-8");
   const value = new anchor.BN(1 * anchor.web3.LAMPORTS_PER_SOL); // 1 SOL
