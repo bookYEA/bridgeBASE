@@ -3,6 +3,23 @@ import { Program } from "@coral-xyz/anchor";
 import { Bridge } from "../../target/types/bridge";
 import { expect } from "chai";
 import { PublicKey } from "@solana/web3.js";
+import {
+  createMint,
+  getOrCreateAssociatedTokenAccount,
+  mintTo,
+  TOKEN_PROGRAM_ID,
+  Account,
+  getAssociatedTokenAddress,
+} from "@solana/spl-token";
+import {
+  dummyData,
+  expectedMessengerPubkey,
+  minGasLimit,
+  otherMessengerAddress,
+  toAddress,
+} from "../utils/constants";
+import { getOpaqueDataFromBridge } from "../utils/getOpaqueData";
+import { confirmTransaction } from "../utils/confirmTransaction";
 
 describe("standard bridge", () => {
   // Configure the client to use the local cluster.
@@ -11,19 +28,6 @@ describe("standard bridge", () => {
 
   const program = anchor.workspace.Bridge as Program<Bridge>;
   const user = provider.wallet as anchor.Wallet;
-
-  const expectedMessengerPubkey = new PublicKey(
-    Buffer.from(
-      "7e273983f136714ba93a740a050279b541d6f25ebc6bbc6fc67616d0d5529cea",
-      "hex"
-    )
-  );
-  const expectedBridgePubkey = new PublicKey(
-    Buffer.from(
-      "7a25452c36304317d6fe970091c383b0d45e9b0b06485d2561156f025c6936af",
-      "hex"
-    )
-  );
 
   const solLocalAddress = new PublicKey(
     Buffer.from(
@@ -35,198 +39,253 @@ describe("standard bridge", () => {
     Buffer.from("E398D7afe84A6339783718935087a4AcE6F6DFE8", "hex")
   ) as unknown as number[]; // random address for testing
 
-  // Generate a dummy EVM address (20 bytes)
-  const toAddress = Array.from({ length: 20 }, (_, i) => i);
-  const otherMessengerAddress = [
-    ...Buffer.from(
-      "0xf84212833806ba37257781117c119108F2145009".slice(2),
-      "hex"
-    ),
-  ];
-  const otherBridgeAddress = [
-    ...Buffer.from(
-      "0xb8947d2725D3E9De9b19fC720f053300c50981e5".slice(2),
-      "hex"
-    ),
-  ];
-  const extraData = Buffer.from("sample data payload", "utf-8");
   const value = new anchor.BN(1 * anchor.web3.LAMPORTS_PER_SOL); // 1 SOL
-  const minGasLimit = 100000;
 
   // Find the vault PDA
   const [vaultPda] = PublicKey.findProgramAddressSync(
     [Buffer.from("bridge_vault")],
     program.programId
   );
-  const [messengerPda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("messenger_state")],
-    program.programId
-  );
 
-  it("Deposits a transaction and emits an event", async () => {
-    let listener = null;
-    let [event, slot]: [any, number] = await new Promise(
-      async (resolve, reject) => {
-        listener = program.addEventListener(
-          "transactionDeposited",
-          (event, slot) => {
-            resolve([event, slot]);
-          }
-        );
+  const mintAuthSC = anchor.web3.Keypair.generate();
+  const mintKeypairSC = anchor.web3.Keypair.generate();
+  let mintSC: PublicKey;
+  let userATA: Account;
 
-        try {
-          const tx = await program.methods
-            .bridgeTokensTo(
-              solLocalAddress,
-              solRemoteAddress,
-              toAddress,
-              value,
-              minGasLimit,
-              extraData
-            )
-            .accounts({ user: user.publicKey })
-            .rpc();
+  before(async () => {
+    mintSC = await createMint(
+      provider.connection,
+      user.payer,
+      mintAuthSC.publicKey,
+      mintAuthSC.publicKey,
+      10,
+      mintKeypairSC,
+      undefined,
+      TOKEN_PROGRAM_ID
+    );
+    userATA = await getOrCreateAssociatedTokenAccount(
+      provider.connection,
+      user.payer,
+      mintSC,
+      user.publicKey
+    );
+    await mintTo(
+      provider.connection,
+      user.payer,
+      mintSC,
+      userATA.address,
+      mintAuthSC,
+      100 * anchor.web3.LAMPORTS_PER_SOL,
+      [],
+      undefined,
+      TOKEN_PROGRAM_ID
+    );
+  });
 
-          const latestBlockHash =
-            await provider.connection.getLatestBlockhash();
-          await provider.connection.confirmTransaction(
-            {
-              blockhash: latestBlockHash.blockhash,
-              lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
-              signature: tx,
-            },
-            "confirmed"
+  describe("SOL Bridging", () => {
+    it("Deposits a transaction and emits an event", async () => {
+      let listener = null;
+      let [event, slot]: [any, number] = await new Promise(
+        async (resolve, reject) => {
+          listener = program.addEventListener(
+            "transactionDeposited",
+            (event, slot) => {
+              resolve([event, slot]);
+            }
           );
 
-          // Logs can be helpful for debugging but removed for brevity here
-          // const txDetails = await provider.connection.getTransaction(tx, {
-          //   maxSupportedTransactionVersion: 0,
-          //   commitment: "confirmed",
-          // });
-          // const logs = txDetails?.meta?.logMessages || null;
-          // console.log(logs);
-        } catch (e) {
-          reject(e);
-        }
-      }
-    );
+          try {
+            const tx = await program.methods
+              .bridgeSolTo(
+                solRemoteAddress,
+                toAddress,
+                value,
+                minGasLimit,
+                dummyData
+              )
+              .accounts({ user: user.publicKey })
+              .rpc();
 
-    const extraDataPaddingBytes = 32 - (extraData.length % 32);
-    const message = Buffer.concat([
-      Buffer.from("2d916920", "hex"), // function selector
-      Buffer.from([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...solRemoteAddress]), // remote token
-      solLocalAddress.toBuffer(), // local token
-      user.publicKey.toBuffer(), // from
-      Buffer.from([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...toAddress]), // target
-      Buffer.from(value.toArray("be", 32)), // value
-      Buffer.from(Array.from({ length: 32 }, (_, i) => (i == 31 ? 192 : 0))), // extra_data offset
-      Buffer.from(
-        new anchor.BN(Buffer.from(extraData).length).toArray("be", 32)
-      ),
-      extraData,
-      Buffer.from(Array.from({ length: extraDataPaddingBytes }, () => 0)),
-    ]);
-
-    const messenger = await program.account.messenger.fetch(messengerPda);
-
-    const paddingBytes = 32 - (message.length % 32);
-    const data = Buffer.concat([
-      Buffer.from([84, 170, 67, 163]), // function selector
-      Buffer.from(
-        Array.from({ length: 32 }, (_, i) => {
-          if (i === 1) {
-            return 1;
-          } else if (i === 31) {
-            return messenger.msgNonce.toNumber() - 1;
+            await confirmTransaction(provider.connection, tx);
+          } catch (e) {
+            reject(e);
           }
-          return 0;
-        })
-      ), // nonce
-      expectedBridgePubkey.toBuffer(), // sender
-      Buffer.from([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...otherBridgeAddress]), // target
-      Buffer.from(new anchor.BN(0).toArray("be", 32)), // value
-      Buffer.from(new anchor.BN(minGasLimit).toArray("be", 32)), // min gas
-      Buffer.from(Array.from({ length: 32 }, (_, i) => (i == 31 ? 192 : 0))), // message offset
-      Buffer.from(new anchor.BN(Buffer.from(message).length).toArray("be", 32)), // message length
-      message, // message
-      Buffer.from(Array.from({ length: paddingBytes }, () => 0)), // ensure message is multiple of 32 bytes
-    ]);
-    const execution_gas =
-      200_000 + 40_000 + 40_000 + 5_000 + (minGasLimit * 64) / 63;
-    const total_message_size = message.length + 260;
-
-    const gasLimit =
-      21_000 +
-      Math.max(
-        execution_gas + total_message_size * 16,
-        total_message_size * 40
+        }
       );
 
-    // abi.encodePacked(gasLimit, isCreation, data)
-    const expectedOpaqueData = Buffer.concat([
-      Buffer.from(new anchor.BN(gasLimit).toArray("be", 8)), // gas_limit (8 bytes, big-endian)
-      Buffer.from([0]), // is_creation (1 byte)
-      data, // data payload
-    ]);
-
-    await program.removeEventListener(listener);
-
-    expect(slot).to.be.gt(0);
-    expect(event.from.equals(expectedMessengerPubkey)).to.be.true;
-    expect(event.to).to.deep.equal(otherMessengerAddress);
-    expect(event.version.eq(new anchor.BN(0))).to.be.true;
-    expect(Buffer.from(event.opaqueData)).to.eql(expectedOpaqueData);
-  });
-
-  it("transfers lamports to vault", async () => {
-    const vaultAccountInfo = await provider.connection.getAccountInfo(vaultPda);
-    const vaultBalanceBefore = vaultAccountInfo?.lamports ?? 0;
-
-    await program.methods
-      .bridgeTokensTo(
-        solLocalAddress,
+      const expectedOpaqueData = await getOpaqueDataFromBridge(
+        program,
         solRemoteAddress,
+        solLocalAddress,
         toAddress,
         value,
-        minGasLimit,
-        extraData
-      )
-      .accounts({ user: user.publicKey })
-      .rpc();
+        dummyData,
+        user.publicKey,
+        minGasLimit
+      );
 
-    // Get vault balance after
-    const vaultAccountInfoAfter = await provider.connection.getAccountInfo(
-      vaultPda
-    );
-    const vaultBalanceAfter = vaultAccountInfoAfter?.lamports ?? 0;
+      await program.removeEventListener(listener);
 
-    expect(vaultBalanceAfter).to.equal(vaultBalanceBefore + value.toNumber());
+      expect(slot).to.be.gt(0);
+      expect(event.from.equals(expectedMessengerPubkey)).to.be.true;
+      expect(event.to).to.deep.equal(otherMessengerAddress);
+      expect(event.version.eq(new anchor.BN(0))).to.be.true;
+      expect(Buffer.from(event.opaqueData)).to.eql(expectedOpaqueData);
+    });
+
+    it("transfers lamports to vault", async () => {
+      const vaultAccountInfo = await provider.connection.getAccountInfo(
+        vaultPda
+      );
+      const vaultBalanceBefore = vaultAccountInfo?.lamports ?? 0;
+
+      await program.methods
+        .bridgeSolTo(solRemoteAddress, toAddress, value, minGasLimit, dummyData)
+        .accounts({ user: user.publicKey })
+        .rpc();
+
+      const vaultAccountInfoAfter = await provider.connection.getAccountInfo(
+        vaultPda
+      );
+      const vaultBalanceAfter = vaultAccountInfoAfter?.lamports ?? 0;
+
+      expect(vaultBalanceAfter).to.equal(vaultBalanceBefore + value.toNumber());
+    });
+
+    it("transfers lamports from user", async () => {
+      const userAccountInfo = await provider.connection.getAccountInfo(
+        user.publicKey
+      );
+      const vaultBalanceBefore = userAccountInfo?.lamports ?? 0;
+
+      await program.methods
+        .bridgeSolTo(solRemoteAddress, toAddress, value, minGasLimit, dummyData)
+        .accounts({ user: user.publicKey })
+        .rpc();
+
+      const userAccountInfoAfter = await provider.connection.getAccountInfo(
+        user.publicKey
+      );
+      const userBalanceAfter = userAccountInfoAfter?.lamports ?? 0;
+
+      expect(userBalanceAfter).to.be.below(
+        vaultBalanceBefore - value.toNumber()
+      );
+    });
   });
 
-  it("transfers lamports from user", async () => {
-    const userAccountInfo = await provider.connection.getAccountInfo(
-      user.publicKey
-    );
-    const vaultBalanceBefore = userAccountInfo?.lamports ?? 0;
+  describe("SPL Bridging", () => {
+    it("Deposits a transaction and emits an event", async () => {
+      let listener = null;
+      let [event, slot]: [any, number] = await new Promise(
+        async (resolve, reject) => {
+          listener = program.addEventListener(
+            "transactionDeposited",
+            (event, slot) => {
+              resolve([event, slot]);
+            }
+          );
 
-    await program.methods
-      .bridgeTokensTo(
-        solLocalAddress,
+          try {
+            const tx = await program.methods
+              .bridgeTokensTo(
+                solRemoteAddress,
+                toAddress,
+                value,
+                minGasLimit,
+                dummyData
+              )
+              .accounts({
+                user: user.publicKey,
+                mint: mintSC,
+              })
+              .rpc();
+
+            await confirmTransaction(provider.connection, tx);
+          } catch (e) {
+            reject(e);
+          }
+        }
+      );
+
+      const expectedOpaqueData = await getOpaqueDataFromBridge(
+        program,
         solRemoteAddress,
+        mintSC,
         toAddress,
         value,
-        minGasLimit,
-        extraData
-      )
-      .accounts({ user: user.publicKey })
-      .rpc();
+        dummyData,
+        user.publicKey,
+        minGasLimit
+      );
 
-    // Get vault balance after
-    const userAccountInfoAfter = await provider.connection.getAccountInfo(
-      user.publicKey
-    );
-    const userBalanceAfter = userAccountInfoAfter?.lamports ?? 0;
+      await program.removeEventListener(listener);
 
-    expect(userBalanceAfter).to.be.below(vaultBalanceBefore - value.toNumber());
+      expect(slot).to.be.gt(0);
+      expect(event.from.equals(expectedMessengerPubkey)).to.be.true;
+      expect(event.to).to.deep.equal(otherMessengerAddress);
+      expect(event.version.eq(new anchor.BN(0))).to.be.true;
+      expect(Buffer.from(event.opaqueData)).to.eql(expectedOpaqueData);
+    });
+
+    it("transfers tokens to vault", async () => {
+      const tokenAccount = await getAssociatedTokenAddress(
+        mintSC,
+        vaultPda,
+        true
+      );
+
+      const vaultBalanceBeforeRes =
+        await provider.connection.getTokenAccountBalance(tokenAccount);
+      const vaultBalanceBefore = Number(vaultBalanceBeforeRes.value.amount);
+
+      await program.methods
+        .bridgeTokensTo(
+          solRemoteAddress,
+          toAddress,
+          value,
+          minGasLimit,
+          dummyData
+        )
+        .accounts({ user: user.publicKey, mint: mintSC })
+        .rpc();
+
+      // Get vault balance after
+      const vaultBalanceAfterRes =
+        await provider.connection.getTokenAccountBalance(tokenAccount);
+      const vaultBalanceAfter = Number(vaultBalanceAfterRes.value.amount);
+
+      expect(vaultBalanceAfter).to.equal(vaultBalanceBefore + value.toNumber());
+    });
+
+    it("transfers tokens from user", async () => {
+      const tokenAccount = await getAssociatedTokenAddress(
+        mintSC,
+        user.publicKey,
+        true
+      );
+
+      const userBalanceBeforeRes =
+        await provider.connection.getTokenAccountBalance(tokenAccount);
+      const userBalanceBefore = Number(userBalanceBeforeRes.value.amount);
+
+      await program.methods
+        .bridgeTokensTo(
+          solRemoteAddress,
+          toAddress,
+          value,
+          minGasLimit,
+          dummyData
+        )
+        .accounts({ user: user.publicKey, mint: mintSC })
+        .rpc();
+
+      // Get user balance after
+      const userBalanceAfterRes =
+        await provider.connection.getTokenAccountBalance(tokenAccount);
+      const userBalanceAfter = Number(userBalanceAfterRes.value.amount);
+
+      expect(userBalanceAfter).to.equal(userBalanceBefore - value.toNumber());
+    });
   });
 });

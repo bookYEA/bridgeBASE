@@ -2,6 +2,8 @@ import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { Bridge } from "../../target/types/bridge";
 import { expect } from "chai";
+import { getOpaqueData } from "../utils/getOpaqueData";
+import { dummyData, toAddress } from "../utils/constants";
 
 describe("portal", () => {
   // Configure the client to use the local cluster.
@@ -11,10 +13,7 @@ describe("portal", () => {
   const program = anchor.workspace.Bridge as Program<Bridge>;
   const user = provider.wallet as anchor.Wallet;
 
-  // Generate a dummy EVM address (20 bytes)
-  const toAddress = Array.from({ length: 20 }, (_, i) => i);
   const gasLimit = new anchor.BN(100000);
-  const data = Buffer.from("sample data payload", "utf-8");
   const isCreation = false;
 
   it("Deposits a transaction and emits an event", async () => {
@@ -30,7 +29,7 @@ describe("portal", () => {
 
         try {
           const tx = await program.methods
-            .depositTransaction(toAddress, gasLimit, isCreation, data)
+            .depositTransaction(toAddress, gasLimit, isCreation, dummyData)
             .accounts({ user: user.publicKey })
             .rpc();
 
@@ -44,26 +43,13 @@ describe("portal", () => {
             },
             "confirmed"
           );
-
-          // Logs can be helpful for debugging but removed for brevity here
-          // const txDetails = await provider.connection.getTransaction(tx, {
-          //   maxSupportedTransactionVersion: 0,
-          //   commitment: "confirmed",
-          // });
-          // const logs = txDetails?.meta?.logMessages || null;
-          // console.log(logs);
         } catch (e) {
           _reject(e);
         }
       }
     );
 
-    // abi.encodePacked(gasLimit, isCreation, data)
-    const expectedOpaqueData = Buffer.concat([
-      Buffer.from(gasLimit.toArray("be", 8)), // gas_limit (8 bytes, big-endian)
-      Buffer.from([isCreation ? 1 : 0]), // is_creation (1 byte)
-      data, // data payload
-    ]);
+    const expectedOpaqueData = getOpaqueData(gasLimit, isCreation, dummyData);
 
     await program.removeEventListener(listener);
 

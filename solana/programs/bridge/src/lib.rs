@@ -17,9 +17,26 @@ pub mod bridge {
         Ok(())
     }
 
-    pub fn bridge_tokens_to(
+    pub fn bridge_sol_to(
         ctx: Context<BridgeSolTo>,
-        local_token: Pubkey,
+        remote_token: [u8; 20],
+        to: [u8; 20],
+        amount: u64,
+        min_gas_limit: u32,
+        extra_data: Vec<u8>,
+    ) -> Result<()> {
+        standard_bridge::bridge_sol_to_handler(
+            ctx,
+            remote_token,
+            to,
+            amount,
+            min_gas_limit,
+            extra_data,
+        )
+    }
+
+    pub fn bridge_tokens_to(
+        ctx: Context<BridgeTokensTo>,
         remote_token: [u8; 20],
         to: [u8; 20],
         amount: u64,
@@ -28,7 +45,6 @@ pub mod bridge {
     ) -> Result<()> {
         standard_bridge::bridge_tokens_to_handler(
             ctx,
-            local_token,
             remote_token,
             to,
             amount,

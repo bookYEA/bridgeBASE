@@ -1,10 +1,54 @@
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::keccak;
+use anchor_spl::{
+    associated_token::AssociatedToken,
+    token::{Mint, Token, TokenAccount},
+};
 use hex_literal::hex;
 
 use crate::{messenger, MESSENGER_SEED, NATIVE_SOL_PUBKEY, OTHER_BRIDGE, VAULT_SEED};
 
 use super::Messenger;
+
+#[derive(Accounts)]
+pub struct BridgeTokensTo<'info> {
+    #[account(mut)]
+    pub user: Signer<'info>,
+
+    /// CHECK: This is the vault PDA. For SOL, it receives SOL. For SPL, it's the authority for vault_token_account.
+    #[account(
+        mut,
+        seeds = [VAULT_SEED],
+        bump
+    )]
+    pub vault: AccountInfo<'info>,
+
+    #[account(mut, seeds = [MESSENGER_SEED], bump)]
+    pub msg_state: Account<'info, Messenger>,
+
+    // SPL Token specific accounts.
+    // These accounts must be provided by the client.
+    pub mint: Account<'info, Mint>,
+
+    #[account(
+        mut,
+        associated_token::mint = mint,
+        associated_token::authority = user,
+    )]
+    pub from_token_account: Account<'info, TokenAccount>,
+
+    #[account(
+        init_if_needed,
+        payer = user,
+        associated_token::mint = mint,
+        associated_token::authority = vault // Vault PDA is the ATA owner
+    )]
+    pub vault_token_account: Account<'info, TokenAccount>,
+
+    pub system_program: Program<'info, System>,
+    pub token_program: Program<'info, Token>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+}
 
 #[derive(Accounts)]
 pub struct BridgeSolTo<'info> {
@@ -40,7 +84,6 @@ pub struct TokenBridgeInitiated {
 
 /// @notice Sends SPL tokens or SOL to a receiver's address on Base.
 ///
-/// @param _localToken  Address of the SPL on this chain.
 /// @param _remoteToken Address of the corresponding token on Base.
 /// @param _to          Address of the receiver.
 /// @param _amount      Amount of local tokens to deposit.
@@ -48,9 +91,8 @@ pub struct TokenBridgeInitiated {
 /// @param _extraData   Extra data to be sent with the transaction. Note that the recipient will
 ///                     not be triggered with this data, but it will be emitted and can be used
 ///                     to identify the transaction.
-pub fn bridge_tokens_to_handler(
+pub fn bridge_sol_to_handler(
     ctx: Context<BridgeSolTo>,
-    local_token: Pubkey,
     remote_token: [u8; 20],
     to: [u8; 20],
     amount: u64,
@@ -58,14 +100,13 @@ pub fn bridge_tokens_to_handler(
     extra_data: Vec<u8>,
 ) -> Result<()> {
     let program_id: &[u8] = ctx.program_id.as_ref();
-    initiate_bridge_tokens(
+    initiate_bridge_sol(
         program_id,
         &ctx.accounts.system_program,
         &ctx.accounts.user.to_account_info(),
         &ctx.accounts.vault.to_account_info(),
         &mut ctx.accounts.msg_state,
         ctx.accounts.user.key(),
-        local_token,
         remote_token,
         to,
         amount,
@@ -76,7 +117,6 @@ pub fn bridge_tokens_to_handler(
 
 /// @notice Sends SPL tokens or SOL to a receiver's address on Base.
 ///
-/// @param _localToken  Address of the SPL on this chain.
 /// @param _remoteToken Address of the corresponding token on Base.
 /// @param _to          Address of the receiver.
 /// @param _amount      Amount of local tokens to deposit.
@@ -84,11 +124,116 @@ pub fn bridge_tokens_to_handler(
 /// @param _extraData   Extra data to be sent with the transaction. Note that the recipient will
 ///                     not be triggered with this data, but it will be emitted and can be used
 ///                     to identify the transaction.
-fn initiate_bridge_tokens<'info>(
+pub fn bridge_tokens_to_handler(
+    ctx: Context<BridgeTokensTo>,
+    remote_token: [u8; 20],
+    to: [u8; 20],
+    amount: u64,
+    min_gas_limit: u32,
+    extra_data: Vec<u8>,
+) -> Result<()> {
+    let program_id: &[u8] = ctx.program_id.as_ref();
+    initiate_bridge_tokens(
+        program_id,
+        &ctx.accounts.token_program,
+        &ctx.accounts.user.to_account_info(),
+        &ctx.accounts.from_token_account,
+        &ctx.accounts.vault_token_account,
+        &mut ctx.accounts.msg_state,
+        ctx.accounts.user.key(),
+        ctx.accounts.mint.key(),
+        remote_token,
+        to,
+        amount,
+        min_gas_limit,
+        extra_data,
+    )
+}
+
+fn initiate_bridge_sol<'info>(
     program_id: &[u8],
     system_program: &Program<'info, System>,
     user: &AccountInfo<'info>,
     vault: &AccountInfo<'info>,
+    msg_state: &mut Account<'info, Messenger>,
+    from: Pubkey,
+    remote_token: [u8; 20],
+    to: [u8; 20],
+    amount: u64,
+    min_gas_limit: u32,
+    extra_data: Vec<u8>,
+) -> Result<()> {
+    // Transfer `amount` of local_token from user to vault
+    // Transfer lamports from user to vault PDA
+    let cpi_context = CpiContext::new(
+        system_program.to_account_info(),
+        anchor_lang::system_program::Transfer {
+            from: user.clone(),
+            to: vault.clone(),
+        },
+    );
+    anchor_lang::system_program::transfer(cpi_context, amount)?;
+
+    emit_event_and_send_message(
+        program_id,
+        user,
+        msg_state,
+        from,
+        NATIVE_SOL_PUBKEY,
+        remote_token,
+        to,
+        amount,
+        min_gas_limit,
+        extra_data,
+    )
+}
+
+fn initiate_bridge_tokens<'info>(
+    program_id: &[u8],
+    token_program: &Program<'info, Token>,
+    user_account_info: &AccountInfo<'info>,
+    user_spl_token_account: &Account<'info, TokenAccount>,
+    vault_spl_token_account: &Account<'info, TokenAccount>,
+    msg_state: &mut Account<'info, Messenger>,
+    sender_on_solana_pubkey: Pubkey,
+    token_on_solana_mint_pubkey: Pubkey,
+    token_on_base_address: [u8; 20],
+    receiver_on_base_address: [u8; 20],
+    amount_to_bridge: u64,
+    min_gas_limit_for_relay: u32,
+    extra_data_bytes: Vec<u8>,
+) -> Result<()> {
+    if token_on_solana_mint_pubkey == NATIVE_SOL_PUBKEY {
+        return err!(BridgeError::InvalidSolUsage);
+    }
+
+    // SPL Token Transfer
+    let cpi_accounts = anchor_spl::token::Transfer {
+        from: user_spl_token_account.to_account_info(),
+        to: vault_spl_token_account.to_account_info(),
+        authority: user_account_info.clone(),
+    };
+    let cpi_program = token_program.to_account_info();
+    let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
+    anchor_spl::token::transfer(cpi_ctx, amount_to_bridge)?;
+
+    emit_event_and_send_message(
+        program_id,
+        user_account_info,
+        msg_state,
+        sender_on_solana_pubkey,
+        token_on_solana_mint_pubkey,
+        token_on_base_address,
+        receiver_on_base_address,
+        amount_to_bridge,
+        min_gas_limit_for_relay,
+        extra_data_bytes,
+    )
+}
+
+fn emit_event_and_send_message<'info>(
+    program_id: &[u8],
+    user: &AccountInfo<'info>,
     msg_state: &mut Account<'info, Messenger>,
     from: Pubkey,
     local_token: Pubkey,
@@ -98,22 +243,6 @@ fn initiate_bridge_tokens<'info>(
     min_gas_limit: u32,
     extra_data: Vec<u8>,
 ) -> Result<()> {
-    // Transfer `amount` of local_token from user to vault
-    if local_token == NATIVE_SOL_PUBKEY {
-        // Transfer lamports from user to vault PDA
-        let cpi_context = CpiContext::new(
-            system_program.to_account_info(),
-            anchor_lang::system_program::Transfer {
-                from: user.clone(),
-                to: vault.clone(),
-            },
-        );
-        anchor_lang::system_program::transfer(cpi_context, amount)?;
-    } else {
-        // TODO: implement support for SPL tokens
-        return err!(BridgeError::SplTokensNotSupported);
-    }
-
     // TODO: Update stored deposit for `local_token` / `remote_token` pair
 
     emit!(TokenBridgeInitiated {
@@ -167,7 +296,7 @@ fn encode_with_selector(
     // Add from (32 bytes) - Pubkey is already 32 bytes
     encoded.extend_from_slice(from.as_ref());
 
-    // Add target (32 bytes) - pad 20-byte address to 32 bytes
+    // Add to (32 bytes) - pad 20-byte address to 32 bytes
     let mut to_bytes = [0u8; 32];
     to_bytes[12..32].copy_from_slice(&to);
     encoded.extend_from_slice(&to_bytes);
@@ -201,6 +330,6 @@ fn encode_with_selector(
 
 #[error_code]
 pub enum BridgeError {
-    #[msg("SPL Tokens not supported")]
-    SplTokensNotSupported,
+    #[msg("Cannot bridge SOL here")]
+    InvalidSolUsage,
 }

@@ -2,7 +2,14 @@ import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { Bridge } from "../../target/types/bridge";
 import { expect } from "chai";
-import { PublicKey } from "@solana/web3.js";
+import {
+  dummyData,
+  expectedMessengerPubkey,
+  minGasLimit,
+  otherMessengerAddress,
+  toAddress,
+} from "../utils/constants";
+import { getOpaqueDataFromMessenger } from "../utils/getOpaqueData";
 
 describe("messenger", () => {
   // Configure the client to use the local cluster.
@@ -11,24 +18,6 @@ describe("messenger", () => {
 
   const program = anchor.workspace.Bridge as Program<Bridge>;
   const user = provider.wallet as anchor.Wallet;
-
-  const expectedMessengerPubkey = new PublicKey(
-    Buffer.from(
-      "7e273983f136714ba93a740a050279b541d6f25ebc6bbc6fc67616d0d5529cea",
-      "hex"
-    )
-  );
-
-  // Generate a dummy EVM address (20 bytes)
-  const dummyEvmAddress = Array.from({ length: 20 }, (_, i) => i);
-  const otherMessengerAddress = [
-    ...Buffer.from(
-      "0xf84212833806ba37257781117c119108F2145009".slice(2),
-      "hex"
-    ),
-  ];
-  const message = Buffer.from("sample data payload", "utf-8");
-  const minGasLimit = 100000;
 
   before(async () => {
     await program.methods.initialize().accounts({ user: user.publicKey }).rpc();
@@ -47,7 +36,7 @@ describe("messenger", () => {
 
         try {
           const tx = await program.methods
-            .sendMessage(dummyEvmAddress, message, minGasLimit)
+            .sendMessage(toAddress, dummyData, minGasLimit)
             .accounts({ user: user.publicKey })
             .rpc();
 
@@ -61,50 +50,19 @@ describe("messenger", () => {
             },
             "confirmed"
           );
-
-          // Logs can be helpful for debugging but removed for brevity here
-          // const txDetails = await provider.connection.getTransaction(tx, {
-          //   maxSupportedTransactionVersion: 0,
-          //   commitment: "confirmed",
-          // });
-          // const logs = txDetails?.meta?.logMessages || null;
-          // console.log(logs);
         } catch (e) {
           reject(e);
         }
       }
     );
 
-    const paddingBytes = 32 - (message.length % 32);
-    const data = Buffer.concat([
-      Buffer.from([84, 170, 67, 163]), // function selector
-      Buffer.from(Array.from({ length: 32 }, (_, i) => (i === 1 ? 1 : 0))), // nonce
-      user.publicKey.toBuffer(), // sender
-      Buffer.from([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...dummyEvmAddress]), // target
-      Buffer.from(new anchor.BN(0).toArray("be", 32)), // value
-      Buffer.from(new anchor.BN(minGasLimit).toArray("be", 32)), // minGasLimit
-      Buffer.from(Array.from({ length: 32 }, (_, i) => (i == 31 ? 192 : 0))), // message offset
-      Buffer.from(new anchor.BN(Buffer.from(message).length).toArray("be", 32)), // message length
-      message, // message
-      Buffer.from(Array.from({ length: paddingBytes }, () => 0)), // padding to ensure message length is multiple of 32 bytes
-    ]);
-    const execution_gas =
-      200_000 + 40_000 + 40_000 + 5_000 + (minGasLimit * 64) / 63;
-    const total_message_size = message.length + 260;
-
-    const gasLimit =
-      21_000 +
-      Math.max(
-        execution_gas + total_message_size * 16,
-        total_message_size * 40
-      );
-
-    // abi.encodePacked(gasLimit, isCreation, data)
-    const expectedOpaqueData = Buffer.concat([
-      Buffer.from(new anchor.BN(gasLimit).toArray("be", 8)), // gas_limit (8 bytes, big-endian)
-      Buffer.from([0]), // is_creation (1 byte)
-      data, // data payload
-    ]);
+    const expectedOpaqueData = await getOpaqueDataFromMessenger(
+      program,
+      dummyData,
+      user.publicKey,
+      toAddress,
+      minGasLimit
+    );
 
     await program.removeEventListener(listener);
 
