@@ -8,3 +8,15 @@ build:
 .PHONY: bridge-sol-to-base
 bridge-sol-to-base:
 	bun run index.ts
+
+.PHONY: create-mint
+create-mint:
+	bun run src/createMint.ts
+
+.PHONY: mint-tokens
+mint-tokens:
+	bun run src/mintTokens.ts
+
+.PHONY: bridge-tokens-to-base
+bridge-tokens-to-base:
+	bun run src/bridgeTokensToBase.ts
