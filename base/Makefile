@@ -3,6 +3,9 @@
 BASE_RPC=https://base-sepolia.cbhq.net
 # BASE_RPC=https://mainnet.base.org
 
+REMOTE_SOL = 0x0501550155015501550155015501550155015501550155015501550155015501
+REMOTE_SPL = 0xcd43b9e91032f9346b89b99c2155981f799ebf0d8cf4f56b03dbec65bdd6bbe5
+
 .PHONY: deps
 deps: clean-lib forge-deps checkout-op-commit
 
@@ -34,4 +37,4 @@ deploy:
 
 .PHONY: create-token
 create-token:
-	forge script CreateTokenScript --account testnet-admin --rpc-url $(BASE_RPC) --broadcast -vvvv
+	REMOTE_TOKEN=$(REMOTE_SPL) forge script CreateTokenScript --account testnet-admin --rpc-url $(BASE_RPC) --broadcast -vvvv

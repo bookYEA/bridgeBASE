@@ -13,7 +13,7 @@ import {CrossChainERC20Factory} from "../../src/CrossChainERC20Factory.sol";
 contract CreateTokenScript is Script {
     using stdJson for string;
 
-    bytes32 constant REMOTE_TOKEN = 0x0501550155015501550155015501550155015501550155015501550155015501;
+    bytes32 immutable REMOTE_TOKEN = vm.envBytes32("REMOTE_TOKEN");
     string constant NAME = "Test Token";
     string constant SYMBOL = "TT";
 
