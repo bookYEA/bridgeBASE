@@ -69,3 +69,9 @@ pub const MESSENGER_SEED: &[u8] = b"messenger_state";
 
 #[constant]
 pub const NATIVE_SOL_PUBKEY: Pubkey = pubkey!("LYDZWqhCarLgXtQsmWFr4DaqRE7c21xd49fpdVUUaBr");
+
+#[constant]
+pub const ROOT_KEY: &[u8] = b"output_root";
+
+#[constant]
+pub const TRUSTED_ORACLE: Pubkey = pubkey!("H4BF4JEUcLaNTEp4ppU5YBx8buWfQKnp32UMBH25Rp2V");

@@ -1,10 +1,12 @@
 pub mod constants;
 pub mod instructions;
+pub mod state;
 
 use anchor_lang::prelude::*;
 
 pub use constants::*;
 pub use instructions::*;
+pub use state::*;
 
 declare_id!("Fb7KKBmjgKJh1N3aDUxLTj6TR3exH8Xi368bJ3AcDd5T");
 
@@ -70,5 +72,9 @@ pub mod bridge {
         data: Vec<u8>,
     ) -> Result<()> {
         portal::deposit_transaction_handler(ctx, to, gas_limit, is_creation, data)
+    }
+
+    pub fn submit_root(ctx: Context<PostRoot>, root: [u8; 32], block_number: u64) -> Result<()> {
+        post_root::submit_root_handler(ctx, root, block_number)
     }
 }
