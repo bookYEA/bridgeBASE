@@ -1,6 +1,9 @@
-use anchor_lang::{prelude::*, solana_program::keccak};
+use anchor_lang::{
+    prelude::*,
+    solana_program::{self, instruction::Instruction, keccak},
+};
 
-use crate::{Message, OutputRoot, MESSAGE_SEED};
+use crate::{Ix, Message, OutputRoot, MESSAGE_SEED};
 
 #[derive(Accounts)]
 #[instruction(transaction_hash: [u8; 32])]
@@ -22,18 +25,50 @@ pub struct ProveTransaction<'info> {
     pub system_program: Program<'info, System>,
 }
 
+#[derive(Accounts)]
+#[instruction(transaction_hash: [u8; 32])]
+pub struct FinalizeTransaction<'info> {
+    #[account(mut, seeds = [MESSAGE_SEED, &transaction_hash], bump)]
+    pub message: Account<'info, Message>,
+}
+
+pub fn finalize_transaction_handler(
+    ctx: Context<FinalizeTransaction>,
+    _transaction_hash: &[u8; 32],
+) -> Result<()> {
+    if ctx.accounts.message.is_executed {
+        return err!(ReceiverError::AlreadyExecuted);
+    }
+
+    ctx.accounts.message.is_executed = true;
+
+    // Execute the instructions.
+    for ix in &ctx.accounts.message.ixs {
+        let ix: Instruction = ix.into();
+        solana_program::program::invoke(&ix, ctx.remaining_accounts)?;
+    }
+
+    Ok(())
+}
+
 pub fn prove_transaction_handler(
     ctx: Context<ProveTransaction>,
     transaction_hash: &[u8; 32],
+    ixs: Vec<Ix>,
     proof: Vec<[u8; 32]>,
 ) -> Result<()> {
-    // TODO: Confirm transaction hash matches ctx.accounts.message contents
+    let message_hash = hash_ixs(&ixs); // TODO: this could be inlined to the seeds above
+
+    if message_hash != *transaction_hash {
+        return err!(ReceiverError::InvalidTransactionHash);
+    }
+
     // Run merkle proof of proof against ctx.accounts.root.root
     if !verify(proof, &ctx.accounts.root.root, transaction_hash) {
         return err!(ReceiverError::InvalidProof);
     }
 
-    ctx.accounts.message.is_valid = true;
+    ctx.accounts.message.ixs = ixs;
 
     Ok(())
 }
@@ -90,8 +125,37 @@ fn efficient_keccak256(a: [u8; 32], b: [u8; 32]) -> [u8; 32] {
     return keccak::hash(&data_to_hash).to_bytes();
 }
 
+/// Creates a hash of the instructions to identify the transaction.
+pub fn hash_ixs(ixs: &[Ix]) -> [u8; 32] {
+    // Create a canonical representation of the instructions.
+    let mut data = Vec::new();
+
+    // Add each instruction.
+    for ix in ixs {
+        // Add program ID.
+        data.extend_from_slice(&ix.program_id.to_bytes());
+
+        // Add each account.
+        for account in &ix.accounts {
+            data.extend_from_slice(&account.pubkey.to_bytes());
+            data.push(account.is_writable as u8);
+            data.push(account.is_signer as u8);
+        }
+
+        // Add data.
+        data.extend_from_slice(&ix.data);
+    }
+
+    // Hash the data using keccak256.
+    keccak::hash(&data).0
+}
+
 #[error_code]
 pub enum ReceiverError {
+    #[msg("Invalid transaction hash")]
+    InvalidTransactionHash,
     #[msg("Invalid proof")]
     InvalidProof,
+    #[msg("Already executed")]
+    AlreadyExecuted,
 }

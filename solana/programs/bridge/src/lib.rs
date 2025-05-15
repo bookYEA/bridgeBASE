@@ -78,11 +78,20 @@ pub mod bridge {
         post_root::submit_root_handler(ctx, root, block_number)
     }
 
+    // TODO: we may need to worry about proof size here
     pub fn prove_transaction(
         ctx: Context<ProveTransaction>,
         transaction_hash: [u8; 32],
+        ixs: Vec<Ix>,
         proof: Vec<[u8; 32]>,
     ) -> Result<()> {
-        receiver::prove_transaction_handler(ctx, &transaction_hash, proof)
+        receiver::prove_transaction_handler(ctx, &transaction_hash, ixs, proof)
+    }
+
+    pub fn finalize_transaction(
+        ctx: Context<FinalizeTransaction>,
+        transaction_hash: [u8; 32],
+    ) -> Result<()> {
+        receiver::finalize_transaction_handler(ctx, &transaction_hash)
     }
 }

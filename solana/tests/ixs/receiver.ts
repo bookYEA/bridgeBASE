@@ -8,6 +8,8 @@ import { fundAccount } from "../utils/fundAccount";
 import { oracleSecretKey } from "../utils/constants";
 import { toNumberArray } from "../utils/toNumberArray";
 import { deriveRoot } from "../utils/deriveRoot";
+import { hashIxs, IxParam } from "../utils/hashIxs";
+import { shouldFail } from "../utils/shouldFail";
 
 describe("receiver", () => {
   // Configure the client to use the local cluster.
@@ -25,16 +27,28 @@ describe("receiver", () => {
     program.programId
   );
   let messagePda: PublicKey;
-  let transactionHash: number[];
   let proof: number[][];
+
+  const TRANSFER_AMOUNT = 1 * anchor.web3.LAMPORTS_PER_SOL;
+
+  const transferIx = anchor.web3.SystemProgram.transfer({
+    fromPubkey: payer.publicKey,
+    toPubkey: oracle.publicKey,
+    lamports: TRANSFER_AMOUNT,
+  });
+
+  const transferIxParam: IxParam = {
+    programId: transferIx.programId,
+    accounts: transferIx.keys,
+    data: transferIx.data,
+  };
+  const transactionHash = toNumberArray(hashIxs([transferIxParam]));
+  let transaction2: number[];
 
   before(async () => {
     await fundAccount(provider, provider.wallet.publicKey, oracle.publicKey);
 
-    transactionHash = toNumberArray(
-      "0x4492baa1c583da1575ee46a92925709e75e62fd3059e666c6982a731e50ca7b1"
-    );
-    const transaction2 = toNumberArray(
+    transaction2 = toNumberArray(
       "0xb1f1d4e70a6c00ffb57d19be8bfe2dccc3695117af82b5a9183190b950fdd941"
     );
     const transaction3 = toNumberArray(
@@ -68,16 +82,84 @@ describe("receiver", () => {
     );
   });
 
-  it("Posts output root", async () => {
-    const tx = await program.methods
-      .proveTransaction(transactionHash, proof)
-      .accounts({ payer: payer.publicKey, root: rootPda })
-      .rpc();
+  describe("Prove transaction", () => {
+    it("Should fail if invalid transaction hash", async () => {
+      await shouldFail(
+        program.methods
+          .proveTransaction(transaction2, [transferIxParam], proof)
+          .accounts({ payer: payer.publicKey, root: rootPda })
+          .rpc(),
+        "Invalid transaction hash"
+      );
+    });
 
-    await confirmTransaction(provider.connection, tx);
+    it("Should fail if invalid proof", async () => {
+      const badProof = structuredClone(proof);
+      badProof.pop();
 
-    const message = await program.account.message.fetch(messagePda);
+      await shouldFail(
+        program.methods
+          .proveTransaction(transactionHash, [transferIxParam], badProof)
+          .accounts({ payer: payer.publicKey, root: rootPda })
+          .rpc(),
+        "Invalid proof"
+      );
+    });
 
-    expect(message.isValid).to.be.true;
+    it("Posts output root", async () => {
+      const tx = await program.methods
+        .proveTransaction(transactionHash, [transferIxParam], proof)
+        .accounts({ payer: payer.publicKey, root: rootPda })
+        .rpc();
+
+      await confirmTransaction(provider.connection, tx);
+
+      const message = await program.account.message.fetch(messagePda);
+
+      expect(message.ixs).to.eql([transferIxParam]);
+      expect(message.isExecuted).to.be.false;
+    });
+  });
+
+  describe("Finalize transaction", () => {
+    before(async () => {
+      const tx = await program.methods
+        .finalizeTransaction(transactionHash)
+        .accounts({})
+        .remainingAccounts([
+          ...transferIxParam.accounts,
+          {
+            pubkey: anchor.web3.SystemProgram.programId,
+            isSigner: false,
+            isWritable: false,
+          },
+        ])
+        .rpc();
+
+      await confirmTransaction(provider.connection, tx);
+    });
+
+    it("Should execute transaction", async () => {
+      const message = await program.account.message.fetch(messagePda);
+      expect(message.isExecuted).to.be.true;
+    });
+
+    it("Should fail if already executed", async () => {
+      await shouldFail(
+        program.methods
+          .finalizeTransaction(transactionHash)
+          .accounts({})
+          .remainingAccounts([
+            ...transferIxParam.accounts,
+            {
+              pubkey: anchor.web3.SystemProgram.programId,
+              isSigner: false,
+              isWritable: false,
+            },
+          ])
+          .rpc(),
+        "Already executed"
+      );
+    });
   });
 });
