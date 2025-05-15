@@ -77,4 +77,12 @@ pub mod bridge {
     pub fn submit_root(ctx: Context<PostRoot>, root: [u8; 32], block_number: u64) -> Result<()> {
         post_root::submit_root_handler(ctx, root, block_number)
     }
+
+    pub fn prove_transaction(
+        ctx: Context<ProveTransaction>,
+        transaction_hash: [u8; 32],
+        proof: Vec<[u8; 32]>,
+    ) -> Result<()> {
+        receiver::prove_transaction_handler(ctx, &transaction_hash, proof)
+    }
 }

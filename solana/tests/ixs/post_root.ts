@@ -5,6 +5,7 @@ import { expect } from "chai";
 import { confirmTransaction } from "../utils/confirmTransaction";
 import { PublicKey } from "@solana/web3.js";
 import { fundAccount } from "../utils/fundAccount";
+import { oracleSecretKey } from "../utils/constants";
 
 describe("post root", () => {
   // Configure the client to use the local cluster.
@@ -12,19 +13,13 @@ describe("post root", () => {
   anchor.setProvider(provider);
 
   const program = anchor.workspace.Bridge as Program<Bridge>;
-  const oracleSecretKey = Uint8Array.from([
-    232, 74, 68, 137, 42, 170, 245, 110, 221, 101, 62, 107, 187, 45, 23, 58,
-    193, 80, 103, 86, 209, 91, 67, 160, 178, 60, 11, 191, 161, 135, 33, 143,
-    238, 139, 80, 119, 97, 41, 217, 201, 170, 45, 211, 97, 156, 165, 230, 138,
-    112, 147, 73, 204, 129, 97, 184, 18, 210, 81, 131, 66, 4, 71, 74, 146,
-  ]);
   const oracle = anchor.web3.Keypair.fromSecretKey(oracleSecretKey);
 
   let root = new Uint8Array(new Array(32).fill(0)) as any;
   const blockNumber = new anchor.BN(10);
 
   const [rootPda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("output_root")],
+    [Buffer.from("output_root"), blockNumber.toBuffer("le", 8)],
     program.programId
   );
 

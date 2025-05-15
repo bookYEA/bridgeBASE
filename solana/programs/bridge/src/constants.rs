@@ -74,4 +74,7 @@ pub const NATIVE_SOL_PUBKEY: Pubkey = pubkey!("LYDZWqhCarLgXtQsmWFr4DaqRE7c21xd4
 pub const ROOT_KEY: &[u8] = b"output_root";
 
 #[constant]
+pub const MESSAGE_SEED: &[u8] = b"message";
+
+#[constant]
 pub const TRUSTED_ORACLE: Pubkey = pubkey!("H4BF4JEUcLaNTEp4ppU5YBx8buWfQKnp32UMBH25Rp2V");

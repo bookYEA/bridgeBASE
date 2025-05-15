@@ -21,3 +21,9 @@ export const otherBridgeAddress = [
 export const toAddress = Array.from({ length: 20 }, (_, i) => i);
 export const dummyData = Buffer.from("sample data payload", "utf-8");
 export const minGasLimit = 100000;
+export const oracleSecretKey = Uint8Array.from([
+  232, 74, 68, 137, 42, 170, 245, 110, 221, 101, 62, 107, 187, 45, 23, 58, 193,
+  80, 103, 86, 209, 91, 67, 160, 178, 60, 11, 191, 161, 135, 33, 143, 238, 139,
+  80, 119, 97, 41, 217, 201, 170, 45, 211, 97, 156, 165, 230, 138, 112, 147, 73,
+  204, 129, 97, 184, 18, 210, 81, 131, 66, 4, 71, 74, 146,
+]);

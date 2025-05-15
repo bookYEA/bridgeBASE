@@ -3,12 +3,13 @@ use anchor_lang::prelude::*;
 use crate::{OutputRoot, ROOT_KEY, TRUSTED_ORACLE};
 
 #[derive(Accounts)]
+#[instruction(root: [u8; 32], block_number: u64)]
 pub struct PostRoot<'info> {
     #[account(
         init, 
         payer = payer, 
         space = 8 + OutputRoot::INIT_SPACE, 
-        seeds = [ROOT_KEY], 
+        seeds = [ROOT_KEY, &block_number.to_le_bytes()], 
         bump
     )]
     pub root: Account<'info, OutputRoot>,
