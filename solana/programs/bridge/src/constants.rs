@@ -17,6 +17,9 @@ pub const OTHER_MESSENGER: [u8; 20] = hex!("f84212833806ba37257781117c119108F214
 pub const OTHER_BRIDGE: [u8; 20] = hex!("b8947d2725D3E9De9b19fC720f053300c50981e5");
 
 #[constant]
+pub const DEFAULT_SENDER: [u8; 20] = hex!("000000000000000000000000000000000000dEaD");
+
+#[constant]
 /// @notice Constant overhead added to the base gas for a message.
 pub const RELAY_CONSTANT_OVERHEAD: u64 = 200_000;
 

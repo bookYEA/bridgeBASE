@@ -82,10 +82,11 @@ pub mod bridge {
     pub fn prove_transaction(
         ctx: Context<ProveTransaction>,
         transaction_hash: [u8; 32],
+        remote_sender: [u8; 20],
         ixs: Vec<Ix>,
         proof: Vec<[u8; 32]>,
     ) -> Result<()> {
-        receiver::prove_transaction_handler(ctx, &transaction_hash, ixs, proof)
+        receiver::prove_transaction_handler(ctx, &transaction_hash, &remote_sender, ixs, proof)
     }
 
     pub fn finalize_transaction(

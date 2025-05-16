@@ -4,10 +4,12 @@ import { keccak256 } from "js-sha3";
 
 export type IxParam = Parameters<
   Program<Bridge>["methods"]["proveTransaction"]
->[1][number];
+>[2][number];
 
-export function hashIxs(ixs: IxParam[]): string {
+export function hashIxs(remoteSender: number[], ixs: IxParam[]): string {
   let data = Buffer.alloc(0);
+
+  data = Buffer.concat([data, Buffer.from(remoteSender)]);
 
   // Add each instruction
   for (const ix of ixs) {

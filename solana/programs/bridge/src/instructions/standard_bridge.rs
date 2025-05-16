@@ -176,7 +176,6 @@ fn initiate_bridge_sol<'info>(
 
     emit_event_and_send_message(
         program_id,
-        user,
         msg_state,
         from,
         NATIVE_SOL_PUBKEY,
@@ -219,7 +218,6 @@ fn initiate_bridge_tokens<'info>(
 
     emit_event_and_send_message(
         program_id,
-        user_account_info,
         msg_state,
         sender_on_solana_pubkey,
         token_on_solana_mint_pubkey,
@@ -233,7 +231,6 @@ fn initiate_bridge_tokens<'info>(
 
 fn emit_event_and_send_message<'info>(
     program_id: &[u8],
-    user: &AccountInfo<'info>,
     msg_state: &mut Account<'info, Messenger>,
     from: Pubkey,
     local_token: Pubkey,
@@ -262,7 +259,6 @@ fn emit_event_and_send_message<'info>(
 
     messenger::send_message_internal(
         program_id,
-        user,
         msg_state,
         Pubkey::new_from_array(hash.to_bytes()),
         OTHER_BRIDGE,

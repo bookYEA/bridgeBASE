@@ -3,7 +3,9 @@ use anchor_lang::{
     solana_program::{self, instruction::Instruction, keccak},
 };
 
-use crate::{Ix, Message, OutputRoot, MESSAGE_SEED};
+use crate::{Ix, Message, MessengerPayload, OutputRoot, DEFAULT_SENDER, MESSAGE_SEED};
+
+use super::messenger;
 
 #[derive(Accounts)]
 #[instruction(transaction_hash: [u8; 32])]
@@ -41,23 +43,21 @@ pub fn finalize_transaction_handler(
     }
 
     ctx.accounts.message.is_executed = true;
-
-    // Execute the instructions.
-    for ix in &ctx.accounts.message.ixs {
-        let ix: Instruction = ix.into();
-        solana_program::program::invoke(&ix, ctx.remaining_accounts)?;
-    }
-
-    Ok(())
+    handle_ixs(
+        ctx.program_id.as_ref(),
+        ctx.remaining_accounts,
+        &mut ctx.accounts.message,
+    )
 }
 
 pub fn prove_transaction_handler(
     ctx: Context<ProveTransaction>,
     transaction_hash: &[u8; 32],
+    remote_sender: &[u8; 20],
     ixs: Vec<Ix>,
     proof: Vec<[u8; 32]>,
 ) -> Result<()> {
-    let message_hash = hash_ixs(&ixs); // TODO: this could be inlined to the seeds above
+    let message_hash = hash_ixs(remote_sender, &ixs);
 
     if message_hash != *transaction_hash {
         return err!(ReceiverError::InvalidTransactionHash);
@@ -69,6 +69,8 @@ pub fn prove_transaction_handler(
     }
 
     ctx.accounts.message.ixs = ixs;
+    ctx.accounts.message.sender = DEFAULT_SENDER;
+    ctx.accounts.message.remote_sender = *remote_sender;
 
     Ok(())
 }
@@ -126,9 +128,11 @@ fn efficient_keccak256(a: [u8; 32], b: [u8; 32]) -> [u8; 32] {
 }
 
 /// Creates a hash of the instructions to identify the transaction.
-pub fn hash_ixs(ixs: &[Ix]) -> [u8; 32] {
+fn hash_ixs(remote_sender: &[u8; 20], ixs: &[Ix]) -> [u8; 32] {
     // Create a canonical representation of the instructions.
     let mut data = Vec::new();
+
+    data.extend_from_slice(remote_sender);
 
     // Add each instruction.
     for ix in ixs {
@@ -148,6 +152,28 @@ pub fn hash_ixs(ixs: &[Ix]) -> [u8; 32] {
 
     // Hash the data using keccak256.
     keccak::hash(&data).0
+}
+
+fn handle_ixs<'info>(
+    program_id: &[u8],
+    account_infos: &[AccountInfo],
+    message_account: &mut Account<'info, Message>,
+) -> Result<()> {
+    for ix in &message_account.ixs.clone() {
+        let ix: Instruction = ix.into();
+        if ix.program_id == messenger::local_messenger_pubkey(program_id) {
+            messenger::relay_message(
+                program_id,
+                message_account,
+                account_infos,
+                &message_account.remote_sender.clone(),
+                MessengerPayload::try_from_slice(&ix.data)?,
+            )?;
+        } else {
+            solana_program::program::invoke(&ix, account_infos)?;
+        }
+    }
+    Ok(())
 }
 
 #[error_code]

@@ -4,8 +4,10 @@ use crate::{
     MIN_GAS_DYNAMIC_OVERHEAD_NUMERATOR, RELAY_CALL_OVERHEAD, RELAY_CONSTANT_OVERHEAD,
     RELAY_GAS_CHECK_BUFFER, RELAY_RESERVED_GAS, TX_BASE_GAS,
 };
-use anchor_lang::prelude::*;
+use crate::{Ix, Message, MessengerPayload, DEFAULT_SENDER};
+use anchor_lang::solana_program::instruction::Instruction;
 use anchor_lang::solana_program::keccak;
+use anchor_lang::{prelude::*, solana_program};
 use hex_literal::hex;
 
 use super::portal;
@@ -36,6 +38,20 @@ pub struct SentMessage {
     pub gas_limit: u64,          // Minimum gas limit that the message can be executed with.
 }
 
+#[event]
+// Emitted whenever a message is successfully relayed on this chain.
+pub struct RelayedMessage {
+    // Hash of the message that was relayed.
+    pub msg_hash: [u8; 32],
+}
+
+#[event]
+// Emitted whenever a message fails to be relayed on this chain.
+pub struct FailedRelayedMessage {
+    // Hash of the message that failed to be relayed.
+    pub msg_hash: [u8; 32],
+}
+
 /// @notice Sends a message to some target address on Base. Note that if the call
 ///         always reverts, then the message will be unrelayable, and any SOL sent will be
 ///         permanently locked. The same will occur if the target on the other chain is
@@ -52,7 +68,6 @@ pub fn send_message_handler(
     let program_id: &[u8] = ctx.program_id.as_ref();
     send_message_internal(
         program_id,
-        &ctx.accounts.user.to_account_info(),
         &mut ctx.accounts.msg_state,
         ctx.accounts.user.key(),
         target,
@@ -61,9 +76,66 @@ pub fn send_message_handler(
     )
 }
 
+/// @notice Relays a message that was sent by the other CrossDomainMessenger contract. Can only
+///         be executed via cross-chain call from the other messenger OR if the message was
+///         already received once and is currently being replayed.
+/// @param _nonce       Nonce of the message being relayed.
+/// @param _sender      Address of the user who sent the message.
+/// @param _message     Message to send to the target.
+pub fn relay_message<'info>(
+    program_id: &[u8],
+    message_account: &mut Account<'info, Message>,
+    account_infos: &[AccountInfo],
+    remote_sender: &[u8; 20],
+    msg: MessengerPayload,
+) -> Result<()> {
+    // On L1 this function will check the Portal for its paused status.
+    // On L2 this function should be a no-op, because paused will always return false.
+    if paused() {
+        return err!(MessengerError::BridgeIsPaused);
+    }
+
+    // We use the v1 message hash as the unique identifier for the message because it commits
+    // to the value and minimum gas limit of the message.
+    let versioned_hash = hash_message(msg.nonce, msg.sender, &msg.message);
+
+    if remote_sender == &OTHER_MESSENGER {
+        // These properties should always hold when the message is first submitted (as
+        // opposed to being replayed).
+        if message_account.failed_message {
+            return err!(MessengerError::CannotBeFailedMessage);
+        }
+    } else {
+        if !message_account.failed_message {
+            return err!(MessengerError::CanOnlyRetryAFailedMessage);
+        }
+    }
+
+    if message_account.successful_message {
+        return err!(MessengerError::MessageHasAlreadyBeenRelayed);
+    }
+
+    message_account.sender = msg.sender;
+    let success = handle_ixs(program_id, account_infos, &msg.message);
+    message_account.sender = DEFAULT_SENDER;
+
+    if success == Ok(()) {
+        message_account.successful_message = true;
+        emit!(RelayedMessage {
+            msg_hash: versioned_hash
+        });
+    } else {
+        message_account.failed_message = true;
+        emit!(FailedRelayedMessage {
+            msg_hash: versioned_hash
+        })
+    }
+
+    Ok(())
+}
+
 pub fn send_message_internal<'info>(
     program_id: &[u8],
-    user: &AccountInfo<'info>,
     msg_state: &mut Account<'info, Messenger>,
     from: Pubkey,
     target: [u8; 20],
@@ -90,7 +162,7 @@ pub fn send_message_internal<'info>(
 
     emit!(SentMessage {
         target,
-        sender: user.key(),
+        sender: from,
         message,
         message_nonce: message_nonce(msg_state.msg_nonce),
         value: 0,
@@ -113,19 +185,22 @@ fn send_message<'info>(
     gas_limit: u64,
     data: Vec<u8>,
 ) -> Result<()> {
-    // Equivalent to keccak256(abi.encodePacked(programId, "messenger"));
-    let mut data_to_hash = Vec::new();
-    data_to_hash.extend_from_slice(program_id);
-    data_to_hash.extend_from_slice(b"messenger");
-    let hash = keccak::hash(&data_to_hash);
-
     portal::deposit_transaction_internal(
-        Pubkey::new_from_array(hash.to_bytes()),
+        local_messenger_pubkey(program_id),
         to,
         gas_limit,
         false,
         data,
     )
+}
+
+pub fn local_messenger_pubkey(program_id: &[u8]) -> Pubkey {
+    // Equivalent to keccak256(abi.encodePacked(programId, "messenger"));
+    let mut data_to_hash = Vec::new();
+    data_to_hash.extend_from_slice(program_id);
+    data_to_hash.extend_from_slice(b"messenger");
+    let hash = keccak::hash(&data_to_hash);
+    return Pubkey::new_from_array(hash.to_bytes());
 }
 
 /// @notice Computes the amount of gas required to guarantee that a given message will be
@@ -253,4 +328,56 @@ fn max(a: u64, b: u64) -> u64 {
         return a;
     }
     return b;
+}
+
+fn paused() -> bool {
+    return false;
+}
+
+fn hash_message(nonce: [u8; 32], sender: [u8; 20], message: &Vec<u8>) -> [u8; 32] {
+    let mut data = Vec::new();
+
+    data.extend_from_slice(&nonce);
+    data.extend_from_slice(&sender);
+    data.extend_from_slice(message);
+
+    return keccak::hash(&data).0;
+}
+
+fn handle_ixs<'info>(
+    program_id: &[u8],
+    account_infos: &[AccountInfo],
+    message: &Vec<u8>,
+) -> Result<()> {
+    let ixs_vec = Vec::<Ix>::try_from_slice(message)?;
+    for ix in &ixs_vec {
+        let ix_converted: Instruction = ix.into();
+        if ix_converted.program_id == local_messenger_pubkey(program_id) {
+            // TODO: change this to bridge
+            // messenger::relay_message(
+            //     message_account,
+            //     &message_account.remote_sender.clone(),
+            //     MessengerPayload::try_from_slice(&ix.data)?,
+            // )?;
+            return err!(MessengerError::BridgeTargetNotSupported);
+        } else {
+            solana_program::program::invoke(&ix_converted, account_infos)?;
+        }
+    }
+
+    Ok(())
+}
+
+#[error_code]
+pub enum MessengerError {
+    #[msg("Bridge is paused")]
+    BridgeIsPaused,
+    #[msg("Cannot be failed message")]
+    CannotBeFailedMessage,
+    #[msg("Can only retry a failed message")]
+    CanOnlyRetryAFailedMessage,
+    #[msg("Message has already been relayed")]
+    MessageHasAlreadyBeenRelayed,
+    #[msg("Bridge target not supported")]
+    BridgeTargetNotSupported,
 }
