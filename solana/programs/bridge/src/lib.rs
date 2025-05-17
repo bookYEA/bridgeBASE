@@ -89,8 +89,8 @@ pub mod bridge {
         receiver::prove_transaction_handler(ctx, &transaction_hash, &remote_sender, ixs, proof)
     }
 
-    pub fn finalize_transaction(
-        ctx: Context<FinalizeTransaction>,
+    pub fn finalize_transaction<'a, 'info>(
+        ctx: Context<'a, '_, '_, 'info, FinalizeTransaction<'info>>,
         transaction_hash: [u8; 32],
     ) -> Result<()> {
         receiver::finalize_transaction_handler(ctx, &transaction_hash)

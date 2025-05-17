@@ -81,3 +81,10 @@ pub const MESSAGE_SEED: &[u8] = b"message";
 
 #[constant]
 pub const TRUSTED_ORACLE: Pubkey = pubkey!("H4BF4JEUcLaNTEp4ppU5YBx8buWfQKnp32UMBH25Rp2V");
+
+#[constant]
+pub const ASSOCIATED_TOKEN_PROGRAM_ID: Pubkey =
+    pubkey!("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
+
+#[constant]
+pub const TOKEN_PROGRAM_ID: Pubkey = pubkey!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");

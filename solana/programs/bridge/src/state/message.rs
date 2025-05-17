@@ -70,3 +70,13 @@ pub struct MessengerPayload {
     pub sender: [u8; 20],
     pub message: Vec<u8>,
 }
+
+#[derive(AnchorDeserialize)]
+pub struct BridgePayload {
+    pub local_token: Pubkey,
+    pub remote_token: [u8; 20],
+    pub from: [u8; 20],
+    pub to: Pubkey,
+    pub amount: u64,
+    pub extra_data: Vec<u8>,
+}

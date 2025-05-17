@@ -3,7 +3,7 @@ use anchor_lang::{
     solana_program::{self, instruction::Instruction, keccak},
 };
 
-use crate::{Ix, Message, MessengerPayload, OutputRoot, DEFAULT_SENDER, MESSAGE_SEED};
+use crate::{Ix, Message, MessengerPayload, OutputRoot, DEFAULT_SENDER, MESSAGE_SEED, VAULT_SEED};
 
 use super::messenger;
 
@@ -32,10 +32,18 @@ pub struct ProveTransaction<'info> {
 pub struct FinalizeTransaction<'info> {
     #[account(mut, seeds = [MESSAGE_SEED, &transaction_hash], bump)]
     pub message: Account<'info, Message>,
+
+    /// CHECK: This is the vault PDA. For SOL, it receives SOL. For SPL, it's the authority for vault_token_account.
+    #[account(
+        mut,
+        seeds = [VAULT_SEED],
+        bump
+    )]
+    pub vault: AccountInfo<'info>,
 }
 
-pub fn finalize_transaction_handler(
-    ctx: Context<FinalizeTransaction>,
+pub fn finalize_transaction_handler<'a, 'info>(
+    ctx: Context<'a, '_, '_, 'info, FinalizeTransaction<'info>>,
     _transaction_hash: &[u8; 32],
 ) -> Result<()> {
     if ctx.accounts.message.is_executed {
@@ -44,9 +52,9 @@ pub fn finalize_transaction_handler(
 
     ctx.accounts.message.is_executed = true;
     handle_ixs(
-        ctx.program_id.as_ref(),
         ctx.remaining_accounts,
         &mut ctx.accounts.message,
+        &ctx.accounts.vault,
     )
 }
 
@@ -155,16 +163,16 @@ fn hash_ixs(remote_sender: &[u8; 20], ixs: &[Ix]) -> [u8; 32] {
 }
 
 fn handle_ixs<'info>(
-    program_id: &[u8],
-    account_infos: &[AccountInfo],
+    account_infos: &[AccountInfo<'info>],
     message_account: &mut Account<'info, Message>,
+    vault: &AccountInfo<'info>,
 ) -> Result<()> {
     for ix in &message_account.ixs.clone() {
         let ix: Instruction = ix.into();
-        if ix.program_id == messenger::local_messenger_pubkey(program_id) {
+        if ix.program_id == messenger::local_messenger_pubkey() {
             messenger::relay_message(
-                program_id,
                 message_account,
+                vault,
                 account_infos,
                 &message_account.remote_sender.clone(),
                 MessengerPayload::try_from_slice(&ix.data)?,

@@ -6,9 +6,12 @@ use anchor_spl::{
 };
 use hex_literal::hex;
 
-use crate::{messenger, MESSENGER_SEED, NATIVE_SOL_PUBKEY, OTHER_BRIDGE, VAULT_SEED};
+use crate::{
+    messenger, BridgePayload, Message, ASSOCIATED_TOKEN_PROGRAM_ID, MESSENGER_SEED,
+    NATIVE_SOL_PUBKEY, OTHER_BRIDGE, TOKEN_PROGRAM_ID, VAULT_SEED,
+};
 
-use super::Messenger;
+use super::{Messenger, MessengerError};
 
 #[derive(Accounts)]
 pub struct BridgeTokensTo<'info> {
@@ -82,6 +85,17 @@ pub struct TokenBridgeInitiated {
     pub extra_data: Vec<u8>, // Extra data sent with the transaction.
 }
 
+#[event]
+// Emitted when an ERC20 bridge is finalized on this chain.
+pub struct TokenBridgeFinalized {
+    pub local_token: Pubkey, // Address of the token on this chain. Default pubkey signifies SOL.
+    pub remote_token: [u8; 20], // Address of the ERC20 on Base.
+    pub from: [u8; 20],      // Address of the sender.
+    pub to: Pubkey,          // Address of the receiver.
+    pub amount: u64,         // Amount of tokens sent.
+    pub extra_data: Vec<u8>, // Extra data sent with the transaction.
+}
+
 /// @notice Sends SPL tokens or SOL to a receiver's address on Base.
 ///
 /// @param _remoteToken Address of the corresponding token on Base.
@@ -99,9 +113,7 @@ pub fn bridge_sol_to_handler(
     min_gas_limit: u32,
     extra_data: Vec<u8>,
 ) -> Result<()> {
-    let program_id: &[u8] = ctx.program_id.as_ref();
     initiate_bridge_sol(
-        program_id,
         &ctx.accounts.system_program,
         &ctx.accounts.user.to_account_info(),
         &ctx.accounts.vault.to_account_info(),
@@ -132,9 +144,7 @@ pub fn bridge_tokens_to_handler(
     min_gas_limit: u32,
     extra_data: Vec<u8>,
 ) -> Result<()> {
-    let program_id: &[u8] = ctx.program_id.as_ref();
     initiate_bridge_tokens(
-        program_id,
         &ctx.accounts.token_program,
         &ctx.accounts.user.to_account_info(),
         &ctx.accounts.from_token_account,
@@ -150,8 +160,91 @@ pub fn bridge_tokens_to_handler(
     )
 }
 
+/// @notice Finalizes a Token bridge on this chain. Can only be triggered by the other
+///         StandardBridge contract on Base.
+/// @param _localToken  Address of the SPL token or native SOL on this chain.
+/// @param _remoteToken Address of the corresponding token on Base.
+/// @param _from        Address of the sender.
+/// @param _to          Address of the receiver.
+/// @param _amount      Amount of the token being bridged.
+/// @param _extraData   Extra data to be sent with the transaction. Note that the recipient will
+///                     not be triggered with this data, but it will be emitted and can be used
+///                     to identify the transaction.
+pub fn finalize_bridge_tokens<'info>(
+    message_account: &mut Account<'info, Message>,
+    vault: &AccountInfo<'info>,
+    account_infos: &[AccountInfo<'info>],
+    payload: BridgePayload,
+) -> Result<()> {
+    if message_account.sender != OTHER_BRIDGE {
+        return err!(BridgeError::OnlyOtherBridgeCanCall);
+    }
+
+    // On L1 this function will check the Portal for its paused status.
+    // On L2 this function should be a no-op, because paused will always return false.
+    if messenger::paused() {
+        return err!(MessengerError::BridgeIsPaused);
+    }
+
+    if is_owned_by_bridge(payload.local_token) {
+        // require(
+        //     _isCorrectTokenPair(_localToken, _remoteToken),
+        //     "StandardBridge: wrong remote token for Optimism Mintable ERC20 local token"
+        // );
+
+        // IOptimismMintableERC20(_localToken).mint(_to, _amount);
+    } else {
+        if payload.local_token == NATIVE_SOL_PUBKEY {
+            return err!(BridgeError::InvalidSolUsage);
+        } else {
+            // TODO: deposits[_localToken][_remoteToken] = deposits[_localToken][_remoteToken] - _amount;
+
+            let token = account_infos
+                .iter()
+                .find(|x| x.key == &payload.local_token)
+                .ok_or(ProgramError::InvalidArgument)?;
+
+            let (vault_ata, _) = Pubkey::find_program_address(
+                &[
+                    vault.key.to_bytes().as_ref(),
+                    TOKEN_PROGRAM_ID.to_bytes().as_ref(),
+                    token.key.to_bytes().as_ref(),
+                ],
+                &ASSOCIATED_TOKEN_PROGRAM_ID,
+            );
+
+            let from = account_infos
+                .iter()
+                .find(|x| x.key == &vault_ata)
+                .ok_or(ProgramError::InvalidArgument)?;
+            let to = account_infos
+                .iter()
+                .find(|x| x.key == &payload.to)
+                .ok_or(ProgramError::InvalidArgument)?;
+
+            spl_transfer(
+                token.clone(),
+                from.clone(),
+                to.clone(),
+                vault.clone(),
+                payload.amount,
+            )?;
+        }
+    }
+
+    emit!(TokenBridgeFinalized {
+        local_token: payload.local_token,
+        remote_token: payload.remote_token,
+        from: payload.from,
+        to: payload.to,
+        amount: payload.amount,
+        extra_data: payload.extra_data
+    });
+
+    Ok(())
+}
+
 fn initiate_bridge_sol<'info>(
-    program_id: &[u8],
     system_program: &Program<'info, System>,
     user: &AccountInfo<'info>,
     vault: &AccountInfo<'info>,
@@ -175,7 +268,6 @@ fn initiate_bridge_sol<'info>(
     anchor_lang::system_program::transfer(cpi_context, amount)?;
 
     emit_event_and_send_message(
-        program_id,
         msg_state,
         from,
         NATIVE_SOL_PUBKEY,
@@ -188,7 +280,6 @@ fn initiate_bridge_sol<'info>(
 }
 
 fn initiate_bridge_tokens<'info>(
-    program_id: &[u8],
     token_program: &Program<'info, Token>,
     user_account_info: &AccountInfo<'info>,
     user_spl_token_account: &Account<'info, TokenAccount>,
@@ -206,18 +297,15 @@ fn initiate_bridge_tokens<'info>(
         return err!(BridgeError::InvalidSolUsage);
     }
 
-    // SPL Token Transfer
-    let cpi_accounts = anchor_spl::token::Transfer {
-        from: user_spl_token_account.to_account_info(),
-        to: vault_spl_token_account.to_account_info(),
-        authority: user_account_info.clone(),
-    };
-    let cpi_program = token_program.to_account_info();
-    let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
-    anchor_spl::token::transfer(cpi_ctx, amount_to_bridge)?;
+    spl_transfer(
+        token_program.to_account_info(),
+        user_spl_token_account.to_account_info(),
+        vault_spl_token_account.to_account_info(),
+        user_account_info.clone(),
+        amount_to_bridge,
+    )?;
 
     emit_event_and_send_message(
-        program_id,
         msg_state,
         sender_on_solana_pubkey,
         token_on_solana_mint_pubkey,
@@ -230,7 +318,6 @@ fn initiate_bridge_tokens<'info>(
 }
 
 fn emit_event_and_send_message<'info>(
-    program_id: &[u8],
     msg_state: &mut Account<'info, Messenger>,
     from: Pubkey,
     local_token: Pubkey,
@@ -251,16 +338,9 @@ fn emit_event_and_send_message<'info>(
         extra_data: extra_data.clone()
     });
 
-    // Equivalent to keccak256(abi.encodePacked(programId, "bridge"));
-    let mut data_to_hash = Vec::new();
-    data_to_hash.extend_from_slice(program_id);
-    data_to_hash.extend_from_slice(b"bridge");
-    let hash = keccak::hash(&data_to_hash);
-
     messenger::send_message_internal(
-        program_id,
         msg_state,
-        Pubkey::new_from_array(hash.to_bytes()),
+        local_bridge_pubkey(),
         OTHER_BRIDGE,
         encode_with_selector(remote_token, local_token, from, to, amount, extra_data),
         min_gas_limit,
@@ -324,8 +404,43 @@ fn encode_with_selector(
     return encoded;
 }
 
+// TODO: need to implement
+fn is_owned_by_bridge(_token: Pubkey) -> bool {
+    return false;
+}
+
+fn spl_transfer<'info>(
+    token: AccountInfo<'info>,
+    from: AccountInfo<'info>,
+    to: AccountInfo<'info>,
+    authority: AccountInfo<'info>,
+    amount: u64,
+) -> Result<()> {
+    let cpi_accounts = anchor_spl::token::Transfer {
+        from,
+        to,
+        authority,
+    };
+    let mut cpi_ctx = CpiContext::new(token, cpi_accounts);
+    let (_, bump) = Pubkey::find_program_address(&[VAULT_SEED], &crate::ID);
+    let binding: &[&[&[u8]]] = &[&[VAULT_SEED, &[bump]]];
+    cpi_ctx.signer_seeds = binding;
+    anchor_spl::token::transfer(cpi_ctx, amount)
+}
+
+pub fn local_bridge_pubkey() -> Pubkey {
+    // Equivalent to keccak256(abi.encodePacked(programId, "bridge"));
+    let mut data_to_hash = Vec::new();
+    data_to_hash.extend_from_slice(crate::ID.as_ref());
+    data_to_hash.extend_from_slice(b"bridge");
+    let hash = keccak::hash(&data_to_hash);
+    return Pubkey::new_from_array(hash.to_bytes());
+}
+
 #[error_code]
 pub enum BridgeError {
     #[msg("Cannot bridge SOL here")]
     InvalidSolUsage,
+    #[msg("Only other bridge can call")]
+    OnlyOtherBridgeCanCall,
 }

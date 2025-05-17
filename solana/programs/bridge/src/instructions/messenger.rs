@@ -4,13 +4,13 @@ use crate::{
     MIN_GAS_DYNAMIC_OVERHEAD_NUMERATOR, RELAY_CALL_OVERHEAD, RELAY_CONSTANT_OVERHEAD,
     RELAY_GAS_CHECK_BUFFER, RELAY_RESERVED_GAS, TX_BASE_GAS,
 };
-use crate::{Ix, Message, MessengerPayload, DEFAULT_SENDER};
+use crate::{BridgePayload, Ix, Message, MessengerPayload, DEFAULT_SENDER};
 use anchor_lang::solana_program::instruction::Instruction;
 use anchor_lang::solana_program::keccak;
 use anchor_lang::{prelude::*, solana_program};
 use hex_literal::hex;
 
-use super::portal;
+use super::{portal, standard_bridge};
 
 #[derive(Accounts)]
 pub struct SendMessage<'info> {
@@ -65,9 +65,7 @@ pub fn send_message_handler(
     message: Vec<u8>,
     min_gas_limit: u32,
 ) -> Result<()> {
-    let program_id: &[u8] = ctx.program_id.as_ref();
     send_message_internal(
-        program_id,
         &mut ctx.accounts.msg_state,
         ctx.accounts.user.key(),
         target,
@@ -83,9 +81,9 @@ pub fn send_message_handler(
 /// @param _sender      Address of the user who sent the message.
 /// @param _message     Message to send to the target.
 pub fn relay_message<'info>(
-    program_id: &[u8],
     message_account: &mut Account<'info, Message>,
-    account_infos: &[AccountInfo],
+    vault: &AccountInfo<'info>,
+    account_infos: &[AccountInfo<'info>],
     remote_sender: &[u8; 20],
     msg: MessengerPayload,
 ) -> Result<()> {
@@ -116,7 +114,7 @@ pub fn relay_message<'info>(
     }
 
     message_account.sender = msg.sender;
-    let success = handle_ixs(program_id, account_infos, &msg.message);
+    let success = handle_ixs(account_infos, message_account, vault, &msg.message);
     message_account.sender = DEFAULT_SENDER;
 
     if success == Ok(()) {
@@ -135,7 +133,6 @@ pub fn relay_message<'info>(
 }
 
 pub fn send_message_internal<'info>(
-    program_id: &[u8],
     msg_state: &mut Account<'info, Messenger>,
     from: Pubkey,
     target: [u8; 20],
@@ -147,7 +144,6 @@ pub fn send_message_internal<'info>(
     // guarantee the property that the call to the target contract will always have at least
     // the minimum gas limit specified by the user.
     send_message(
-        program_id,
         OTHER_MESSENGER,
         base_gas(message.len() as u64, min_gas_limit),
         encode_with_selector(
@@ -179,25 +175,14 @@ pub fn send_message_internal<'info>(
 /// @param _to       Recipient of the message on the other chain.
 /// @param _gasLimit Minimum gas limit the message can be executed with.
 /// @param _data     Message data.
-fn send_message<'info>(
-    program_id: &[u8],
-    to: [u8; 20],
-    gas_limit: u64,
-    data: Vec<u8>,
-) -> Result<()> {
-    portal::deposit_transaction_internal(
-        local_messenger_pubkey(program_id),
-        to,
-        gas_limit,
-        false,
-        data,
-    )
+fn send_message<'info>(to: [u8; 20], gas_limit: u64, data: Vec<u8>) -> Result<()> {
+    portal::deposit_transaction_internal(local_messenger_pubkey(), to, gas_limit, false, data)
 }
 
-pub fn local_messenger_pubkey(program_id: &[u8]) -> Pubkey {
+pub fn local_messenger_pubkey() -> Pubkey {
     // Equivalent to keccak256(abi.encodePacked(programId, "messenger"));
     let mut data_to_hash = Vec::new();
-    data_to_hash.extend_from_slice(program_id);
+    data_to_hash.extend_from_slice(crate::ID.as_ref());
     data_to_hash.extend_from_slice(b"messenger");
     let hash = keccak::hash(&data_to_hash);
     return Pubkey::new_from_array(hash.to_bytes());
@@ -330,7 +315,7 @@ fn max(a: u64, b: u64) -> u64 {
     return b;
 }
 
-fn paused() -> bool {
+pub fn paused() -> bool {
     return false;
 }
 
@@ -345,21 +330,21 @@ fn hash_message(nonce: [u8; 32], sender: [u8; 20], message: &Vec<u8>) -> [u8; 32
 }
 
 fn handle_ixs<'info>(
-    program_id: &[u8],
-    account_infos: &[AccountInfo],
+    account_infos: &[AccountInfo<'info>],
+    message_account: &mut Account<'info, Message>,
+    vault: &AccountInfo<'info>,
     message: &Vec<u8>,
 ) -> Result<()> {
     let ixs_vec = Vec::<Ix>::try_from_slice(message)?;
     for ix in &ixs_vec {
         let ix_converted: Instruction = ix.into();
-        if ix_converted.program_id == local_messenger_pubkey(program_id) {
-            // TODO: change this to bridge
-            // messenger::relay_message(
-            //     message_account,
-            //     &message_account.remote_sender.clone(),
-            //     MessengerPayload::try_from_slice(&ix.data)?,
-            // )?;
-            return err!(MessengerError::BridgeTargetNotSupported);
+        if ix_converted.program_id == standard_bridge::local_bridge_pubkey() {
+            standard_bridge::finalize_bridge_tokens(
+                message_account,
+                vault,
+                account_infos,
+                BridgePayload::try_from_slice(&ix_converted.data)?,
+            )?;
         } else {
             solana_program::program::invoke(&ix_converted, account_infos)?;
         }
@@ -378,6 +363,4 @@ pub enum MessengerError {
     CanOnlyRetryAFailedMessage,
     #[msg("Message has already been relayed")]
     MessageHasAlreadyBeenRelayed,
-    #[msg("Bridge target not supported")]
-    BridgeTargetNotSupported,
 }
