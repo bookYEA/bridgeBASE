@@ -7,13 +7,14 @@ use anchor_spl::{
 use hex_literal::hex;
 
 use crate::{
-    messenger, BridgePayload, Message, ASSOCIATED_TOKEN_PROGRAM_ID, MESSENGER_SEED,
-    NATIVE_SOL_PUBKEY, OTHER_BRIDGE, TOKEN_PROGRAM_ID, VAULT_SEED,
+    messenger, BridgePayload, Deposit, Message, ASSOCIATED_TOKEN_PROGRAM_ID, DEPOSIT_SEED,
+    MESSENGER_SEED, NATIVE_SOL_PUBKEY, OTHER_BRIDGE, TOKEN_PROGRAM_ID, VAULT_SEED,
 };
 
 use super::{Messenger, MessengerError};
 
 #[derive(Accounts)]
+#[instruction(remote_token: [u8; 20])]
 pub struct BridgeTokensTo<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
@@ -48,12 +49,22 @@ pub struct BridgeTokensTo<'info> {
     )]
     pub vault_token_account: Account<'info, TokenAccount>,
 
+    #[account(
+        init_if_needed,
+        payer = user,
+        space = 8 + Deposit::INIT_SPACE,
+        seeds = [DEPOSIT_SEED, mint.key().as_ref(), remote_token.as_ref()],
+        bump
+    )]
+    pub deposit: Account<'info, Deposit>,
+
     pub system_program: Program<'info, System>,
     pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,
 }
 
 #[derive(Accounts)]
+#[instruction(remote_token: [u8; 20])]
 pub struct BridgeSolTo<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
@@ -70,6 +81,15 @@ pub struct BridgeSolTo<'info> {
 
     #[account(mut, seeds = [MESSENGER_SEED], bump)]
     pub msg_state: Account<'info, Messenger>,
+
+    #[account(
+        init_if_needed,
+        payer = user,
+        space = 8 + Deposit::INIT_SPACE,
+        seeds = [DEPOSIT_SEED, NATIVE_SOL_PUBKEY.as_ref(), remote_token.as_ref()],
+        bump
+    )]
+    pub deposit: Account<'info, Deposit>,
 
     pub system_program: Program<'info, System>,
 }
@@ -118,6 +138,7 @@ pub fn bridge_sol_to_handler(
         &ctx.accounts.user.to_account_info(),
         &ctx.accounts.vault.to_account_info(),
         &mut ctx.accounts.msg_state,
+        &mut ctx.accounts.deposit,
         ctx.accounts.user.key(),
         remote_token,
         to,
@@ -150,6 +171,7 @@ pub fn bridge_tokens_to_handler(
         &ctx.accounts.from_token_account,
         &ctx.accounts.vault_token_account,
         &mut ctx.accounts.msg_state,
+        &mut ctx.accounts.deposit,
         ctx.accounts.user.key(),
         ctx.accounts.mint.key(),
         remote_token,
@@ -173,7 +195,7 @@ pub fn bridge_tokens_to_handler(
 pub fn finalize_bridge_tokens<'info>(
     message_account: &mut Account<'info, Message>,
     vault: &AccountInfo<'info>,
-    account_infos: &[AccountInfo<'info>],
+    account_infos: &'info [AccountInfo<'info>],
     payload: BridgePayload,
 ) -> Result<()> {
     if message_account.sender != OTHER_BRIDGE {
@@ -187,6 +209,7 @@ pub fn finalize_bridge_tokens<'info>(
     }
 
     if is_owned_by_bridge(payload.local_token) {
+        // TODO: implement
         // require(
         //     _isCorrectTokenPair(_localToken, _remoteToken),
         //     "StandardBridge: wrong remote token for Optimism Mintable ERC20 local token"
@@ -197,7 +220,27 @@ pub fn finalize_bridge_tokens<'info>(
         if payload.local_token == NATIVE_SOL_PUBKEY {
             return err!(BridgeError::InvalidSolUsage);
         } else {
-            // TODO: deposits[_localToken][_remoteToken] = deposits[_localToken][_remoteToken] - _amount;
+            let (deposit_acct, _) = Pubkey::find_program_address(
+                &[
+                    DEPOSIT_SEED,
+                    payload.local_token.as_ref(),
+                    payload.remote_token.as_ref(),
+                ],
+                &crate::ID,
+            );
+
+            let deposit_info = account_infos
+                .iter()
+                .find(|x| x.key == &deposit_acct)
+                .ok_or(ProgramError::InvalidArgument)?;
+
+            let mut deposit = Account::<Deposit>::try_from(deposit_info)?;
+
+            if deposit.balance < payload.amount {
+                return err!(BridgeError::InsufficientBalance);
+            }
+
+            deposit.balance -= payload.amount;
 
             let token = account_infos
                 .iter()
@@ -249,6 +292,7 @@ fn initiate_bridge_sol<'info>(
     user: &AccountInfo<'info>,
     vault: &AccountInfo<'info>,
     msg_state: &mut Account<'info, Messenger>,
+    deposit: &mut Account<'info, Deposit>,
     from: Pubkey,
     remote_token: [u8; 20],
     to: [u8; 20],
@@ -269,6 +313,7 @@ fn initiate_bridge_sol<'info>(
 
     emit_event_and_send_message(
         msg_state,
+        deposit,
         from,
         NATIVE_SOL_PUBKEY,
         remote_token,
@@ -285,6 +330,7 @@ fn initiate_bridge_tokens<'info>(
     user_spl_token_account: &Account<'info, TokenAccount>,
     vault_spl_token_account: &Account<'info, TokenAccount>,
     msg_state: &mut Account<'info, Messenger>,
+    deposit: &mut Account<'info, Deposit>,
     sender_on_solana_pubkey: Pubkey,
     token_on_solana_mint_pubkey: Pubkey,
     token_on_base_address: [u8; 20],
@@ -307,6 +353,7 @@ fn initiate_bridge_tokens<'info>(
 
     emit_event_and_send_message(
         msg_state,
+        deposit,
         sender_on_solana_pubkey,
         token_on_solana_mint_pubkey,
         token_on_base_address,
@@ -319,6 +366,7 @@ fn initiate_bridge_tokens<'info>(
 
 fn emit_event_and_send_message<'info>(
     msg_state: &mut Account<'info, Messenger>,
+    deposit: &mut Account<'info, Deposit>,
     from: Pubkey,
     local_token: Pubkey,
     remote_token: [u8; 20],
@@ -327,7 +375,7 @@ fn emit_event_and_send_message<'info>(
     min_gas_limit: u32,
     extra_data: Vec<u8>,
 ) -> Result<()> {
-    // TODO: Update stored deposit for `local_token` / `remote_token` pair
+    deposit.balance += amount;
 
     emit!(TokenBridgeInitiated {
         local_token,
@@ -443,4 +491,6 @@ pub enum BridgeError {
     InvalidSolUsage,
     #[msg("Only other bridge can call")]
     OnlyOtherBridgeCanCall,
+    #[msg("Insufficient balance")]
+    InsufficientBalance,
 }

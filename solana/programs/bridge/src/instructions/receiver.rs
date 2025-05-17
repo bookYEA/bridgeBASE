@@ -45,7 +45,7 @@ pub struct FinalizeTransaction<'info> {
 }
 
 pub fn finalize_transaction_handler<'a, 'info>(
-    ctx: Context<'a, '_, '_, 'info, FinalizeTransaction<'info>>,
+    ctx: Context<'a, '_, 'info, 'info, FinalizeTransaction<'info>>,
     _transaction_hash: &[u8; 32],
 ) -> Result<()> {
     if ctx.accounts.message.is_executed {
@@ -165,7 +165,7 @@ fn hash_ixs(remote_sender: &[u8; 20], ixs: &[Ix]) -> [u8; 32] {
 }
 
 fn handle_ixs<'info>(
-    account_infos: &[AccountInfo<'info>],
+    account_infos: &'info [AccountInfo<'info>],
     message_account: &mut Account<'info, Message>,
     vault: &AccountInfo<'info>,
 ) -> Result<()> {

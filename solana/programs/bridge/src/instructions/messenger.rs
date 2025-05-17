@@ -83,7 +83,7 @@ pub fn send_message_handler(
 pub fn relay_message<'info>(
     message_account: &mut Account<'info, Message>,
     vault: &AccountInfo<'info>,
-    account_infos: &[AccountInfo<'info>],
+    account_infos: &'info [AccountInfo<'info>],
     remote_sender: &[u8; 20],
     msg: MessengerPayload,
 ) -> Result<()> {
@@ -330,7 +330,7 @@ fn hash_message(nonce: [u8; 32], sender: [u8; 20], message: &Vec<u8>) -> [u8; 32
 }
 
 fn handle_ixs<'info>(
-    account_infos: &[AccountInfo<'info>],
+    account_infos: &'info [AccountInfo<'info>],
     message_account: &mut Account<'info, Message>,
     vault: &AccountInfo<'info>,
     message: &Vec<u8>,

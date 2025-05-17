@@ -27,3 +27,8 @@ export const oracleSecretKey = Uint8Array.from([
   80, 119, 97, 41, 217, 201, 170, 45, 211, 97, 156, 165, 230, 138, 112, 147, 73,
   204, 129, 97, 184, 18, 210, 81, 131, 66, 4, 71, 74, 146,
 ]);
+export const solRemoteAddress = Array.from(
+  Uint8Array.from(
+    Buffer.from("E398D7afe84A6339783718935087a4AcE6F6DFE8", "hex")
+  )
+); // random address for testing

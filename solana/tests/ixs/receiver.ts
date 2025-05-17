@@ -6,11 +6,14 @@ import { confirmTransaction } from "../utils/confirmTransaction";
 import { PublicKey } from "@solana/web3.js";
 import { fundAccount } from "../utils/fundAccount";
 import {
+  dummyData,
   expectedBridgePubkey,
   expectedMessengerPubkey,
+  minGasLimit,
   oracleSecretKey,
   otherBridgeAddress,
   otherMessengerAddress,
+  solRemoteAddress,
   toAddress,
 } from "../utils/constants";
 import { toNumberArray } from "../utils/toNumberArray";
@@ -18,7 +21,6 @@ import { deriveRoot } from "../utils/deriveRoot";
 import { hashIxs, IxParam } from "../utils/hashIxs";
 import { shouldFail } from "../utils/shouldFail";
 import {
-  Account,
   createMint,
   getOrCreateAssociatedTokenAccount,
   mintTo,
@@ -421,6 +423,7 @@ describe("receiver", () => {
   });
 
   describe("Relayed bridge transaction", () => {
+    let depositPda: PublicKey;
     let transferAccounts: {
       pubkey: PublicKey;
       isWritable: boolean;
@@ -461,7 +464,7 @@ describe("receiver", () => {
         provider.connection,
         payer.payer,
         mintSC,
-        vaultATA.address,
+        userATA.address,
         mintAuthSC,
         100 * anchor.web3.LAMPORTS_PER_SOL,
         [],
@@ -469,10 +472,34 @@ describe("receiver", () => {
         TOKEN_PROGRAM_ID
       );
 
+      const tx = await program.methods
+        .bridgeTokensTo(
+          solRemoteAddress,
+          toAddress,
+          new anchor.BN(TRANSFER_AMOUNT),
+          minGasLimit,
+          dummyData
+        )
+        .accounts({
+          user: payer.publicKey,
+          mint: mintSC,
+        })
+        .rpc();
+      await confirmTransaction(provider.connection, tx);
+
+      [depositPda] = PublicKey.findProgramAddressSync(
+        [
+          Buffer.from("deposit"),
+          mintSC.toBuffer(),
+          Buffer.from(solRemoteAddress),
+        ],
+        program.programId
+      );
+
       // Serialize BridgePayload
       // Fields: local_token: Pubkey, remote_token: [u8; 20], from: [u8; 20], to: Pubkey, amount: u64, extra_data: Vec<u8>
       const localTokenBuffer = mintSC.toBuffer();
-      const remoteTokenBuffer = Buffer.from(toAddress);
+      const remoteTokenBuffer = Buffer.from(solRemoteAddress);
       const fromBuffer = Buffer.from(toAddress);
       const toBuffer = userATA.address.toBuffer();
       const amountBuffer = new anchor.BN(TRANSFER_AMOUNT).toBuffer("le", 8);
@@ -497,6 +524,7 @@ describe("receiver", () => {
         { pubkey: vaultATA.address, isWritable: true, isSigner: false },
         { pubkey: userATA.address, isWritable: true, isSigner: false },
         { pubkey: TOKEN_PROGRAM_ID, isWritable: false, isSigner: false },
+        { pubkey: depositPda, isWritable: true, isSigner: false },
       ];
 
       targetIxParam = {

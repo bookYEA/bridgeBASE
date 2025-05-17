@@ -90,7 +90,7 @@ pub mod bridge {
     }
 
     pub fn finalize_transaction<'a, 'info>(
-        ctx: Context<'a, '_, '_, 'info, FinalizeTransaction<'info>>,
+        ctx: Context<'a, '_, 'info, 'info, FinalizeTransaction<'info>>,
         transaction_hash: [u8; 32],
     ) -> Result<()> {
         receiver::finalize_transaction_handler(ctx, &transaction_hash)
