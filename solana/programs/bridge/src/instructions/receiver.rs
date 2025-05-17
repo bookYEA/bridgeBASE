@@ -7,6 +7,8 @@ use crate::{Ix, Message, MessengerPayload, OutputRoot, DEFAULT_SENDER, MESSAGE_S
 
 use super::messenger;
 
+// TODO: Should we block vault transfers that don't go through the bridge component?
+
 #[derive(Accounts)]
 #[instruction(transaction_hash: [u8; 32])]
 pub struct ProveTransaction<'info> {
