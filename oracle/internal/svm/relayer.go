@@ -23,17 +23,19 @@ type Relayer struct {
 	Client   *client.Client
 }
 
-func New(ctx *cli.Context) (*Relayer, error) {
-	secretKeyBytes, err := hex.DecodeString(ctx.String(flags.PrivateKeyFlag.Name))
+func NewRelayer(ctx *cli.Context) (*Relayer, error) {
+	secretKeyBytes, err := hex.DecodeString(ctx.String(flags.SolSecretKeyFlag.Name))
 	if err != nil {
-		return &Relayer{}, nil
+		log.Error("Error decoding secret key bytes", "err", err)
+		return &Relayer{}, err
 	}
 
 	feePayer, err := types.AccountFromBytes(secretKeyBytes)
 	if err != nil {
-		return &Relayer{}, nil
+		log.Error("Error creating fee payer account", "err", err)
+		return &Relayer{}, err
 	}
-	log.Info("Solana signer registered", "Pubkey:", feePayer.PublicKey.String())
+	log.Info("Solana signer registered", "Pubkey", feePayer.PublicKey.String())
 
 	rpcEndpoint := rpc.DevnetRPCEndpoint
 	if ctx.Bool(flags.IsMainnetFlag.Name) {

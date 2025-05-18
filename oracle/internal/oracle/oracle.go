@@ -12,6 +12,7 @@ import (
 
 	"github.com/base/alt-l1-bridge/oracle/internal/flags"
 	"github.com/base/alt-l1-bridge/oracle/internal/relayer"
+	"github.com/base/alt-l1-bridge/oracle/internal/svm"
 	"github.com/base/alt-l1-bridge/oracle/internal/types"
 	"github.com/base/alt-l1-bridge/oracle/internal/utils"
 	"github.com/ethereum/go-ethereum/common"
@@ -66,9 +67,14 @@ func Main(ctx *cli.Context) error {
 		log.Crit("Error creating relayer", "err", err)
 	}
 
+	_, err = svm.NewRelayer(ctx)
+	if err != nil {
+		log.Crit("Error creating solana signer", "err", err)
+	}
+
 	log.Info("Starting Solana event indexer", "url", wsUrl, "program", programAddr.String())
 
-	err = startEvmIndexer(ctx.Context, wsUrl, programAddr, r)
+	err = startSolanaIndexer(ctx.Context, wsUrl, programAddr, r)
 	if err != nil {
 		log.Crit("Indexer failed", "err", err)
 		return err
@@ -78,8 +84,8 @@ func Main(ctx *cli.Context) error {
 	return nil
 }
 
-// startEvmIndexer connects to the Solana WebSocket endpoint and subscribes to program logs.
-func startEvmIndexer(ctx context.Context, wsUrl string, programAddr solana.PublicKey, r *relayer.Relayer) error {
+// startSolanaIndexer connects to the Solana WebSocket endpoint and subscribes to program logs.
+func startSolanaIndexer(ctx context.Context, wsUrl string, programAddr solana.PublicKey, r *relayer.Relayer) error {
 	wsClient, err := ws.Connect(ctx, wsUrl)
 	if err != nil {
 		return fmt.Errorf("failed to connect to WebSocket %s: %w", wsUrl, err)

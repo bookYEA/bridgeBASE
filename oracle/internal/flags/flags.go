@@ -29,6 +29,12 @@ var (
 		Required: true,
 		EnvVars:  []string{"PRIVATE_KEY"},
 	}
+	SolSecretKeyFlag = &cli.StringFlag{
+		Name:     "sol-secret-key",
+		Usage:    "Secret key used to submit transactions to Solana",
+		Required: true,
+		EnvVars:  []string{"SOL_SECRET_KEY"},
+	}
 )
 
-var Flags = []cli.Flag{TargetAddressFlag, IsMainnetFlag, BaseRpcUrlFlag, PrivateKeyFlag}
+var Flags = []cli.Flag{TargetAddressFlag, IsMainnetFlag, BaseRpcUrlFlag, PrivateKeyFlag, SolSecretKeyFlag}

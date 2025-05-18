@@ -46,6 +46,8 @@ func New(ctx *cli.Context) (*Relayer, error) {
 		return nil, err
 	}
 
+	log.Info("EVM signer registered", "address", crypto.PubkeyToAddress(*publicKeyECDSA))
+
 	return &Relayer{
 		client:     client,
 		privateKey: key,
