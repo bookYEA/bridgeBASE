@@ -91,3 +91,6 @@ pub const ASSOCIATED_TOKEN_PROGRAM_ID: Pubkey =
 
 #[constant]
 pub const TOKEN_PROGRAM_ID: Pubkey = pubkey!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+
+#[constant]
+pub const FINALIZE_BRIDGE_TOKEN_SELECTOR: [u8; 4] = hex!("2d916920");

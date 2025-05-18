@@ -4,14 +4,32 @@ use anchor_spl::{
     associated_token::AssociatedToken,
     token::{Mint, Token, TokenAccount},
 };
-use hex_literal::hex;
 
 use crate::{
     messenger, BridgePayload, Deposit, Message, ASSOCIATED_TOKEN_PROGRAM_ID, DEPOSIT_SEED,
-    MESSENGER_SEED, NATIVE_SOL_PUBKEY, OTHER_BRIDGE, TOKEN_PROGRAM_ID, VAULT_SEED,
+    FINALIZE_BRIDGE_TOKEN_SELECTOR, MESSENGER_SEED, NATIVE_SOL_PUBKEY, OTHER_BRIDGE,
+    TOKEN_PROGRAM_ID, VAULT_SEED,
 };
 
 use super::{Messenger, MessengerError};
+
+// Constants for ABI encoding
+pub const ABI_ADDRESS_PARAM_SIZE: usize = 32;
+pub const ABI_U64_PARAM_SIZE: usize = 32;
+pub const ABI_DYNAMIC_OFFSET_SIZE: usize = 32;
+// Number of static 32-byte parameters before the dynamic `extraData` in finalizeBridgeToken
+pub const ABI_FINALIZE_BRIDGE_STATIC_PARAMS_COUNT: usize = 6;
+pub const ABI_FINALIZE_BRIDGE_STATIC_PART_SIZE: usize =
+    ABI_FINALIZE_BRIDGE_STATIC_PARAMS_COUNT * ABI_ADDRESS_PARAM_SIZE;
+
+/// Parameters for initiating a token bridge.
+struct BridgeCallParams {
+    remote_token: [u8; 20],
+    to: [u8; 20],
+    amount: u64,
+    min_gas_limit: u32,
+    extra_data: Vec<u8>,
+}
 
 #[derive(Accounts)]
 #[instruction(remote_token: [u8; 20])]
@@ -133,6 +151,13 @@ pub fn bridge_sol_to_handler(
     min_gas_limit: u32,
     extra_data: Vec<u8>,
 ) -> Result<()> {
+    let bridge_params = BridgeCallParams {
+        remote_token,
+        to,
+        amount,
+        min_gas_limit,
+        extra_data,
+    };
     initiate_bridge_sol(
         &ctx.accounts.system_program,
         &ctx.accounts.user.to_account_info(),
@@ -140,11 +165,7 @@ pub fn bridge_sol_to_handler(
         &mut ctx.accounts.msg_state,
         &mut ctx.accounts.deposit,
         ctx.accounts.user.key(),
-        remote_token,
-        to,
-        amount,
-        min_gas_limit,
-        extra_data,
+        &bridge_params,
     )
 }
 
@@ -165,20 +186,23 @@ pub fn bridge_tokens_to_handler(
     min_gas_limit: u32,
     extra_data: Vec<u8>,
 ) -> Result<()> {
+    let bridge_params = BridgeCallParams {
+        remote_token,
+        to,
+        amount,
+        min_gas_limit,
+        extra_data,
+    };
     initiate_bridge_tokens(
         &ctx.accounts.token_program,
-        &ctx.accounts.user.to_account_info(),
+        &ctx.accounts.user, // Pass the Signer directly
         &ctx.accounts.from_token_account,
         &ctx.accounts.vault_token_account,
         &mut ctx.accounts.msg_state,
         &mut ctx.accounts.deposit,
         ctx.accounts.user.key(),
         ctx.accounts.mint.key(),
-        remote_token,
-        to,
-        amount,
-        min_gas_limit,
-        extra_data,
+        &bridge_params,
     )
 }
 
@@ -194,7 +218,7 @@ pub fn bridge_tokens_to_handler(
 ///                     to identify the transaction.
 pub fn finalize_bridge_tokens<'info>(
     message_account: &mut Account<'info, Message>,
-    vault: &AccountInfo<'info>,
+    vault_pda_info: &AccountInfo<'info>, // Renamed for clarity
     account_infos: &'info [AccountInfo<'info>],
     payload: BridgePayload,
 ) -> Result<()> {
@@ -220,7 +244,7 @@ pub fn finalize_bridge_tokens<'info>(
         if payload.local_token == NATIVE_SOL_PUBKEY {
             return err!(BridgeError::InvalidSolUsage);
         } else {
-            let (deposit_acct, _) = Pubkey::find_program_address(
+            let (deposit_acct_key, _) = Pubkey::find_program_address(
                 &[
                     DEPOSIT_SEED,
                     payload.local_token.as_ref(),
@@ -229,47 +253,51 @@ pub fn finalize_bridge_tokens<'info>(
                 &crate::ID,
             );
 
-            let deposit_info = account_infos
-                .iter()
-                .find(|x| x.key == &deposit_acct)
-                .ok_or(ProgramError::InvalidArgument)?;
-
+            let deposit_info = find_account_info_by_key(
+                account_infos,
+                &deposit_acct_key,
+                ProgramError::NotEnoughAccountKeys, // Example error
+            )?;
             let mut deposit = Account::<Deposit>::try_from(deposit_info)?;
 
             if deposit.balance < payload.amount {
                 return err!(BridgeError::InsufficientBalance);
             }
-
             deposit.balance -= payload.amount;
 
-            let token = account_infos
-                .iter()
-                .find(|x| x.key == &payload.local_token)
-                .ok_or(ProgramError::InvalidArgument)?;
+            let local_token_mint_info = find_account_info_by_key(
+                account_infos,
+                &payload.local_token,
+                ProgramError::NotEnoughAccountKeys,
+            )?;
 
-            let (vault_ata, _) = Pubkey::find_program_address(
+            let (vault_ata_key, _) = Pubkey::find_program_address(
                 &[
-                    vault.key.to_bytes().as_ref(),
+                    vault_pda_info.key.to_bytes().as_ref(),
                     TOKEN_PROGRAM_ID.to_bytes().as_ref(),
-                    token.key.to_bytes().as_ref(),
+                    local_token_mint_info.key.to_bytes().as_ref(),
                 ],
                 &ASSOCIATED_TOKEN_PROGRAM_ID,
             );
 
-            let from = account_infos
-                .iter()
-                .find(|x| x.key == &vault_ata)
-                .ok_or(ProgramError::InvalidArgument)?;
-            let to = account_infos
-                .iter()
-                .find(|x| x.key == &payload.to)
-                .ok_or(ProgramError::InvalidArgument)?;
+            let vault_ata_info = find_account_info_by_key(
+                account_infos,
+                &vault_ata_key,
+                ProgramError::NotEnoughAccountKeys,
+            )?;
+            let recipient_ata_info = find_account_info_by_key(
+                account_infos,
+                &payload.to, // Assuming payload.to is the recipient's ATA pubkey
+                ProgramError::NotEnoughAccountKeys,
+            )?;
 
-            spl_transfer(
-                token.clone(),
-                from.clone(),
-                to.clone(),
-                vault.clone(),
+            spl_transfer_pda_signed(
+                local_token_mint_info,
+                vault_ata_info,
+                recipient_ata_info,
+                vault_pda_info,
+                VAULT_SEED, // Seed for the vault PDA
+                &crate::ID, // Program ID that owns the vault PDA
                 payload.amount,
             )?;
         }
@@ -289,66 +317,54 @@ pub fn finalize_bridge_tokens<'info>(
 
 fn initiate_bridge_sol<'info>(
     system_program: &Program<'info, System>,
-    user: &AccountInfo<'info>,
-    vault: &AccountInfo<'info>,
+    user_account_info: &AccountInfo<'info>,
+    vault_account_info: &AccountInfo<'info>,
     msg_state: &mut Account<'info, Messenger>,
     deposit: &mut Account<'info, Deposit>,
-    from: Pubkey,
-    remote_token: [u8; 20],
-    to: [u8; 20],
-    amount: u64,
-    min_gas_limit: u32,
-    extra_data: Vec<u8>,
+    from_solana_pubkey: Pubkey,
+    bridge_params: &BridgeCallParams,
 ) -> Result<()> {
     // Transfer `amount` of local_token from user to vault
     // Transfer lamports from user to vault PDA
     let cpi_context = CpiContext::new(
         system_program.to_account_info(),
         anchor_lang::system_program::Transfer {
-            from: user.clone(),
-            to: vault.clone(),
+            from: user_account_info.clone(),
+            to: vault_account_info.clone(),
         },
     );
-    anchor_lang::system_program::transfer(cpi_context, amount)?;
+    anchor_lang::system_program::transfer(cpi_context, bridge_params.amount)?;
 
     emit_event_and_send_message(
         msg_state,
         deposit,
-        from,
-        NATIVE_SOL_PUBKEY,
-        remote_token,
-        to,
-        amount,
-        min_gas_limit,
-        extra_data,
+        from_solana_pubkey,
+        NATIVE_SOL_PUBKEY, // local_token is SOL
+        bridge_params,
     )
 }
 
 fn initiate_bridge_tokens<'info>(
     token_program: &Program<'info, Token>,
-    user_account_info: &AccountInfo<'info>,
+    user_signer: &Signer<'info>, // Changed from user_account_info
     user_spl_token_account: &Account<'info, TokenAccount>,
     vault_spl_token_account: &Account<'info, TokenAccount>,
     msg_state: &mut Account<'info, Messenger>,
     deposit: &mut Account<'info, Deposit>,
     sender_on_solana_pubkey: Pubkey,
     token_on_solana_mint_pubkey: Pubkey,
-    token_on_base_address: [u8; 20],
-    receiver_on_base_address: [u8; 20],
-    amount_to_bridge: u64,
-    min_gas_limit_for_relay: u32,
-    extra_data_bytes: Vec<u8>,
+    bridge_params: &BridgeCallParams,
 ) -> Result<()> {
     if token_on_solana_mint_pubkey == NATIVE_SOL_PUBKEY {
         return err!(BridgeError::InvalidSolUsage);
     }
 
-    spl_transfer(
-        token_program.to_account_info(),
-        user_spl_token_account.to_account_info(),
-        vault_spl_token_account.to_account_info(),
-        user_account_info.clone(),
-        amount_to_bridge,
+    spl_transfer_user_signed(
+        &token_program.to_account_info(),
+        user_spl_token_account,
+        vault_spl_token_account,
+        user_signer,
+        bridge_params.amount,
     )?;
 
     emit_event_and_send_message(
@@ -356,100 +372,131 @@ fn initiate_bridge_tokens<'info>(
         deposit,
         sender_on_solana_pubkey,
         token_on_solana_mint_pubkey,
-        token_on_base_address,
-        receiver_on_base_address,
-        amount_to_bridge,
-        min_gas_limit_for_relay,
-        extra_data_bytes,
+        bridge_params,
     )
 }
 
 fn emit_event_and_send_message<'info>(
     msg_state: &mut Account<'info, Messenger>,
     deposit: &mut Account<'info, Deposit>,
-    from: Pubkey,
-    local_token: Pubkey,
-    remote_token: [u8; 20],
-    to: [u8; 20],
-    amount: u64,
-    min_gas_limit: u32,
-    extra_data: Vec<u8>,
+    from_solana_pubkey: Pubkey,
+    local_token_mint_pubkey: Pubkey,
+    bridge_params: &BridgeCallParams,
 ) -> Result<()> {
-    deposit.balance += amount;
+    deposit.balance += bridge_params.amount;
 
     emit!(TokenBridgeInitiated {
-        local_token,
-        remote_token,
-        from,
-        to,
-        amount,
-        extra_data: extra_data.clone()
+        local_token: local_token_mint_pubkey,
+        remote_token: bridge_params.remote_token,
+        from: from_solana_pubkey,
+        to: bridge_params.to,
+        amount: bridge_params.amount,
+        extra_data: bridge_params.extra_data.clone()
     });
 
     messenger::send_message_internal(
         msg_state,
         local_bridge_pubkey(),
         OTHER_BRIDGE,
-        encode_with_selector(remote_token, local_token, from, to, amount, extra_data),
-        min_gas_limit,
+        encode_bridge_payload_for_base(
+            // Renamed for clarity
+            bridge_params.remote_token,
+            local_token_mint_pubkey,
+            from_solana_pubkey,
+            bridge_params.to,
+            bridge_params.amount,
+            &bridge_params.extra_data,
+        ),
+        bridge_params.min_gas_limit,
     )
 }
 
-fn encode_with_selector(
-    remote_token: [u8; 20],
-    local_token: Pubkey,
-    from: Pubkey,
-    to: [u8; 20],
+/// Encodes the payload for the `Base.StandardBridge.finalizeBridgeToken` function.
+fn encode_bridge_payload_for_base(
+    remote_token_on_base: [u8; 20], // Address of the ERC20 on Base
+    local_token_on_solana: Pubkey,  // Address of the token on this chain
+    from_on_solana: Pubkey,         // Address of the sender on Solana
+    to_on_base: [u8; 20],           // Address of the receiver on Base
     amount: u64,
-    extra_data: Vec<u8>,
+    extra_data: &Vec<u8>,
 ) -> Vec<u8> {
-    // Create a vector to hold the encoded data
-    let mut encoded = Vec::new();
+    let mut encoded_payload = Vec::new();
 
-    // Add selector for Base.Bridge.finalizeBridgeToken 0x2d916920 (4 bytes)
-    encoded.extend_from_slice(&hex!("2d916920"));
+    // Selector for Base.StandardBridge.finalizeBridgeToken: 0x2d916920 (4 bytes)
+    encoded_payload.extend_from_slice(&FINALIZE_BRIDGE_TOKEN_SELECTOR);
 
-    // Add remote_token (32 bytes) - pad 20-byte address to 32 bytes
-    let mut remote_token_bytes = [0u8; 32];
-    remote_token_bytes[12..32].copy_from_slice(&remote_token);
-    encoded.extend_from_slice(&remote_token_bytes);
+    // Parameter 1: remoteToken (address)
+    append_padded_abi_bytes(
+        &mut encoded_payload,
+        &remote_token_on_base,
+        ABI_ADDRESS_PARAM_SIZE,
+    );
+    // Parameter 2: localToken (address) - Pubkey is 32 bytes
+    append_padded_abi_bytes(
+        &mut encoded_payload,
+        local_token_on_solana.as_ref(),
+        ABI_ADDRESS_PARAM_SIZE,
+    );
+    // Parameter 3: _from (address) - Pubkey is 32 bytes
+    append_padded_abi_bytes(
+        &mut encoded_payload,
+        from_on_solana.as_ref(),
+        ABI_ADDRESS_PARAM_SIZE,
+    );
+    // Parameter 4: _to (address)
+    append_padded_abi_bytes(&mut encoded_payload, &to_on_base, ABI_ADDRESS_PARAM_SIZE);
+    // Parameter 5: _amount (uint256)
+    append_padded_abi_bytes(
+        &mut encoded_payload,
+        &amount.to_be_bytes(),
+        ABI_U64_PARAM_SIZE,
+    );
+    // Parameter 6: _extraData (bytes) - This is a dynamic type, so we add an offset first.
+    // Offset points to the start of the extraData's length, which is after all static params.
+    append_padded_abi_bytes(
+        &mut encoded_payload,
+        &(ABI_FINALIZE_BRIDGE_STATIC_PART_SIZE as u64).to_be_bytes(),
+        ABI_DYNAMIC_OFFSET_SIZE,
+    );
 
-    // Add local_token (32 bytes) - Pubkey is already 32 bytes
-    encoded.extend_from_slice(local_token.as_ref());
+    // Dynamic part: extraData
+    // Length of extraData
+    append_padded_abi_bytes(
+        &mut encoded_payload,
+        &(extra_data.len() as u64).to_be_bytes(),
+        ABI_U64_PARAM_SIZE,
+    );
+    // Actual extraData
+    encoded_payload.extend_from_slice(extra_data);
 
-    // Add from (32 bytes) - Pubkey is already 32 bytes
-    encoded.extend_from_slice(from.as_ref());
+    // Pad extraData to a multiple of 32 bytes
+    let padding_len = (ABI_ADDRESS_PARAM_SIZE - (extra_data.len() % ABI_ADDRESS_PARAM_SIZE))
+        % ABI_ADDRESS_PARAM_SIZE;
+    encoded_payload.extend_from_slice(&vec![0u8; padding_len]);
 
-    // Add to (32 bytes) - pad 20-byte address to 32 bytes
-    let mut to_bytes = [0u8; 32];
-    to_bytes[12..32].copy_from_slice(&to);
-    encoded.extend_from_slice(&to_bytes);
+    encoded_payload
+}
 
-    // Add amount (32 bytes) - pad u64 to 32 bytes
-    let mut value_bytes = [0u8; 32];
-    value_bytes[24..32].copy_from_slice(&amount.to_be_bytes());
-    encoded.extend_from_slice(&value_bytes);
-
-    // Add message length and data (dynamic type)
-    // First add offset to message data (32 bytes)
-    let mut offset_bytes = [0u8; 32];
-    // Offset is 6 * 32 = 192 bytes (6 previous parameters of 32 bytes each)
-    offset_bytes[31] = 192;
-    encoded.extend_from_slice(&offset_bytes);
-
-    // Add extra_data length (32 bytes)
-    let mut length_bytes = [0u8; 32];
-    length_bytes[24..32].copy_from_slice(&(extra_data.len() as u64).to_be_bytes());
-    encoded.extend_from_slice(&length_bytes);
-
-    // Add extra data
-    encoded.extend_from_slice(&extra_data);
-
-    // Pad extra data to multiple of 32 bytes
-    let padding_bytes = (32 - (extra_data.len() % 32)) % 32;
-    encoded.extend_from_slice(&vec![0u8; padding_bytes]);
-
-    return encoded;
+// Helper function to pad data (e.g. addresses, uints) to a specific ABI length (typically 32 bytes)
+// and append it to the main byte vector. Data is right-aligned (big-endian).
+fn append_padded_abi_bytes(encoded_vec: &mut Vec<u8>, data_slice: &[u8], abi_length: usize) {
+    let mut padded_data = vec![0u8; abi_length];
+    let data_len = data_slice.len();
+    if data_len > abi_length {
+        // This case should ideally be handled before calling, e.g. by slicing `data_slice`
+        // For now, we'll truncate if it's an address like [u8;20] being put into 32 bytes (left padding)
+        // or take the last bytes if it's a u64 into 32 bytes.
+        // Standard behavior for ABI encoding is to pad smaller values, and for larger values, it depends.
+        // For numbers, usually takes lower-order bytes. For byte arrays, it's often an error or specific truncation.
+        // Here, we assume data_slice.len() <= abi_length, and we are padding.
+        // For addresses like [u8; 20] into 32 bytes, they are typically padded at the start.
+        // For numbers like u64 (8 bytes) into 32 bytes, they are also padded at the start.
+        padded_data[(abi_length - data_len)..].copy_from_slice(data_slice);
+    } else {
+        // Pad at the beginning (right-align)
+        padded_data[(abi_length - data_len)..].copy_from_slice(data_slice);
+    }
+    encoded_vec.extend_from_slice(&padded_data);
 }
 
 // TODO: need to implement
@@ -457,23 +504,59 @@ fn is_owned_by_bridge(_token: Pubkey) -> bool {
     return false;
 }
 
-fn spl_transfer<'info>(
-    token: AccountInfo<'info>,
-    from: AccountInfo<'info>,
-    to: AccountInfo<'info>,
-    authority: AccountInfo<'info>,
+/// Transfers SPL tokens when the authority is a user Signer.
+fn spl_transfer_user_signed<'info>(
+    token_program_info: &AccountInfo<'info>,
+    from_token_account: &Account<'info, TokenAccount>,
+    to_token_account: &Account<'info, TokenAccount>,
+    authority_signer: &Signer<'info>,
     amount: u64,
 ) -> Result<()> {
     let cpi_accounts = anchor_spl::token::Transfer {
-        from,
-        to,
-        authority,
+        from: from_token_account.to_account_info(),
+        to: to_token_account.to_account_info(),
+        authority: authority_signer.to_account_info(),
     };
-    let mut cpi_ctx = CpiContext::new(token, cpi_accounts);
-    let (_, bump) = Pubkey::find_program_address(&[VAULT_SEED], &crate::ID);
-    let binding: &[&[&[u8]]] = &[&[VAULT_SEED, &[bump]]];
-    cpi_ctx.signer_seeds = binding;
-    anchor_spl::token::transfer(cpi_ctx, amount)
+    let cpi_ctx = CpiContext::new(token_program_info.clone(), cpi_accounts);
+    anchor_spl::token::transfer(cpi_ctx, amount)?;
+    Ok(())
+}
+
+/// Transfers SPL tokens when the authority is a PDA.
+fn spl_transfer_pda_signed<'info>(
+    token_program_info: &AccountInfo<'info>,
+    from_token_account_info: &AccountInfo<'info>,
+    to_token_account_info: &AccountInfo<'info>,
+    authority_pda_info: &AccountInfo<'info>, // The PDA account that is the authority
+    pda_canonical_seed: &'static [u8],       // e.g., VAULT_SEED
+    pda_owning_program_id: &Pubkey,          // e.g., &crate::ID
+    amount: u64,
+) -> Result<()> {
+    let (_pda_key, bump_seed) =
+        Pubkey::find_program_address(&[pda_canonical_seed], pda_owning_program_id);
+    let signer_seeds: &[&[&[u8]]] = &[&[pda_canonical_seed, &[bump_seed]]];
+
+    let cpi_accounts = anchor_spl::token::Transfer {
+        from: from_token_account_info.clone(),
+        to: to_token_account_info.clone(),
+        authority: authority_pda_info.clone(),
+    };
+    let cpi_ctx =
+        CpiContext::new(token_program_info.clone(), cpi_accounts).with_signer(signer_seeds);
+    anchor_spl::token::transfer(cpi_ctx, amount)?;
+    Ok(())
+}
+
+// Helper to find an AccountInfo by its key from a slice of AccountInfos.
+fn find_account_info_by_key<'a, 'info>(
+    account_infos: &'a [AccountInfo<'info>],
+    key: &Pubkey,
+    error_if_not_found: ProgramError,
+) -> Result<&'a AccountInfo<'info>> {
+    account_infos
+        .iter()
+        .find(|acc_info| acc_info.key == key)
+        .ok_or(error_if_not_found.into())
 }
 
 pub fn local_bridge_pubkey() -> Pubkey {
