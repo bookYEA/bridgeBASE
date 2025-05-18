@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::{OutputRoot, ROOT_KEY, TRUSTED_ORACLE};
+use crate::{OutputRoot, OUTPUT_ROOT_SEED, TRUSTED_ORACLE};
 
 #[derive(Accounts)]
 #[instruction(root: [u8; 32], block_number: u64)]
@@ -9,7 +9,7 @@ pub struct PostRoot<'info> {
         init, 
         payer = payer, 
         space = 8 + OutputRoot::INIT_SPACE, 
-        seeds = [ROOT_KEY, &block_number.to_le_bytes()], 
+        seeds = [OUTPUT_ROOT_SEED, &block_number.to_le_bytes()], 
         bump
     )]
     pub root: Account<'info, OutputRoot>,

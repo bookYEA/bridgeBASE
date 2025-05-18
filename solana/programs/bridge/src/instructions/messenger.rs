@@ -41,15 +41,13 @@ pub struct SentMessage {
 #[event]
 // Emitted whenever a message is successfully relayed on this chain.
 pub struct RelayedMessage {
-    // Hash of the message that was relayed.
-    pub msg_hash: [u8; 32],
+    pub msg_hash: [u8; 32], // Hash of the message that was relayed.
 }
 
 #[event]
 // Emitted whenever a message fails to be relayed on this chain.
 pub struct FailedRelayedMessage {
-    // Hash of the message that failed to be relayed.
-    pub msg_hash: [u8; 32],
+    pub msg_hash: [u8; 32], // Hash of the message that failed to be relayed.
 }
 
 /// @notice Sends a message to some target address on Base. Note that if the call

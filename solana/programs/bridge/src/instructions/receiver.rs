@@ -7,8 +7,6 @@ use crate::{Ix, Message, MessengerPayload, OutputRoot, DEFAULT_SENDER, MESSAGE_S
 
 use super::messenger;
 
-// TODO: Should we block vault transfers that don't go through the bridge component?
-
 #[derive(Accounts)]
 #[instruction(transaction_hash: [u8; 32])]
 pub struct ProveTransaction<'info> {
@@ -44,22 +42,6 @@ pub struct FinalizeTransaction<'info> {
     pub vault: AccountInfo<'info>,
 }
 
-pub fn finalize_transaction_handler<'a, 'info>(
-    ctx: Context<'a, '_, 'info, 'info, FinalizeTransaction<'info>>,
-    _transaction_hash: &[u8; 32],
-) -> Result<()> {
-    if ctx.accounts.message.is_executed {
-        return err!(ReceiverError::AlreadyExecuted);
-    }
-
-    ctx.accounts.message.is_executed = true;
-    handle_ixs(
-        ctx.remaining_accounts,
-        &mut ctx.accounts.message,
-        &ctx.accounts.vault,
-    )
-}
-
 pub fn prove_transaction_handler(
     ctx: Context<ProveTransaction>,
     transaction_hash: &[u8; 32],
@@ -83,6 +65,22 @@ pub fn prove_transaction_handler(
     ctx.accounts.message.remote_sender = *remote_sender;
 
     Ok(())
+}
+
+pub fn finalize_transaction_handler<'a, 'info>(
+    ctx: Context<'a, '_, 'info, 'info, FinalizeTransaction<'info>>,
+    _transaction_hash: &[u8; 32],
+) -> Result<()> {
+    if ctx.accounts.message.is_executed {
+        return err!(ReceiverError::AlreadyExecuted);
+    }
+
+    ctx.accounts.message.is_executed = true;
+    handle_ixs(
+        ctx.remaining_accounts,
+        &mut ctx.accounts.message,
+        &ctx.accounts.vault,
+    )
 }
 
 /**

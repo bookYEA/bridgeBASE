@@ -74,7 +74,7 @@ pub const MESSENGER_SEED: &[u8] = b"messenger_state";
 pub const NATIVE_SOL_PUBKEY: Pubkey = pubkey!("LYDZWqhCarLgXtQsmWFr4DaqRE7c21xd49fpdVUUaBr");
 
 #[constant]
-pub const ROOT_KEY: &[u8] = b"output_root";
+pub const OUTPUT_ROOT_SEED: &[u8] = b"output_root";
 
 #[constant]
 pub const MESSAGE_SEED: &[u8] = b"message";

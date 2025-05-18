@@ -76,9 +76,9 @@ fn minimum_gas_limit(byte_count: u64) -> u64 {
 
 fn encode_packed(gas_limit: u64, is_creation: bool, data: Vec<u8>) -> Vec<u8> {
     let mut opaque_data = Vec::new();
-    opaque_data.extend_from_slice(&gas_limit.to_be_bytes()); // Equivalent to _gasLimit
-    opaque_data.push(is_creation as u8); // Equivalent to _isCreation
-    opaque_data.extend_from_slice(&data); // Equivalent to _data
+    opaque_data.extend_from_slice(&gas_limit.to_be_bytes());
+    opaque_data.push(is_creation as u8);
+    opaque_data.extend_from_slice(&data);
     return opaque_data;
 }
 
