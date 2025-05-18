@@ -1,4 +1,4 @@
-use crate::constants::DEPOSIT_VERSION;
+use crate::{constants::DEPOSIT_VERSION, BASE_TRANSACTION_COST, GAS_PER_BYTE_COST};
 use anchor_lang::prelude::*;
 
 #[derive(Accounts)]
@@ -71,7 +71,7 @@ pub fn deposit_transaction_internal<'info>(
 }
 
 fn minimum_gas_limit(byte_count: u64) -> u64 {
-    return byte_count * 40 + 21000;
+    return byte_count * GAS_PER_BYTE_COST + BASE_TRANSACTION_COST;
 }
 
 fn encode_packed(gas_limit: u64, is_creation: bool, data: Vec<u8>) -> Vec<u8> {

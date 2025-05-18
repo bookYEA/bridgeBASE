@@ -94,3 +94,9 @@ pub const TOKEN_PROGRAM_ID: Pubkey = pubkey!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9S
 
 #[constant]
 pub const FINALIZE_BRIDGE_TOKEN_SELECTOR: [u8; 4] = hex!("2d916920");
+
+#[constant]
+pub const GAS_PER_BYTE_COST: u64 = 40;
+
+#[constant]
+pub const BASE_TRANSACTION_COST: u64 = 21000;
