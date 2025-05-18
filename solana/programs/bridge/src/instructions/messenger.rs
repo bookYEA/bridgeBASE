@@ -9,6 +9,7 @@ use anchor_lang::solana_program::instruction::Instruction;
 use anchor_lang::solana_program::keccak;
 use anchor_lang::{prelude::*, solana_program};
 use hex_literal::hex;
+use std::cmp::max;
 
 use super::{portal, standard_bridge};
 
@@ -241,13 +242,14 @@ fn encode_with_selector(
     // Create a vector to hold the encoded data
     let mut encoded = Vec::new();
 
-    // Add selector for Base.CrossChainMessenger.relayMessage 0x54aa43a3 (4 bytes)
+    // Add selector for Base.CrossChainMessenger.relayMessage(bytes32,address,address,uint256,uint256,bytes)
+    // Selector: 0x54aa43a3 (first 4 bytes of keccak256 hash of the function signature)
     encoded.extend_from_slice(&hex!("54aa43a3"));
 
     // Add nonce (32 bytes) - nonce is already 32 bytes
     encoded.extend_from_slice(&nonce);
 
-    // Add sender (32 bytes) - Pubkey is already 32 bytes
+    // Add sender (32 bytes) - Pubkey is already 32 bytes (Solana Pubkey passed as 32-byte value)
     encoded.extend_from_slice(sender.as_ref());
 
     // Add target (32 bytes) - pad 20-byte address to 32 bytes
@@ -267,9 +269,9 @@ fn encode_with_selector(
 
     // Add message length and data (dynamic type)
     // First add offset to message data (32 bytes)
+    // Offset is 6 * 32 = 192 bytes (for the 6 preceding static parameters of 32 bytes each)
     let mut offset_bytes = [0u8; 32];
-    // Offset is 6 * 32 = 192 bytes (6 previous parameters of 32 bytes each)
-    offset_bytes[31] = 192;
+    offset_bytes[24..32].copy_from_slice(&(192u64).to_be_bytes());
     encoded.extend_from_slice(&offset_bytes);
 
     // Add message length (32 bytes)
@@ -302,19 +304,8 @@ fn message_nonce(msg_nonce: u64) -> [u8; 32] {
 fn encode_versioned_nonce(nonce: u64, version: u16) -> [u8; 32] {
     let mut nonce_bytes = [0u8; 32];
     nonce_bytes[0..2].copy_from_slice(&version.to_be_bytes());
-    nonce_bytes[24..32].copy_from_slice(&nonce.to_be_bytes());
+    nonce_bytes[24..32].copy_from_slice(&nonce.to_be_bytes()); // Store nonce in the lower bytes for EVM compatibility
     return nonce_bytes;
-}
-
-fn max(a: u64, b: u64) -> u64 {
-    if a > b {
-        return a;
-    }
-    return b;
-}
-
-pub fn paused() -> bool {
-    return false;
 }
 
 fn hash_message(nonce: [u8; 32], sender: [u8; 20], message: &Vec<u8>) -> [u8; 32] {
@@ -361,4 +352,8 @@ pub enum MessengerError {
     CanOnlyRetryAFailedMessage,
     #[msg("Message has already been relayed")]
     MessageHasAlreadyBeenRelayed,
+}
+
+pub fn paused() -> bool {
+    return false;
 }
