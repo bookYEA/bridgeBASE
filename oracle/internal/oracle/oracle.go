@@ -68,7 +68,7 @@ func Main(ctx *cli.Context) error {
 
 	log.Info("Starting Solana event indexer", "url", wsUrl, "program", programAddr.String())
 
-	err = startIndexer(ctx.Context, wsUrl, programAddr, r)
+	err = startEvmIndexer(ctx.Context, wsUrl, programAddr, r)
 	if err != nil {
 		log.Crit("Indexer failed", "err", err)
 		return err
@@ -78,8 +78,8 @@ func Main(ctx *cli.Context) error {
 	return nil
 }
 
-// startIndexer connects to the Solana WebSocket endpoint and subscribes to program logs.
-func startIndexer(ctx context.Context, wsUrl string, programAddr solana.PublicKey, r *relayer.Relayer) error {
+// startEvmIndexer connects to the Solana WebSocket endpoint and subscribes to program logs.
+func startEvmIndexer(ctx context.Context, wsUrl string, programAddr solana.PublicKey, r *relayer.Relayer) error {
 	wsClient, err := ws.Connect(ctx, wsUrl)
 	if err != nil {
 		return fmt.Errorf("failed to connect to WebSocket %s: %w", wsUrl, err)

@@ -3,6 +3,7 @@ module github.com/base/alt-l1-bridge/oracle
 go 1.23.2
 
 require (
+	github.com/blocto/solana-go-sdk v1.30.0
 	github.com/ethereum/go-ethereum v1.15.10
 	github.com/gagliardetto/binary v0.8.0
 	github.com/gagliardetto/solana-go v1.12.0
