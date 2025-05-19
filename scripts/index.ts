@@ -1,13 +1,9 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import type { Bridge } from "./target/types/bridge";
-import { PublicKey } from "@solana/web3.js";
 
-const LOCAL_TOKEN_ADDRESS = toPubkey(
-  "0501550155015501550155015501550155015501550155015501550155015501"
-);
 const REMOTE_TOKEN_ADDRESS = toArray(
-  "2DBE6a59cA75EAaeC4FE78D0Cc8AAdAa6519Ce20"
+  "6B8C683eC15bf08adf9EF921942c10cae89De475"
 ); // wrapped SOL on Base Sepolia
 
 async function main() {
@@ -22,14 +18,7 @@ async function main() {
   const extraData = Buffer.from("sample data payload", "utf-8");
 
   const tx = await program.methods
-    .bridgeTokensTo(
-      LOCAL_TOKEN_ADDRESS,
-      REMOTE_TOKEN_ADDRESS,
-      to,
-      value,
-      minGasLimit,
-      extraData
-    )
+    .bridgeSolTo(REMOTE_TOKEN_ADDRESS, to, value, minGasLimit, extraData)
     .accounts({})
     .rpc();
 
@@ -50,9 +39,6 @@ main().catch((e) => {
   console.log(e.getLogs());
 });
 
-function toPubkey(a: string): PublicKey {
-  return new PublicKey(Buffer.from(a, "hex"));
-}
 function toArray(a: string): number[] {
   return Uint8Array.from(Buffer.from(a, "hex")) as unknown as number[];
 }
