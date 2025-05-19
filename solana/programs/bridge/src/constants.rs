@@ -9,12 +9,12 @@ pub const DEPOSIT_VERSION: u64 = 0;
 pub const MESSAGE_VERSION: u16 = 1;
 
 #[constant]
-// L2CrossDomainMessenger at 0xf84212833806ba37257781117c119108F2145009 (baseSepolia)
-pub const OTHER_MESSENGER: [u8; 20] = hex!("f84212833806ba37257781117c119108F2145009");
+// L2CrossDomainMessenger at 0x9d2f33aF8610F1b53Dd6FcE593f76A2b4B402176 (baseSepolia)
+pub const OTHER_MESSENGER: [u8; 20] = hex!("9d2f33aF8610F1b53Dd6FcE593f76A2b4B402176");
 
 #[constant]
-// L2StandardBridge at 0xb8947d2725D3E9De9b19fC720f053300c50981e5 (baseSepolia)
-pub const OTHER_BRIDGE: [u8; 20] = hex!("b8947d2725D3E9De9b19fC720f053300c50981e5");
+// L2StandardBridge at 0x572230b2D4A445b13a93c08dD7b69544C8f0Bb9F (baseSepolia)
+pub const OTHER_BRIDGE: [u8; 20] = hex!("572230b2D4A445b13a93c08dD7b69544C8f0Bb9F");
 
 #[constant]
 pub const DEFAULT_SENDER: [u8; 20] = hex!("000000000000000000000000000000000000dEaD");
@@ -83,7 +83,8 @@ pub const MESSAGE_SEED: &[u8] = b"message";
 pub const DEPOSIT_SEED: &[u8] = b"deposit";
 
 #[constant]
-pub const TRUSTED_ORACLE: Pubkey = pubkey!("H4BF4JEUcLaNTEp4ppU5YBx8buWfQKnp32UMBH25Rp2V");
+// pub const TRUSTED_ORACLE: Pubkey = pubkey!("eEwCrQLBdQchykrkYitkYUZskd7MPrU2YxBXcPDPnMt"); // un-comment for Devnet deployments
+pub const TRUSTED_ORACLE: Pubkey = pubkey!("H4BF4JEUcLaNTEp4ppU5YBx8buWfQKnp32UMBH25Rp2V"); // for local testing
 
 #[constant]
 pub const ASSOCIATED_TOKEN_PROGRAM_ID: Pubkey =
