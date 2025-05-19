@@ -7,7 +7,7 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/base/alt-l1-bridge/oracle/internal/relayer"
+	"github.com/base/alt-l1-bridge/oracle/internal/evm"
 	"github.com/base/alt-l1-bridge/oracle/internal/types"
 	"github.com/base/alt-l1-bridge/oracle/internal/utils"
 	"github.com/ethereum/go-ethereum/common"
@@ -40,12 +40,12 @@ var transactionDepositedDiscriminator = func() []byte {
 }()
 
 type SvmLogHandler struct {
-	relayer        *relayer.Relayer
+	relayer        *evm.Relayer
 	seenSignatures map[string]bool
 }
 
 func NewLogHandler(ctx *cli.Context) (*SvmLogHandler, error) {
-	r, err := relayer.New(ctx)
+	r, err := evm.NewRelayer(ctx)
 	if err != nil {
 		log.Error("Error creating relayer", "err", err)
 		return nil, err

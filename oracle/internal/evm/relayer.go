@@ -1,4 +1,4 @@
-package relayer
+package evm
 
 import (
 	"context"
@@ -24,7 +24,7 @@ type Relayer struct {
 	chainId    *big.Int
 }
 
-func New(ctx *cli.Context) (*Relayer, error) {
+func NewRelayer(ctx *cli.Context) (*Relayer, error) {
 	client, err := ethclient.Dial(ctx.String(flags.BaseRpcUrlFlag.Name))
 	if err != nil {
 		return nil, err
