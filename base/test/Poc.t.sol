@@ -6,12 +6,12 @@ import {Test} from "forge-std/Test.sol";
 import {ERC1967Factory} from "solady/utils/ERC1967Factory.sol";
 import {ERC1967FactoryConstants} from "solady/utils/ERC1967FactoryConstants.sol";
 
-import {ISolanaMessagePasser} from "../src/interfaces/ISolanaMessagePasser.sol";
 import {Bridge} from "../src/Bridge.sol";
 import {CrossChainERC20} from "../src/CrossChainERC20.sol";
 import {CrossChainERC20Factory} from "../src/CrossChainERC20Factory.sol";
 import {CrossChainMessenger} from "../src/CrossChainMessenger.sol";
 import {MessagePasser} from "../src/MessagePasser.sol";
+import {ISolanaMessagePasser} from "../src/interfaces/ISolanaMessagePasser.sol";
 
 contract Poc is Test {
     address proxyAdmin;
@@ -39,7 +39,8 @@ contract Poc is Test {
         MessagePasser messagePasser = new MessagePasser();
 
         // Deploy the CrossChainMessenger
-        CrossChainMessenger messengerImpl = new CrossChainMessenger(ISolanaMessagePasser(payable(address(messagePasser))));
+        CrossChainMessenger messengerImpl =
+            new CrossChainMessenger(ISolanaMessagePasser(payable(address(messagePasser))));
         messengerProxy = CrossChainMessenger(
             ERC1967Factory(ERC1967FactoryConstants.ADDRESS).deployAndCall({
                 implementation: address(messengerImpl),

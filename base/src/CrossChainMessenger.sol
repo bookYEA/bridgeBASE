@@ -7,6 +7,12 @@ import {SafeCall} from "optimism/packages/contracts-bedrock/src/libraries/SafeCa
 import {Initializable} from "solady/utils/Initializable.sol";
 
 contract CrossChainMessenger is Initializable {
+    struct MessengerPayload {
+        uint256 nonce;
+        address sender;
+        bytes message;
+    }
+
     //////////////////////////////////////////////////////////////
     ///                       Constants                        ///
     //////////////////////////////////////////////////////////////
@@ -39,16 +45,10 @@ contract CrossChainMessenger is Initializable {
     //////////////////////////////////////////////////////////////
 
     /// @notice Emitted whenever a message is sent to the other chain.
-    /// @param target       Address of the recipient of the message.
     /// @param sender       Address of the sender of the message.
-    /// @param message      Message to trigger the recipient address with.
+    /// @param ixs          Message to trigger the recipient address with.
     /// @param messageNonce Unique nonce attached to the message.
-    event SentMessage(
-        address indexed target,
-        address indexed sender,
-        bytes message,
-        uint256 messageNonce
-    );
+    event SentMessage(address indexed sender, ISolanaMessagePasser.Instruction[] ixs, uint256 messageNonce);
 
     /// @notice Emitted whenever a message is successfully relayed on this chain.
     /// @param messageHash Hash of the message that was relayed.
@@ -126,14 +126,13 @@ contract CrossChainMessenger is Initializable {
     ///         always reverts, then the message will be unrelayable, and any ETH sent will be
     ///         permanently locked. The same will occur if the target on the other chain is
     ///         considered unsafe (see the _isUnsafeTarget() function).
-    /// @param _target      Target contract or wallet address.
-    /// @param _message     Message to trigger the target address with.
-    function sendMessage(address _target, bytes calldata _message) external {
+    /// @param messageIxs Solana instructions to execute.
+    function sendMessage(ISolanaMessagePasser.Instruction[] calldata messageIxs) external {
         ISolanaMessagePasser.Instruction[] memory ixs = new ISolanaMessagePasser.Instruction[](1);
         ixs[0] = ISolanaMessagePasser.Instruction({
             programId: remoteMessenger,
             accounts: new ISolanaMessagePasser.AccountMeta[](0),
-            data: _message
+            data: abi.encode(MessengerPayload({nonce: messageNonce(), sender: msg.sender, message: abi.encode(messageIxs)}))
         });
 
         // Triggers a message to the other messenger. Note that the amount of gas provided to the
@@ -142,7 +141,7 @@ contract CrossChainMessenger is Initializable {
         // the minimum gas limit specified by the user.
         _sendMessage(ixs);
 
-        emit SentMessage(_target, msg.sender, _message, messageNonce());
+        emit SentMessage(msg.sender, messageIxs, messageNonce());
 
         unchecked {
             ++msgNonce;

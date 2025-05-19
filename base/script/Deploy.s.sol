@@ -7,11 +7,11 @@ import {console} from "forge-std/console.sol";
 import {ERC1967Factory} from "solady/utils/ERC1967Factory.sol";
 import {ERC1967FactoryConstants} from "solady/utils/ERC1967FactoryConstants.sol";
 
-import {ISolanaMessagePasser} from "../src/interfaces/ISolanaMessagePasser.sol";
 import {Bridge} from "../src/Bridge.sol";
 import {CrossChainERC20Factory} from "../src/CrossChainERC20Factory.sol";
 import {CrossChainMessenger} from "../src/CrossChainMessenger.sol";
 import {MessagePasser} from "../src/MessagePasser.sol";
+import {ISolanaMessagePasser} from "../src/interfaces/ISolanaMessagePasser.sol";
 
 contract DeployScript is Script {
     address public constant PROXY_ADMIN = 0x0fe884546476dDd290eC46318785046ef68a0BA9;
