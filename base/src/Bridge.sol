@@ -8,6 +8,7 @@ import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {CrossChainERC20} from "./CrossChainERC20.sol";
 import {CrossChainMessenger} from "./CrossChainMessenger.sol";
 import {ISolanaMessagePasser} from "./interfaces/ISolanaMessagePasser.sol";
+import {Encoder} from "./libraries/Encoder.sol";
 
 contract Bridge is Initializable {
     struct BridgePayload {
@@ -206,7 +207,7 @@ contract Bridge is Initializable {
         messageIxs[0] = ISolanaMessagePasser.Instruction({
             programId: remoteBridge,
             accounts: new ISolanaMessagePasser.AccountMeta[](0),
-            data: abi.encode(
+            data: Encoder.encodeBridgePayload(
                 BridgePayload({
                     localToken: _remoteToken,
                     remoteToken: _localToken,
@@ -218,7 +219,7 @@ contract Bridge is Initializable {
             )
         });
 
-        CrossChainMessenger(messenger).sendMessage({messageIxs: messageIxs});
+        CrossChainMessenger(messenger).sendMessage(messageIxs);
     }
 
     /// @notice Checks if a given address is an CrossChainERC20. Not perfect, but good enough. Just the way we like it.

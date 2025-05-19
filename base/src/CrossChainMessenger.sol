@@ -2,6 +2,8 @@
 pragma solidity 0.8.28;
 
 import {ISolanaMessagePasser} from "./interfaces/ISolanaMessagePasser.sol";
+
+import {Encoder} from "./libraries/Encoder.sol";
 import {Encoding} from "optimism/packages/contracts-bedrock/src/libraries/Encoding.sol";
 import {SafeCall} from "optimism/packages/contracts-bedrock/src/libraries/SafeCall.sol";
 import {Initializable} from "solady/utils/Initializable.sol";
@@ -10,7 +12,7 @@ contract CrossChainMessenger is Initializable {
     struct MessengerPayload {
         uint256 nonce;
         address sender;
-        bytes message;
+        ISolanaMessagePasser.Instruction[] ixs;
     }
 
     //////////////////////////////////////////////////////////////
@@ -132,7 +134,9 @@ contract CrossChainMessenger is Initializable {
         ixs[0] = ISolanaMessagePasser.Instruction({
             programId: remoteMessenger,
             accounts: new ISolanaMessagePasser.AccountMeta[](0),
-            data: abi.encode(MessengerPayload({nonce: messageNonce(), sender: msg.sender, message: abi.encode(messageIxs)}))
+            data: Encoder.encodeMessengerPayload(
+                MessengerPayload({nonce: messageNonce(), sender: msg.sender, ixs: messageIxs})
+            )
         });
 
         // Triggers a message to the other messenger. Note that the amount of gas provided to the
