@@ -12,7 +12,7 @@ import {ISemver} from "optimism/packages/contracts-bedrock/interfaces/universal/
 /// @notice The L2ToL1MessagePasser is a dedicated contract where messages that are being sent from
 ///         L2 to L1 can be stored. The storage root of this contract is pulled up to the top level
 ///         of the L2 output to reduce the cost of proving the existence of sent messages.
-contract L2ToL1MessagePasser is ISemver {
+contract MessagePasser is ISemver {
     /// @notice Struct representing a withdrawal transaction.
     /// @custom:field nonce    Nonce of the withdrawal transaction
     /// @custom:field sender   Address of the sender of the transaction.
@@ -54,13 +54,8 @@ contract L2ToL1MessagePasser is ISemver {
 
     /// @notice Sends a message from L2 to L1.
     function initiateWithdrawal(Instruction[] calldata ixs) public payable {
-        bytes32 withdrawalHash = _hashWithdrawal(
-            WithdrawalTransaction({
-                nonce: messageNonce(),
-                sender: msg.sender,
-                ixs: ixs
-            })
-        );
+        bytes32 withdrawalHash =
+            _hashWithdrawal(WithdrawalTransaction({nonce: messageNonce(), sender: msg.sender, ixs: ixs}));
 
         sentMessages[withdrawalHash] = true;
 

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+import {ISolanaMessagePasser} from "./interfaces/ISolanaMessagePasser.sol";
+import {Encoding} from "optimism/packages/contracts-bedrock/src/libraries/Encoding.sol";
 import {SafeCall} from "optimism/packages/contracts-bedrock/src/libraries/SafeCall.sol";
 import {Initializable} from "solady/utils/Initializable.sol";
 
@@ -8,6 +10,9 @@ contract CrossChainMessenger is Initializable {
     //////////////////////////////////////////////////////////////
     ///                       Constants                        ///
     //////////////////////////////////////////////////////////////
+
+    /// @notice Current message version identifier.
+    uint16 public constant MESSAGE_VERSION = 1;
 
     /// @notice Special address to be used as the tx origin for gas estimation calls in the
     ///         OptimismPortal and CrossDomainMessenger calls. You only need to use this address if
@@ -27,9 +32,23 @@ contract CrossChainMessenger is Initializable {
     bytes32 internal constant DEFAULT_L2_SENDER =
         bytes32(0x000000000000000000000000000000000000000000000000000000000000dEaD);
 
+    ISolanaMessagePasser public immutable SOLANA_MESSAGE_PASSER;
+
     //////////////////////////////////////////////////////////////
     ///                       Events                           ///
     //////////////////////////////////////////////////////////////
+
+    /// @notice Emitted whenever a message is sent to the other chain.
+    /// @param target       Address of the recipient of the message.
+    /// @param sender       Address of the sender of the message.
+    /// @param message      Message to trigger the recipient address with.
+    /// @param messageNonce Unique nonce attached to the message.
+    event SentMessage(
+        address indexed target,
+        address indexed sender,
+        bytes message,
+        uint256 messageNonce
+    );
 
     /// @notice Emitted whenever a message is successfully relayed on this chain.
     /// @param messageHash Hash of the message that was relayed.
@@ -56,6 +75,11 @@ contract CrossChainMessenger is Initializable {
     ///         once. A message will not be present in this mapping if it successfully executed on the first attempt.
     mapping(bytes32 messageHash => bool failed) public failedMessages;
 
+    /// @notice Nonce for the next message to be sent, without the message version applied. Use the
+    ///         messageNonce getter which will insert the message version into the nonce to give you
+    ///         the actual nonce to be used for the message.
+    uint240 internal msgNonce;
+
     /// @notice Address of the message sender that interacted with the messenger on the remote chain.
     ///
     /// @dev If the value of this variable is DEFAULT_L2_SENDER then no message is currently being executed. Use the
@@ -69,7 +93,8 @@ contract CrossChainMessenger is Initializable {
     //////////////////////////////////////////////////////////////
 
     /// @notice Constructs the CrossChainMessenger contract.
-    constructor() {
+    constructor(ISolanaMessagePasser solanaMessagePasser) {
+        SOLANA_MESSAGE_PASSER = solanaMessagePasser;
         _disableInitializers();
     }
 
@@ -95,6 +120,33 @@ contract CrossChainMessenger is Initializable {
         }
 
         remoteMessenger = remoteMessenger_;
+    }
+
+    /// @notice Sends a message to some target address on the other chain. Note that if the call
+    ///         always reverts, then the message will be unrelayable, and any ETH sent will be
+    ///         permanently locked. The same will occur if the target on the other chain is
+    ///         considered unsafe (see the _isUnsafeTarget() function).
+    /// @param _target      Target contract or wallet address.
+    /// @param _message     Message to trigger the target address with.
+    function sendMessage(address _target, bytes calldata _message) external {
+        ISolanaMessagePasser.Instruction[] memory ixs = new ISolanaMessagePasser.Instruction[](1);
+        ixs[0] = ISolanaMessagePasser.Instruction({
+            programId: remoteMessenger,
+            accounts: new ISolanaMessagePasser.AccountMeta[](0),
+            data: _message
+        });
+
+        // Triggers a message to the other messenger. Note that the amount of gas provided to the
+        // message is the amount of gas requested by the user PLUS the base gas value. We want to
+        // guarantee the property that the call to the target contract will always have at least
+        // the minimum gas limit specified by the user.
+        _sendMessage(ixs);
+
+        emit SentMessage(_target, msg.sender, _message, messageNonce());
+
+        unchecked {
+            ++msgNonce;
+        }
     }
 
     /// @notice Relays a message that was sent by the remote CrossChainMessenger contract. Can only be executed via
@@ -177,6 +229,14 @@ contract CrossChainMessenger is Initializable {
         }
     }
 
+    /// @notice Retrieves the next message nonce. Message version will be added to the upper two
+    ///         bytes of the message nonce. Message version allows us to treat messages as having
+    ///         different structures.
+    /// @return Nonce of the next message to be sent, with added message version.
+    function messageNonce() public view returns (uint256) {
+        return Encoding.encodeVersionedNonce(msgNonce, MESSAGE_VERSION);
+    }
+
     //////////////////////////////////////////////////////////////
     ///                       Internal Functions               ///
     //////////////////////////////////////////////////////////////
@@ -198,6 +258,14 @@ contract CrossChainMessenger is Initializable {
     /// @return Whether or not the address is an unsafe system address.
     function _isUnsafeTarget(address target) internal view virtual returns (bool) {
         return target == address(this);
+    }
+
+    /// @notice Sends a low-level message to the other messenger. Needs to be implemented by child
+    ///         contracts because the logic for this depends on the network where the messenger is
+    ///         being deployed.
+    /// @param ixs The instructions array to be executed from the Solana MessagePasser program
+    function _sendMessage(ISolanaMessagePasser.Instruction[] memory ixs) internal {
+        SOLANA_MESSAGE_PASSER.initiateWithdrawal(ixs);
     }
 
     //////////////////////////////////////////////////////////////

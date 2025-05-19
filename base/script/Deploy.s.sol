@@ -7,9 +7,11 @@ import {console} from "forge-std/console.sol";
 import {ERC1967Factory} from "solady/utils/ERC1967Factory.sol";
 import {ERC1967FactoryConstants} from "solady/utils/ERC1967FactoryConstants.sol";
 
+import {ISolanaMessagePasser} from "../src/interfaces/ISolanaMessagePasser.sol";
 import {Bridge} from "../src/Bridge.sol";
 import {CrossChainERC20Factory} from "../src/CrossChainERC20Factory.sol";
 import {CrossChainMessenger} from "../src/CrossChainMessenger.sol";
+import {MessagePasser} from "../src/MessagePasser.sol";
 
 contract DeployScript is Script {
     address public constant PROXY_ADMIN = 0x0fe884546476dDd290eC46318785046ef68a0BA9;
@@ -27,7 +29,8 @@ contract DeployScript is Script {
         console.log("Deploying on chain: %s", chain.name);
 
         vm.startBroadcast();
-        address messenger = _deployMessenger();
+        address messagePasser = _deployMessagePasser();
+        address messenger = _deployMessenger(messagePasser);
         address bridge = _deployBridge(messenger);
         address factory = _deployFactory(bridge);
         vm.stopBroadcast();
@@ -46,8 +49,13 @@ contract DeployScript is Script {
         vm.writeFile(string.concat("deployments/", chain.chainAlias, ".json"), out);
     }
 
-    function _deployMessenger() private returns (address) {
-        CrossChainMessenger messengerImpl = new CrossChainMessenger();
+    function _deployMessagePasser() private returns (address) {
+        MessagePasser messagePasser = new MessagePasser();
+        return address(messagePasser);
+    }
+
+    function _deployMessenger(address messagePasser) private returns (address) {
+        CrossChainMessenger messengerImpl = new CrossChainMessenger(ISolanaMessagePasser(payable(messagePasser)));
         CrossChainMessenger messengerProxy = CrossChainMessenger(
             ERC1967Factory(ERC1967FactoryConstants.ADDRESS).deployAndCall({
                 implementation: address(messengerImpl),
