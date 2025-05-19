@@ -35,11 +35,13 @@ contract DeployScript is Script {
         address factory = _deployFactory(bridge);
         vm.stopBroadcast();
 
+        console.log("Deployed MessagePasser at: %s", messagePasser);
         console.log("Deployed CrossChainMessenger at: %s", messenger);
         console.log("Deployed Bridge at: %s", bridge);
         console.log("Deployed CrossChainERC20Factory at: %s", factory);
 
         string memory out = "{";
+        out = _record(out, "MessagePasser", messagePasser, false);
         out = _record(out, "CrossChainMessenger", messenger, false);
         out = _record(out, "Bridge", bridge, false);
         out = _record(out, "CrossChainERC20Factory", factory, true);

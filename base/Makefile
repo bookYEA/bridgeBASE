@@ -35,6 +35,10 @@ checkout-op-commit:
 deploy:
 	forge script DeployScript --account testnet-admin --rpc-url $(BASE_RPC) --broadcast -vvvv
 
+.PHONY: create-wrapped-sol
+create-wrapped-sol:
+	REMOTE_TOKEN=$(REMOTE_SOL) forge script CreateTokenScript --account testnet-admin --rpc-url $(BASE_RPC) --broadcast -vvvv
+
 .PHONY: create-token
 create-token:
 	REMOTE_TOKEN=$(REMOTE_SPL) forge script CreateTokenScript --account testnet-admin --rpc-url $(BASE_RPC) --broadcast -vvvv
