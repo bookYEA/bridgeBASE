@@ -7,53 +7,32 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/base/alt-l1-bridge/oracle/internal/flags"
-	"github.com/base/alt-l1-bridge/oracle/internal/relayer"
 	"github.com/base/alt-l1-bridge/oracle/internal/svm"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/gagliardetto/solana-go"
-	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/urfave/cli/v2"
 )
 
 func Main(ctx *cli.Context) error {
 	log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.LevelInfo, true)))
 
-	wsUrl := rpc.DevNet_WS
-	if ctx.Bool(flags.IsMainnetFlag.Name) {
-		wsUrl = rpc.MainNetBeta_WS
-	}
-	// The targetAddrStr is now interpreted as the Program address
-	targetAddrStr := ctx.String(flags.TargetAddressFlag.Name)
-
 	var wg sync.WaitGroup
 	stopped, stop := context.WithCancel(context.Background())
 
-	programAddr, err := solana.PublicKeyFromBase58(targetAddrStr)
-	if err != nil {
-		log.Crit("Invalid program address", "address", targetAddrStr, "err", err)
-		return err
-	}
-
-	r, err := relayer.New(ctx)
-	if err != nil {
-		log.Crit("Error creating relayer", "err", err)
-	}
-
-	_, err = svm.NewRelayer(ctx)
+	_, err := svm.NewRelayer(ctx)
 	if err != nil {
 		log.Crit("Error creating solana signer", "err", err)
 	}
 
-	svmIndexer := svm.NewIndexer()
-
-	log.Info("Starting Solana event indexer", "url", wsUrl, "program", programAddr.String())
+	svmIndexer, err := svm.NewIndexer(ctx)
+	if err != nil {
+		log.Crit("Error creating SVM indexer", "err", err)
+	}
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		log.Info("svmIndexer.Start goroutine starting...")
-		startErr := svmIndexer.Start(ctx.Context, wsUrl, programAddr, r)
+		startErr := svmIndexer.Start(ctx.Context)
 		if startErr != nil {
 			log.Error("svmIndexer.Start returned an error, initiating shutdown", "err", startErr)
 			stop()
