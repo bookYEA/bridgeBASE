@@ -42,42 +42,48 @@ make deploy
 
 5. Copy the messenger and bridge addresses into [`solana/programs/bridge/src/constants.rs`](solana/programs/bridge/src/constants.rs) for `OTHER_MESSENGER` and `OTHER_BRIDGE`
 
-6. Copy the messenger address into [`solana/tests/ixs/messenger.ts`](solana/tests/ixs/messenger.ts) for `otherMessengerAddress` and into [`solana/tests/ixs/standard_bridge.ts`](solana/tests/ixs/standard_bridge.ts) for `otherMessengerAddress`.
+6. Copy the messenger and bridge addresses into [`solana/tests/ixs/messenger.ts`](solana/tests/utils/constants.ts) for `otherMessengerAddress` and `otherBridgeAddress`.
 
-7. Copy the bridge address into [`solana/tests/ixs/standard_bridge.ts`](solana/tests/ixs/standard_bridge.ts) for `otherBridgeAddress`.
-
-8. Enter solana directory
+7. Enter solana directory
 
 ```bash
 cd ../solana
 ```
 
-9. Re-build the program
+8. Re-build the program
 
 ```bash
 anchor build
 ```
 
-10. Run tests to ensure they all still pass
+9. Run tests to ensure they all still pass
 
 ```bash
 anchor test
 ```
 
-11. Set target cluster in [`Anchor.toml`](solana/Anchor.toml) to `Devnet`
+10. Uncomment the `TRUSTED_ORACLE` constant for Devnet deployments in [`constants.rs`](solana/programs/bridge/src/constants.rs).
+
+11. Build the program
+
+```bash
+anchor build
+```
+
+12. Set target cluster in [`Anchor.toml`](solana/Anchor.toml) to `Devnet`
 
 ```toml
 [provider]
 cluster = "Devnet"
 ```
 
-12. Re-deploy program
+11. Re-deploy program
 
 ```bash
 anchor deploy
 ```
 
-13. Reset target cluster in [`Anchor.toml`](solana/Anchor.toml) back to `Localnet`.
+12. Reset target cluster in [`Anchor.toml`](solana/Anchor.toml) back to `Localnet`.
 
 ```toml
 [provider]
