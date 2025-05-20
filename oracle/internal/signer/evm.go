@@ -1,4 +1,4 @@
-package evm
+package signer
 
 import (
 	"context"
@@ -17,14 +17,14 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-type Relayer struct {
+type EvmSigner struct {
 	client     *ethclient.Client
 	privateKey *ecdsa.PrivateKey
 	address    common.Address
 	chainId    *big.Int
 }
 
-func NewRelayer(ctx *cli.Context) (*Relayer, error) {
+func NewEvmSigner(ctx *cli.Context) (*EvmSigner, error) {
 	client, err := ethclient.Dial(ctx.String(flags.BaseRpcUrlFlag.Name))
 	if err != nil {
 		return nil, err
@@ -48,7 +48,7 @@ func NewRelayer(ctx *cli.Context) (*Relayer, error) {
 
 	log.Info("EVM signer registered", "address", crypto.PubkeyToAddress(*publicKeyECDSA))
 
-	return &Relayer{
+	return &EvmSigner{
 		client:     client,
 		privateKey: key,
 		address:    crypto.PubkeyToAddress(*publicKeyECDSA),
@@ -56,7 +56,7 @@ func NewRelayer(ctx *cli.Context) (*Relayer, error) {
 	}, nil
 }
 
-func (r *Relayer) SendTransactionToBase(dep localTypes.DepositTx) error {
+func (r *EvmSigner) SendTransactionToBase(dep localTypes.DepositTx) error {
 	nonce, err := r.client.PendingNonceAt(context.Background(), r.address)
 	if err != nil {
 		return err

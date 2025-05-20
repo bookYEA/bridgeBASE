@@ -1,4 +1,4 @@
-package svm
+package signer
 
 import (
 	"context"
@@ -18,22 +18,22 @@ type TransactionRequest struct {
 	Signers      []types.Account
 }
 
-type Relayer struct {
+type SvmSigner struct {
 	FeePayer types.Account
 	Client   *client.Client
 }
 
-func NewRelayer(ctx *cli.Context) (*Relayer, error) {
+func NewSvmSigner(ctx *cli.Context) (*SvmSigner, error) {
 	secretKeyBytes, err := hex.DecodeString(ctx.String(flags.SolSecretKeyFlag.Name))
 	if err != nil {
 		log.Error("Error decoding secret key bytes", "err", err)
-		return &Relayer{}, err
+		return &SvmSigner{}, err
 	}
 
 	feePayer, err := types.AccountFromBytes(secretKeyBytes)
 	if err != nil {
 		log.Error("Error creating fee payer account", "err", err)
-		return &Relayer{}, err
+		return &SvmSigner{}, err
 	}
 	log.Info("Solana signer registered", "Pubkey", feePayer.PublicKey.String())
 
@@ -42,10 +42,10 @@ func NewRelayer(ctx *cli.Context) (*Relayer, error) {
 		rpcEndpoint = rpc.MainnetRPCEndpoint
 	}
 
-	return &Relayer{FeePayer: feePayer, Client: client.NewClient(rpcEndpoint)}, nil
+	return &SvmSigner{FeePayer: feePayer, Client: client.NewClient(rpcEndpoint)}, nil
 }
 
-func (r *Relayer) SubmitTransaction(req *TransactionRequest) error {
+func (r *SvmSigner) SubmitTransaction(req *TransactionRequest) error {
 	if len(req.Instructions) == 0 {
 		log.Error("error: missing svm transaction data")
 		return fmt.Errorf("missing transaction data")

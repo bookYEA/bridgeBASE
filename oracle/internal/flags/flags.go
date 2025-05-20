@@ -35,6 +35,12 @@ var (
 		Required: true,
 		EnvVars:  []string{"SOL_SECRET_KEY"},
 	}
+	BaseMessagePasserAddressFlag = &cli.StringFlag{
+		Name:     "base-message-passer-address",
+		Usage:    "Base MessagePasser contract address",
+		Required: true,
+		EnvVars:  []string{"BASE_MESSAGE_PASSER_ADDRESS"},
+	}
 )
 
-var Flags = []cli.Flag{TargetAddressFlag, IsMainnetFlag, BaseRpcUrlFlag, PrivateKeyFlag, SolSecretKeyFlag}
+var Flags = []cli.Flag{TargetAddressFlag, IsMainnetFlag, BaseRpcUrlFlag, PrivateKeyFlag, SolSecretKeyFlag, BaseMessagePasserAddressFlag}

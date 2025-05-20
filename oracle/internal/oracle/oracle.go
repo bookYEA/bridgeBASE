@@ -7,6 +7,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/base/alt-l1-bridge/oracle/internal/evm"
 	"github.com/base/alt-l1-bridge/oracle/internal/svm"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/urfave/cli/v2"
@@ -18,14 +19,14 @@ func Main(ctx *cli.Context) error {
 	var wg sync.WaitGroup
 	stopped, stop := context.WithCancel(context.Background())
 
-	_, err := svm.NewRelayer(ctx)
-	if err != nil {
-		log.Crit("Error creating solana signer", "err", err)
-	}
-
 	svmIndexer, err := svm.NewIndexer(ctx)
 	if err != nil {
-		log.Crit("Error creating SVM indexer", "err", err)
+		log.Crit("Error creating SVM indexer", "error", err)
+	}
+
+	evmIndexer, err := evm.NewIndexer(ctx, 25957864)
+	if err != nil {
+		log.Crit("Error creating EVM indexer", "error", err)
 	}
 
 	wg.Add(1)
@@ -43,9 +44,22 @@ func Main(ctx *cli.Context) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		log.Info("Starting EVM Indexer goroutine")
+		startErr := evmIndexer.Start(ctx.Context)
+		if startErr != nil {
+			log.Error("EVM indexer returned an error, initiating shutdown", "err", startErr)
+			stop()
+		}
+		log.Info("EVM Indexer goroutine finished.")
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
 		<-stopped.Done()
 		log.Info("Shutdown signal received by cleanup goroutine, calling svmIndexer.Stop()...")
 		svmIndexer.Stop()
+		evmIndexer.Stop()
 		log.Info("svmIndexer.Stop() called by cleanup goroutine.")
 	}()
 
