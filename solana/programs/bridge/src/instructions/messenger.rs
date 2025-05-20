@@ -4,7 +4,7 @@ use crate::{
     MIN_GAS_DYNAMIC_OVERHEAD_NUMERATOR, RELAY_CALL_OVERHEAD, RELAY_CONSTANT_OVERHEAD,
     RELAY_GAS_CHECK_BUFFER, RELAY_RESERVED_GAS, TX_BASE_GAS,
 };
-use crate::{BridgePayload, Ix, Message, MessengerPayload, DEFAULT_SENDER};
+use crate::{BridgePayload, Ix, Message, Messenger, MessengerPayload, DEFAULT_SENDER};
 use anchor_lang::solana_program::instruction::Instruction;
 use anchor_lang::solana_program::keccak;
 use anchor_lang::{prelude::*, solana_program};
@@ -20,12 +20,6 @@ pub struct SendMessage<'info> {
 
     #[account(mut, seeds = [MESSENGER_SEED], bump)]
     pub msg_state: Account<'info, Messenger>,
-}
-
-#[derive(InitSpace)]
-#[account]
-pub struct Messenger {
-    pub msg_nonce: u64,
 }
 
 #[event]

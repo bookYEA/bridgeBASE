@@ -1,8 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::{Vault, MESSENGER_SEED, VAULT_SEED};
-
-use super::Messenger;
+use crate::{Messenger, Vault, MESSENGER_SEED, VAULT_SEED};
 
 #[derive(Accounts)]
 pub struct Initialize<'info> {

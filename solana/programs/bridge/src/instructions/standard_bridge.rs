@@ -6,12 +6,12 @@ use anchor_spl::{
 };
 
 use crate::{
-    messenger, BridgePayload, Deposit, Message, ASSOCIATED_TOKEN_PROGRAM_ID, DEPOSIT_SEED,
+    BridgePayload, Deposit, Message, Messenger, ASSOCIATED_TOKEN_PROGRAM_ID, DEPOSIT_SEED,
     FINALIZE_BRIDGE_TOKEN_SELECTOR, MESSENGER_SEED, NATIVE_SOL_PUBKEY, OTHER_BRIDGE,
     TOKEN_PROGRAM_ID, VAULT_SEED,
 };
 
-use super::{Messenger, MessengerError};
+use super::{messenger, MessengerError};
 
 // Constants for ABI encoding
 pub const ABI_ADDRESS_PARAM_SIZE: usize = 32;
