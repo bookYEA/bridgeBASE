@@ -5,7 +5,7 @@ import { calculateGasLimit } from "./calculateGasLimit";
 import { PublicKey } from "@solana/web3.js";
 import { Bridge } from "../../target/types/bridge";
 import { encodeBridgeData } from "./encodeBridgeData";
-import { expectedBridgePubkey, otherBridgeAddress } from "./constants";
+import { expectedBridgePubkey, otherBridgeAddress, VERSION } from "./constants";
 
 export function getOpaqueData(
   gasLimit: BN,
@@ -28,7 +28,7 @@ export async function getOpaqueDataFromMessenger(
   minGasLimit: number
 ): Promise<Buffer> {
   const [messengerPda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("messenger_state")],
+    [Buffer.from("messenger_state"), new anchor.BN(VERSION).toBuffer("le", 1)],
     program.programId
   );
 

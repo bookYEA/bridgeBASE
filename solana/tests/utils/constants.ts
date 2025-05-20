@@ -32,3 +32,4 @@ export const solRemoteAddress = Array.from(
     Buffer.from("E398D7afe84A6339783718935087a4AcE6F6DFE8", "hex")
   )
 ); // random address for testing
+export const VERSION = 1;

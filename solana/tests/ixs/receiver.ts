@@ -15,6 +15,7 @@ import {
   otherMessengerAddress,
   solRemoteAddress,
   toAddress,
+  VERSION,
 } from "../utils/constants";
 import { toNumberArray } from "../utils/toNumberArray";
 import { deriveRoot } from "../utils/deriveRoot";
@@ -40,7 +41,7 @@ describe("receiver", () => {
   let messagePda: PublicKey;
   let rootPda: PublicKey;
   const [vaultPda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("bridge_vault")],
+    [Buffer.from("bridge_vault"), new anchor.BN(VERSION).toBuffer("le", 1)],
     program.programId
   );
 

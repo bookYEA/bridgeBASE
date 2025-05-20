@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::{Messenger, Vault, MESSENGER_SEED, VAULT_SEED};
+use crate::{Messenger, Vault, MESSENGER_SEED, VAULT_SEED, VERSION};
 
 #[derive(Accounts)]
 pub struct Initialize<'info> {
@@ -13,7 +13,7 @@ pub struct Initialize<'info> {
     #[account(
         init,
         payer = user,
-        seeds = [VAULT_SEED],
+        seeds = [VAULT_SEED, VERSION.to_le_bytes().as_ref()],
         space = 8 + Vault::INIT_SPACE,
         bump
     )]
@@ -22,7 +22,7 @@ pub struct Initialize<'info> {
     #[account(
         init, 
         payer = user, 
-        seeds = [MESSENGER_SEED], 
+        seeds = [MESSENGER_SEED, VERSION.to_le_bytes().as_ref()], 
         bump, 
         space = 8 + Messenger::INIT_SPACE
     )]

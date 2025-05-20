@@ -17,6 +17,7 @@ import {
   minGasLimit,
   otherMessengerAddress,
   toAddress,
+  VERSION,
 } from "../utils/constants";
 import { getOpaqueDataFromBridge } from "../utils/getOpaqueData";
 import { confirmTransaction } from "../utils/confirmTransaction";
@@ -43,7 +44,7 @@ describe("standard bridge", () => {
 
   // Find the vault PDA
   const [vaultPda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("bridge_vault")],
+    [Buffer.from("bridge_vault"), new anchor.BN(VERSION).toBuffer("le", 1)],
     program.programId
   );
 

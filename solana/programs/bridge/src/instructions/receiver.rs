@@ -5,7 +5,7 @@ use anchor_lang::{
 
 use crate::{
     ix_utils, merkle_utils, Ix, Message, MessengerPayload, OutputRoot, DEFAULT_SENDER,
-    MESSAGE_SEED, VAULT_SEED,
+    MESSAGE_SEED, VAULT_SEED, VERSION,
 };
 
 use super::messenger;
@@ -39,7 +39,7 @@ pub struct FinalizeTransaction<'info> {
     /// CHECK: This is the vault PDA. For SOL, it receives SOL. For SPL, it's the authority for vault_token_account.
     #[account(
         mut,
-        seeds = [VAULT_SEED],
+        seeds = [VAULT_SEED, VERSION.to_le_bytes().as_ref()],
         bump
     )]
     pub vault: AccountInfo<'info>,

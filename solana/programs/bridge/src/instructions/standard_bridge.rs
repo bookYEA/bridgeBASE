@@ -8,7 +8,7 @@ use anchor_spl::{
 use crate::{
     BridgePayload, Deposit, Message, Messenger, ASSOCIATED_TOKEN_PROGRAM_ID, DEPOSIT_SEED,
     FINALIZE_BRIDGE_TOKEN_SELECTOR, MESSENGER_SEED, NATIVE_SOL_PUBKEY, OTHER_BRIDGE,
-    TOKEN_PROGRAM_ID, VAULT_SEED,
+    TOKEN_PROGRAM_ID, VAULT_SEED, VERSION,
 };
 
 use super::{messenger, MessengerError};
@@ -40,12 +40,12 @@ pub struct BridgeTokensTo<'info> {
     /// CHECK: This is the vault PDA. For SOL, it receives SOL. For SPL, it's the authority for vault_token_account.
     #[account(
         mut,
-        seeds = [VAULT_SEED],
+        seeds = [VAULT_SEED, VERSION.to_le_bytes().as_ref()],
         bump
     )]
     pub vault: AccountInfo<'info>,
 
-    #[account(mut, seeds = [MESSENGER_SEED], bump)]
+    #[account(mut, seeds = [MESSENGER_SEED, VERSION.to_le_bytes().as_ref()], bump)]
     pub msg_state: Account<'info, Messenger>,
 
     // SPL Token specific accounts.
@@ -92,12 +92,12 @@ pub struct BridgeSolTo<'info> {
     /// verified by the seeds constraint.
     #[account(
         mut,
-        seeds = [VAULT_SEED],
+        seeds = [VAULT_SEED, VERSION.to_le_bytes().as_ref()],
         bump
     )]
     pub vault: AccountInfo<'info>,
 
-    #[account(mut, seeds = [MESSENGER_SEED], bump)]
+    #[account(mut, seeds = [MESSENGER_SEED, VERSION.to_le_bytes().as_ref()], bump)]
     pub msg_state: Account<'info, Messenger>,
 
     #[account(
@@ -291,13 +291,17 @@ pub fn finalize_bridge_tokens<'info>(
                 ProgramError::NotEnoughAccountKeys,
             )?;
 
+            // Prepare seeds for the vault PDA
+            let version_bytes = VERSION.to_le_bytes();
+            let vault_pda_seeds: &[&[u8]] = &[VAULT_SEED, version_bytes.as_ref()];
+
             spl_transfer_pda_signed(
                 local_token_mint_info,
                 vault_ata_info,
                 recipient_ata_info,
                 vault_pda_info,
-                VAULT_SEED, // Seed for the vault PDA
-                &crate::ID, // Program ID that owns the vault PDA
+                vault_pda_seeds, // Pass the combined seeds
+                &crate::ID,      // Program ID that owns the vault PDA
                 payload.amount,
             )?;
         }
@@ -528,21 +532,29 @@ fn spl_transfer_pda_signed<'info>(
     from_token_account_info: &AccountInfo<'info>,
     to_token_account_info: &AccountInfo<'info>,
     authority_pda_info: &AccountInfo<'info>, // The PDA account that is the authority
-    pda_canonical_seed: &'static [u8],       // e.g., VAULT_SEED
-    pda_owning_program_id: &Pubkey,          // e.g., &crate::ID
+    pda_base_seeds: &[&[u8]], // Changed: Now accepts a slice of byte slices for seeds
+    pda_owning_program_id: &Pubkey, // e.g., &crate::ID
     amount: u64,
 ) -> Result<()> {
-    let (_pda_key, bump_seed) =
-        Pubkey::find_program_address(&[pda_canonical_seed], pda_owning_program_id);
-    let signer_seeds: &[&[&[u8]]] = &[&[pda_canonical_seed, &[bump_seed]]];
+    let (_pda_key, bump_value) =
+        Pubkey::find_program_address(pda_base_seeds, pda_owning_program_id);
+
+    let bump_array = [bump_value]; // Creates [u8; 1]
+
+    // Construct the full seeds array for signing: base_seeds + bump_array as a slice
+    let mut actual_signer_seeds_elements: Vec<&[u8]> = Vec::with_capacity(pda_base_seeds.len() + 1);
+    actual_signer_seeds_elements.extend_from_slice(pda_base_seeds);
+    actual_signer_seeds_elements.push(&bump_array); // Add the bump seed slice `&[u8]`
+
+    let cpi_signer_seeds_outer: &[&[&[u8]]] = &[&actual_signer_seeds_elements];
 
     let cpi_accounts = anchor_spl::token::Transfer {
         from: from_token_account_info.clone(),
         to: to_token_account_info.clone(),
         authority: authority_pda_info.clone(),
     };
-    let cpi_ctx =
-        CpiContext::new(token_program_info.clone(), cpi_accounts).with_signer(signer_seeds);
+    let cpi_ctx = CpiContext::new(token_program_info.clone(), cpi_accounts)
+        .with_signer(cpi_signer_seeds_outer);
     anchor_spl::token::transfer(cpi_ctx, amount)?;
     Ok(())
 }

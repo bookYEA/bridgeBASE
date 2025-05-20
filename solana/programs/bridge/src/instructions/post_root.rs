@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::{Messenger, OutputRoot, MESSENGER_SEED, OUTPUT_ROOT_SEED, TRUSTED_ORACLE};
+use crate::{Messenger, OutputRoot, MESSENGER_SEED, OUTPUT_ROOT_SEED, TRUSTED_ORACLE, VERSION};
 
 #[derive(Accounts)]
 #[instruction(root: [u8; 32], block_number: u64)]
@@ -14,7 +14,7 @@ pub struct PostRoot<'info> {
     )]
     pub root: Account<'info, OutputRoot>,
 
-    #[account(mut, seeds = [MESSENGER_SEED], bump)]
+    #[account(mut, seeds = [MESSENGER_SEED, VERSION.to_le_bytes().as_ref()], bump)]
     pub messenger: Account<'info, Messenger>,
 
     #[account(mut, address = TRUSTED_ORACLE)]
