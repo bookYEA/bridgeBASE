@@ -76,7 +76,7 @@ func (r *SvmSigner) SubmitTransaction(req *TransactionRequest) error {
 		return fmt.Errorf("error sending svm transaction: %w", err)
 	}
 
-	log.Info("SVM transaction successful", "tx hash", sig)
+	log.Info("SVM transaction successful", "hash", sig)
 
 	return nil
 }
