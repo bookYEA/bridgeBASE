@@ -109,6 +109,8 @@ func (i *EvmIndexer) pollListener(ctx context.Context) error {
 				continue
 			}
 
+			maxBlockNumber := uint64(0)
+
 			for logIterator.Next() {
 				err := logIterator.Error()
 				if err != nil {
@@ -122,6 +124,12 @@ func (i *EvmIndexer) pollListener(ctx context.Context) error {
 					log.Error("failed to handle log", "error", err)
 					continue
 				}
+
+				maxBlockNumber = max(maxBlockNumber, logRecv.Raw.BlockNumber)
+			}
+
+			if maxBlockNumber > 0 {
+				i.startingBlock = maxBlockNumber + 1
 			}
 
 			cancel()
