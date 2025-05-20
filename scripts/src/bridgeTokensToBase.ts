@@ -14,7 +14,7 @@ async function main() {
 
   const program = anchor.workspace.Bridge as Program<Bridge>;
 
-  const to = toArray("9986ccaf9e3de0ffef82a0f7fa3a06d5afe07252");
+  const to = toArray("8C1a617BdB47342F9C17Ac8750E0b070c372C721");
   const value = new anchor.BN(0.001 * anchor.web3.LAMPORTS_PER_SOL);
   const minGasLimit = 100000;
   const extraData = Buffer.from("sample data payload", "utf-8");

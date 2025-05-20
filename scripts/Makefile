@@ -5,6 +5,10 @@ build:
 	mkdir target
 	cp -r ../solana/target .
 
+.PHONY: init
+init:
+	bun run init.ts
+
 .PHONY: bridge-sol-to-base
 bridge-sol-to-base:
 	bun run index.ts
