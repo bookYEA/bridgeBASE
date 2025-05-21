@@ -9,12 +9,12 @@ pub const DEPOSIT_VERSION: u64 = 0;
 pub const MESSAGE_VERSION: u16 = 1;
 
 #[constant]
-// L2CrossDomainMessenger at 0x9d2f33aF8610F1b53Dd6FcE593f76A2b4B402176 (baseSepolia)
-pub const OTHER_MESSENGER: [u8; 20] = hex!("9d2f33aF8610F1b53Dd6FcE593f76A2b4B402176");
+// L2CrossDomainMessenger at 0xD48f8d901b1F9B30FE194252807917aba4a83bAF (baseSepolia)
+pub const OTHER_MESSENGER: [u8; 20] = hex!("D48f8d901b1F9B30FE194252807917aba4a83bAF");
 
 #[constant]
-// L2StandardBridge at 0x572230b2D4A445b13a93c08dD7b69544C8f0Bb9F (baseSepolia)
-pub const OTHER_BRIDGE: [u8; 20] = hex!("572230b2D4A445b13a93c08dD7b69544C8f0Bb9F");
+// L2StandardBridge at 0xE5709130B08f338c4662634B969480BFb4ee126A (baseSepolia)
+pub const OTHER_BRIDGE: [u8; 20] = hex!("E5709130B08f338c4662634B969480BFb4ee126A");
 
 #[constant]
 pub const DEFAULT_SENDER: [u8; 20] = hex!("000000000000000000000000000000000000dEaD");
