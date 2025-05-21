@@ -24,7 +24,7 @@ func Main(ctx *cli.Context) error {
 		log.Crit("Error creating SVM indexer", "error", err)
 	}
 
-	evmIndexer, err := evm.NewIndexer(ctx, 25957864)
+	evmIndexer, err := evm.NewIndexer(ctx)
 	if err != nil {
 		log.Crit("Error creating EVM indexer", "error", err)
 	}

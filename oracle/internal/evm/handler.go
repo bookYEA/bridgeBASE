@@ -2,6 +2,7 @@ package evm
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 
@@ -45,6 +46,65 @@ func NewLogHandler(ctx *cli.Context) (*EvmLogHandler, error) {
 		mmr:             mmr.NewMMR(),
 		bridgeProgramId: bridgeProgramId,
 	}, nil
+}
+
+func (h *EvmLogHandler) GetStartingBlock() (uint64, error) {
+	// 1. Calculate Messenger PDA
+	versionBytes := make([]byte, 1)
+	versionBytes[0] = byte(Version) // Version is a const in this package
+
+	messengerPda, _, err := svmCommon.FindProgramAddress(
+		[][]byte{
+			[]byte(MessengerSeed), // MessengerSeed is a const in this package
+			versionBytes,
+		},
+		h.bridgeProgramId,
+	)
+	if err != nil {
+		log.Error("Error finding messenger PDA for starting block", "error", err)
+		return 0, fmt.Errorf("failed to find messenger PDA: %w", err)
+	}
+	log.Info("Messenger PDA calculated for GetStartingBlock", "pda", messengerPda.ToBase58())
+
+	// 2. Query Solana for account data
+	accountInfo, err := h.svmSigner.Client.GetAccountInfo(context.Background(), messengerPda.ToBase58())
+	if err != nil {
+		log.Error("Error fetching messenger account info", "pda", messengerPda.ToBase58(), "error", err)
+		return 0, fmt.Errorf("failed to fetch messenger account info for PDA %s: %w", messengerPda.ToBase58(), err)
+	}
+
+	if accountInfo.Data == nil {
+		log.Error("Messenger account not found or has no data", "pda", messengerPda.ToBase58())
+		// It might be acceptable for the account not to exist on a fresh deployment.
+		// Depending on requirements, this could return nil or a specific error/status.
+		// For now, treating as an error.
+		return 0, fmt.Errorf("messenger account %s not found or empty", messengerPda.ToBase58())
+	}
+
+	// 3. Deserialize account data
+	// Expected structure on Solana: 8-byte discriminator + 8-byte msg_nonce (u64) + 8-byte latest_block_number (u64)
+	// Total = 24 bytes.
+	discriminatorSize := 8
+	msgNonceSize := 8
+	latestBlockNumberSize := 8
+	expectedMinSize := discriminatorSize + msgNonceSize + latestBlockNumberSize
+
+	if len(accountInfo.Data) < expectedMinSize {
+		log.Error("Account data too short", "pda", messengerPda.ToBase58(), "length", len(accountInfo.Data), "expected", expectedMinSize)
+		return 0, fmt.Errorf("account data for %s too short: got %d bytes, expected at least %d", messengerPda.ToBase58(), len(accountInfo.Data), expectedMinSize)
+	}
+
+	// Skip 8-byte discriminator and 8-byte msg_nonce to get to latest_block_number
+	offset := discriminatorSize + msgNonceSize
+	latestBlockNumberBytes := accountInfo.Data[offset : offset+latestBlockNumberSize]
+	latestBlockNumber := binary.LittleEndian.Uint64(latestBlockNumberBytes)
+
+	log.Info("Successfully fetched latest_block_number from Messenger PDA",
+		"pda", messengerPda.ToBase58(),
+		"latest_block_number", latestBlockNumber,
+	)
+
+	return latestBlockNumber, nil
 }
 
 func (h *EvmLogHandler) HandleLog(logRecv *bindings.MessagePasserMessagePassed) error {
