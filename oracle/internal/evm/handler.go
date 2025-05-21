@@ -56,6 +56,11 @@ func NewLogHandler(ctx *cli.Context) (*EvmLogHandler, error) {
 	}, nil
 }
 
+// GetMMR returns the MMR instance from the handler.
+func (h *EvmLogHandler) GetMMR() *mmr.MMR {
+	return h.mmr
+}
+
 func getStartingBlock(programId svmCommon.PublicKey, svmSigner *signer.SvmSigner) (uint64, error) {
 	// 1. Calculate Messenger PDA
 	versionBytes := make([]byte, 1)

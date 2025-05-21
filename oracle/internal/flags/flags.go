@@ -47,6 +47,13 @@ var (
 		Required: true,
 		EnvVars:  []string{"MESSAGE_PASSER_DEPLOYMENT_BLOCK_NUMBER"},
 	}
+	HTTPListenAddrFlag = &cli.StringFlag{
+		Name:     "http-listen-addr",
+		Usage:    "HTTP server listen address",
+		Value:    ":8080", // Default value
+		Required: false,
+		EnvVars:  []string{"HTTP_LISTEN_ADDR"},
+	}
 )
 
-var Flags = []cli.Flag{TargetAddressFlag, IsMainnetFlag, BaseRpcUrlFlag, PrivateKeyFlag, SolSecretKeyFlag, BaseMessagePasserAddressFlag, MessagePasserDeploymentBlockNumber}
+var Flags = []cli.Flag{TargetAddressFlag, IsMainnetFlag, BaseRpcUrlFlag, PrivateKeyFlag, SolSecretKeyFlag, BaseMessagePasserAddressFlag, MessagePasserDeploymentBlockNumber, HTTPListenAddrFlag}

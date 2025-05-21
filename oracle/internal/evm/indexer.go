@@ -62,6 +62,10 @@ func NewIndexer(ctx *cli.Context) (*EvmIndexer, error) {
 	}, nil
 }
 
+func (i *EvmIndexer) GetHandler() *EvmLogHandler {
+	return i.handler
+}
+
 func (i *EvmIndexer) Start(ctx context.Context) error {
 	if i.polling {
 		return i.pollListener(ctx)
