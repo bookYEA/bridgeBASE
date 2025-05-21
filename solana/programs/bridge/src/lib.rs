@@ -87,8 +87,18 @@ pub mod bridge {
         remote_sender: [u8; 20],
         ixs: Vec<Ix>,
         proof: Vec<[u8; 32]>,
+        leaf_index: u64,
+        total_leaf_count: u64,
     ) -> Result<()> {
-        receiver::prove_transaction_handler(ctx, &transaction_hash, &remote_sender, ixs, proof)
+        receiver::prove_transaction_handler(
+            ctx,
+            &transaction_hash,
+            &remote_sender,
+            ixs,
+            proof,
+            leaf_index,
+            total_leaf_count,
+        )
     }
 
     pub fn finalize_transaction<'a, 'info>(

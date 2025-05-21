@@ -49,6 +49,10 @@ describe("receiver", () => {
   let nonce: number[];
   let sender: number[];
 
+  // Arguments for MMR proof
+  let leafIndexBN: anchor.BN;
+  let totalLeafCountBN: anchor.BN;
+
   // Instructions
   let targetIxParam: IxParam;
   let messengerIxParam: IxParam;
@@ -165,6 +169,10 @@ describe("receiver", () => {
       transaction4,
     ];
 
+    // Set MMR proof arguments based on the batch
+    leafIndexBN = new anchor.BN(0); // transactionHash is the first leaf
+    totalLeafCountBN = new anchor.BN(transactionsBatch.length);
+
     const { root, proof } = await deriveRoot(transactionsBatch);
 
     const tx = await program.methods
@@ -220,7 +228,14 @@ describe("receiver", () => {
       it("Should fail if invalid transaction hash", async () => {
         await shouldFail(
           program.methods
-            .proveTransaction(transaction2, toAddress, [targetIxParam], proof)
+            .proveTransaction(
+              transaction2,
+              toAddress,
+              [targetIxParam],
+              proof,
+              leafIndexBN,
+              totalLeafCountBN
+            )
             .accounts({ payer: payer.publicKey, root: rootPda })
             .rpc(),
           "Invalid transaction hash"
@@ -237,7 +252,9 @@ describe("receiver", () => {
               transactionHash,
               toAddress,
               [targetIxParam],
-              badProof
+              badProof,
+              leafIndexBN,
+              totalLeafCountBN
             )
             .accounts({ payer: payer.publicKey, root: rootPda })
             .rpc(),
@@ -247,7 +264,14 @@ describe("receiver", () => {
 
       it("Posts output root", async () => {
         const tx = await program.methods
-          .proveTransaction(transactionHash, toAddress, [targetIxParam], proof)
+          .proveTransaction(
+            transactionHash,
+            toAddress,
+            [targetIxParam],
+            proof,
+            leafIndexBN,
+            totalLeafCountBN
+          )
           .accounts({ payer: payer.publicKey, root: rootPda })
           .rpc();
 
@@ -329,7 +353,9 @@ describe("receiver", () => {
               transaction2,
               otherMessengerAddress,
               [messengerIxParam],
-              proof
+              proof,
+              leafIndexBN,
+              totalLeafCountBN
             )
             .accounts({ payer: payer.publicKey, root: rootPda })
             .rpc(),
@@ -347,7 +373,9 @@ describe("receiver", () => {
               transactionHash,
               otherMessengerAddress,
               [messengerIxParam],
-              badProof
+              badProof,
+              leafIndexBN,
+              totalLeafCountBN
             )
             .accounts({ payer: payer.publicKey, root: rootPda })
             .rpc(),
@@ -361,7 +389,9 @@ describe("receiver", () => {
             transactionHash,
             otherMessengerAddress,
             [messengerIxParam],
-            proof
+            proof,
+            leafIndexBN,
+            totalLeafCountBN
           )
           .accounts({ payer: payer.publicKey, root: rootPda })
           .rpc();
@@ -558,7 +588,9 @@ describe("receiver", () => {
               transaction2,
               otherMessengerAddress,
               [messengerIxParam],
-              proof
+              proof,
+              leafIndexBN,
+              totalLeafCountBN
             )
             .accounts({ payer: payer.publicKey, root: rootPda })
             .rpc(),
@@ -576,7 +608,9 @@ describe("receiver", () => {
               transactionHash,
               otherMessengerAddress,
               [messengerIxParam],
-              badProof
+              badProof,
+              leafIndexBN,
+              totalLeafCountBN
             )
             .accounts({ payer: payer.publicKey, root: rootPda })
             .rpc(),
@@ -590,7 +624,9 @@ describe("receiver", () => {
             transactionHash,
             otherMessengerAddress,
             [messengerIxParam],
-            proof
+            proof,
+            leafIndexBN,
+            totalLeafCountBN
           )
           .accounts({ payer: payer.publicKey, root: rootPda })
           .rpc();

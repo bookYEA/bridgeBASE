@@ -51,6 +51,8 @@ pub fn prove_transaction_handler(
     remote_sender: &[u8; 20],
     ixs: Vec<Ix>,
     proof: Vec<[u8; 32]>,
+    leaf_index: u64,
+    total_leaf_count: u64,
 ) -> Result<()> {
     let message_hash = ix_utils::hash_ixs(remote_sender, &ixs);
 
@@ -59,7 +61,13 @@ pub fn prove_transaction_handler(
     }
 
     // Run merkle proof of proof against ctx.accounts.root.root
-    if !merkle_utils::verify(&proof, &ctx.accounts.root.root, transaction_hash) {
+    if !merkle_utils::verify_mmr_proof(
+        &proof,
+        &ctx.accounts.root.root,
+        transaction_hash,
+        leaf_index,
+        total_leaf_count,
+    ) {
         return err!(ReceiverError::InvalidProof);
     }
 
