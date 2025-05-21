@@ -16,7 +16,8 @@ import {ISolanaMessagePasser} from "../src/interfaces/ISolanaMessagePasser.sol";
 contract DeployScript is Script {
     address public constant PROXY_ADMIN = 0x0fe884546476dDd290eC46318785046ef68a0BA9;
 
-    bytes32 public constant REMOTE_MESSENGER = 0x0000000000000000000000000e9a877906EBc3b7098DA2404412BF0Ed1A5EFb4;
+    bytes32 public constant ORACLE = 0x0000000000000000000000000e9a877906EBc3b7098DA2404412BF0Ed1A5EFb4;
+    bytes32 public constant REMOTE_MESSENGER = 0x7e273983f136714ba93a740a050279b541d6f25ebc6bbc6fc67616d0d5529cea;
     bytes32 public constant OTHER_BRIDGE = 0x7a25452c36304317d6fe970091c383b0d45e9b0b06485d2561156f025c6936af;
 
     function setUp() public {
@@ -57,12 +58,13 @@ contract DeployScript is Script {
     }
 
     function _deployMessenger(address messagePasser) private returns (address) {
-        CrossChainMessenger messengerImpl = new CrossChainMessenger(ISolanaMessagePasser(payable(messagePasser)));
+        CrossChainMessenger messengerImpl =
+            new CrossChainMessenger(ISolanaMessagePasser(payable(messagePasser)), REMOTE_MESSENGER);
         CrossChainMessenger messengerProxy = CrossChainMessenger(
             ERC1967Factory(ERC1967FactoryConstants.ADDRESS).deployAndCall({
                 implementation: address(messengerImpl),
                 admin: PROXY_ADMIN,
-                data: abi.encodeCall(CrossChainMessenger.initialize, (REMOTE_MESSENGER))
+                data: abi.encodeCall(CrossChainMessenger.initialize, (ORACLE))
             })
         );
 

@@ -40,7 +40,7 @@ contract Poc is Test {
 
         // Deploy the CrossChainMessenger
         CrossChainMessenger messengerImpl =
-            new CrossChainMessenger(ISolanaMessagePasser(payable(address(messagePasser))));
+            new CrossChainMessenger(ISolanaMessagePasser(payable(address(messagePasser))), remoteMessenger);
         messengerProxy = CrossChainMessenger(
             ERC1967Factory(ERC1967FactoryConstants.ADDRESS).deployAndCall({
                 implementation: address(messengerImpl),

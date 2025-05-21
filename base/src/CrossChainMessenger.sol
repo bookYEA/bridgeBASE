@@ -41,6 +41,7 @@ contract CrossChainMessenger is Initializable {
         bytes32(0x000000000000000000000000000000000000000000000000000000000000dEaD);
 
     ISolanaMessagePasser public immutable SOLANA_MESSAGE_PASSER;
+    bytes32 public immutable SOLANA_MESSENGER_PROGRAM;
 
     //////////////////////////////////////////////////////////////
     ///                       Events                           ///
@@ -95,8 +96,9 @@ contract CrossChainMessenger is Initializable {
     //////////////////////////////////////////////////////////////
 
     /// @notice Constructs the CrossChainMessenger contract.
-    constructor(ISolanaMessagePasser solanaMessagePasser) {
+    constructor(ISolanaMessagePasser solanaMessagePasser, bytes32 solanaMessengerProgram) {
         SOLANA_MESSAGE_PASSER = solanaMessagePasser;
+        SOLANA_MESSENGER_PROGRAM = solanaMessengerProgram;
         _disableInitializers();
     }
 
@@ -132,7 +134,7 @@ contract CrossChainMessenger is Initializable {
     function sendMessage(ISolanaMessagePasser.Instruction[] calldata messageIxs) external {
         ISolanaMessagePasser.Instruction[] memory ixs = new ISolanaMessagePasser.Instruction[](1);
         ixs[0] = ISolanaMessagePasser.Instruction({
-            programId: remoteMessenger,
+            programId: SOLANA_MESSENGER_PROGRAM,
             accounts: new ISolanaMessagePasser.AccountMeta[](0),
             data: Encoder.encodeMessengerPayload(
                 MessengerPayload({nonce: messageNonce(), sender: msg.sender, ixs: messageIxs})
