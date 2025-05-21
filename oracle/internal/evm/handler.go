@@ -26,9 +26,10 @@ const (
 )
 
 type EvmLogHandler struct {
-	svmSigner       *signer.SvmSigner
-	mmr             *mmr.MMR
-	bridgeProgramId svmCommon.PublicKey
+	svmSigner           *signer.SvmSigner
+	mmr                 *mmr.MMR
+	bridgeProgramId     svmCommon.PublicKey
+	latestBlockOnSolana uint64
 }
 
 func NewLogHandler(ctx *cli.Context) (*EvmLogHandler, error) {
@@ -41,14 +42,21 @@ func NewLogHandler(ctx *cli.Context) (*EvmLogHandler, error) {
 	targetAddrStr := ctx.String(flags.TargetAddressFlag.Name)
 	bridgeProgramId := svmCommon.PublicKeyFromString(targetAddrStr)
 
+	startingBlock, err := getStartingBlock(bridgeProgramId, r)
+	if err != nil {
+		log.Error("Failed to query for latest Base block submitted to Solana", "error", err)
+		return nil, err
+	}
+
 	return &EvmLogHandler{
-		svmSigner:       r,
-		mmr:             mmr.NewMMR(),
-		bridgeProgramId: bridgeProgramId,
+		svmSigner:           r,
+		mmr:                 mmr.NewMMR(),
+		bridgeProgramId:     bridgeProgramId,
+		latestBlockOnSolana: startingBlock,
 	}, nil
 }
 
-func (h *EvmLogHandler) GetStartingBlock() (uint64, error) {
+func getStartingBlock(programId svmCommon.PublicKey, svmSigner *signer.SvmSigner) (uint64, error) {
 	// 1. Calculate Messenger PDA
 	versionBytes := make([]byte, 1)
 	versionBytes[0] = byte(Version) // Version is a const in this package
@@ -58,7 +66,7 @@ func (h *EvmLogHandler) GetStartingBlock() (uint64, error) {
 			[]byte(MessengerSeed), // MessengerSeed is a const in this package
 			versionBytes,
 		},
-		h.bridgeProgramId,
+		programId,
 	)
 	if err != nil {
 		log.Error("Error finding messenger PDA for starting block", "error", err)
@@ -67,7 +75,7 @@ func (h *EvmLogHandler) GetStartingBlock() (uint64, error) {
 	log.Info("Messenger PDA calculated for GetStartingBlock", "pda", messengerPda.ToBase58())
 
 	// 2. Query Solana for account data
-	accountInfo, err := h.svmSigner.Client.GetAccountInfo(context.Background(), messengerPda.ToBase58())
+	accountInfo, err := svmSigner.Client.GetAccountInfo(context.Background(), messengerPda.ToBase58())
 	if err != nil {
 		log.Error("Error fetching messenger account info", "pda", messengerPda.ToBase58(), "error", err)
 		return 0, fmt.Errorf("failed to fetch messenger account info for PDA %s: %w", messengerPda.ToBase58(), err)
@@ -123,6 +131,13 @@ func (h *EvmLogHandler) HandleLog(logRecv *bindings.MessagePasserMessagePassed) 
 	}
 
 	log.Info("New MMR root", "root", "0x"+common.Bytes2Hex(root))
+
+	if logRecv.Raw.BlockNumber <= h.latestBlockOnSolana {
+		log.Info("Received block already posted to Solana, skipping root submission", "blockNumber", logRecv.Raw.BlockNumber)
+		return nil
+	}
+
+	log.Info("Received block needs to be posted to Solana")
 
 	blockNumberBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(blockNumberBytes, logRecv.Raw.BlockNumber)

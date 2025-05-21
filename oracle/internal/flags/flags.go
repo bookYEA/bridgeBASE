@@ -41,6 +41,12 @@ var (
 		Required: true,
 		EnvVars:  []string{"BASE_MESSAGE_PASSER_ADDRESS"},
 	}
+	MessagePasserDeploymentBlockNumber = &cli.IntFlag{
+		Name:     "message-passer-deployment-block-number",
+		Usage:    "Deployment block number for Base MessagePasser contract",
+		Required: true,
+		EnvVars:  []string{"MESSAGE_PASSER_DEPLOYMENT_BLOCK_NUMBER"},
+	}
 )
 
-var Flags = []cli.Flag{TargetAddressFlag, IsMainnetFlag, BaseRpcUrlFlag, PrivateKeyFlag, SolSecretKeyFlag, BaseMessagePasserAddressFlag}
+var Flags = []cli.Flag{TargetAddressFlag, IsMainnetFlag, BaseRpcUrlFlag, PrivateKeyFlag, SolSecretKeyFlag, BaseMessagePasserAddressFlag, MessagePasserDeploymentBlockNumber}

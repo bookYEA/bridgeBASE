@@ -50,12 +50,6 @@ func NewIndexer(ctx *cli.Context) (*EvmIndexer, error) {
 		return nil, err
 	}
 
-	startingBlock, err := handler.GetStartingBlock()
-	if err != nil {
-		log.Error("Failed to query for latest Base block submitted to Solana", "error", err)
-		return nil, err
-	}
-
 	return &EvmIndexer{
 		messagePasser: messagePasser,
 		handler:       handler,
@@ -64,7 +58,7 @@ func NewIndexer(ctx *cli.Context) (*EvmIndexer, error) {
 		pollReqCh:     make(chan struct{}, 1),
 		pollRate:      3 * time.Second,
 		polling:       httpRegex.MatchString(ctx.String(flags.BaseRpcUrlFlag.Name)),
-		startingBlock: startingBlock + 1,
+		startingBlock: ctx.Uint64(flags.MessagePasserDeploymentBlockNumber.Name),
 	}, nil
 }
 
