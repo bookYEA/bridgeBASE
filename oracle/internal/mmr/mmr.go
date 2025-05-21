@@ -1,9 +1,11 @@
 package mmr
 
 import (
-	"crypto/sha256"
+	"bytes"
 	"fmt"
-	"math/bits" // For bits.Len64
+	"math/bits"
+
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // Hash represents a hash value in the MMR.
@@ -30,12 +32,13 @@ func NewMMR() *MMR {
 }
 
 // internalHash concatenates and hashes two node hashes to form a parent hash.
-// The order is H(leftNode, rightNode).
+// It now uses Keccak-256 and sorts inputs for commutative hashing.
 func internalHash(left Hash, right Hash) Hash {
-	h := sha256.New()
-	h.Write(left)
-	h.Write(right)
-	return h.Sum(nil)
+	// Sort inputs to ensure commutativity: H(left, right) == H(right, left)
+	if bytes.Compare(left, right) < 0 {
+		return crypto.Keccak256(append(left, right...))
+	}
+	return crypto.Keccak256(append(right, left...))
 }
 
 // Append adds new data to the MMR.
@@ -182,6 +185,129 @@ func (m *MMR) Root() (Hash, error) {
 	}
 
 	return currentRoot, nil
+}
+
+// GenerateProof creates a Merkle proof for the leaf at the given leafIndex.
+// The proof consists of sibling hashes along the path from the leaf to its
+// mountain's peak, followed by the hashes of all other mountain peaks.
+// The other mountain peaks are appended in their natural MMR order (right-to-left).
+func (m *MMR) GenerateProof(leafIndex uint64) ([]Hash, error) {
+	if m.IsEmpty() {
+		return nil, fmt.Errorf("MMR is empty, cannot generate proof")
+	}
+	if leafIndex >= m.leafCount {
+		return nil, fmt.Errorf("leafIndex %d is out of bounds for leafCount %d", leafIndex, m.leafCount)
+	}
+
+	leafNodePos, err := m.leafIndexToNodePosition(leafIndex)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get leaf node position for proof: %w", err)
+	}
+
+	// Part 1: Find information about the mountain containing the leaf.
+	// This includes its height, the leaf's 0-indexed position within this mountain,
+	// and the node position of this mountain's peak.
+	var actualMountainHeight uint
+	var actualLeafIdxInMountain uint64
+	var actualMountainPeakPos NodePosition
+	foundMountain := false
+
+	tempOverallLeafCount := m.leafCount // Tracks remaining leaves to determine mountain structure.
+	accumulatedNodes := uint64(0)       // Node offset due to mountains to the left.
+	accumulatedLeaves := uint64(0)      // Leaf offset due to mountains to the left.
+
+	maxPossibleH := uint(0)
+	if m.leafCount > 0 {
+		maxPossibleH = uint(bits.Len64(m.leafCount) - 1)
+	}
+
+	for h := maxPossibleH; ; h-- {
+		// Check if a mountain of height `h` is the next one from the left.
+		if (tempOverallLeafCount>>h)&1 == 1 {
+			leavesInThisMountain := uint64(1) << h
+			nodesInThisMountain := (uint64(1) << (h + 1)) - 1
+
+			if leafIndex >= accumulatedLeaves && leafIndex < accumulatedLeaves+leavesInThisMountain {
+				// The target leaf is in this mountain.
+				actualMountainHeight = h
+				actualLeafIdxInMountain = leafIndex - accumulatedLeaves
+				actualMountainPeakPos = NodePosition(accumulatedNodes + nodesInThisMountain - 1)
+				foundMountain = true
+				break
+			}
+
+			// The target leaf is not in this mountain; account for its size and continue.
+			accumulatedNodes += nodesInThisMountain
+			accumulatedLeaves += leavesInThisMountain
+			tempOverallLeafCount -= leavesInThisMountain // Reduce by leaves covered by this mountain.
+		}
+
+		if h == 0 || tempOverallLeafCount == 0 { // Break if height is 0 or all leaves accounted for.
+			break
+		}
+	}
+
+	if !foundMountain {
+		// This should not happen if leafIndex is valid and leafIndexToNodePosition succeeded.
+		return nil, fmt.Errorf("internal MMR error: could not locate mountain for leafIndex %d", leafIndex)
+	}
+
+	var proofHashes []Hash
+
+	// Part 2: Calculate intra-mountain proof (siblings on the path from leaf to its mountain's peak).
+	currentPathNodePos := leafNodePos // Start at the leaf's actual node position.
+	// Climb up the mountain from the leaf (height 0) to just below the mountain peak (height actualMountainHeight-1).
+	for hClimb := uint(0); hClimb < actualMountainHeight; hClimb++ {
+		// Determine if the current node on the path is a left or right child within its parent's sub-tree.
+		isRightChildInSubtree := (actualLeafIdxInMountain>>hClimb)&1 == 1
+
+		var siblingNodePos NodePosition
+		var parentNodePos NodePosition
+
+		if isRightChildInSubtree {
+			// currentPathNodePos is a right child. Its parent is at currentPathNodePos + 1.
+			// The sibling (left child of the parent) is at parentPos - (1 << (parent_height)).
+			// Parent's height is hClimb + 1.
+			parentNodePos = currentPathNodePos + 1
+			siblingNodePos = parentNodePos - (1 << (hClimb + 1))
+		} else {
+			// currentPathNodePos is a left child. Its parent is at currentPathNodePos + (1 << (its_height + 1)).
+			// The sibling (right child of the parent) is at parentPos - 1.
+			parentNodePos = currentPathNodePos + (1 << (hClimb + 1))
+			siblingNodePos = parentNodePos - 1
+		}
+
+		if uint64(siblingNodePos) >= uint64(len(m.nodes)) {
+			return nil, fmt.Errorf("internal MMR error: sibling index %d for node %d at height %d out of bounds (%d nodes)", siblingNodePos, currentPathNodePos, hClimb, len(m.nodes))
+		}
+		proofHashes = append(proofHashes, m.nodes[siblingNodePos])
+		currentPathNodePos = parentNodePos // Move to the parent for the next iteration.
+	}
+
+	// Sanity check: after climbing, currentPathNodePos should be the peak of the leaf's mountain.
+	if currentPathNodePos != actualMountainPeakPos {
+		return nil, fmt.Errorf("internal MMR error: path climbing did not reach mountain peak. Reached %d, expected %d", currentPathNodePos, actualMountainPeakPos)
+	}
+
+	// Part 3: Get all peak indices for the MMR.
+	// These are ordered from rightmost peak to leftmost peak.
+	allPeakNodeIndices, err := m.getPeakNodeIndices()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get peak indices for proof: %w", err)
+	}
+
+	// Part 4: Add hashes of other mountain peaks to the proof.
+	// These are added in their original right-to-left order, skipping the leaf's own mountain peak.
+	for _, peakPos := range allPeakNodeIndices {
+		if peakPos != actualMountainPeakPos {
+			if uint64(peakPos) >= uint64(len(m.nodes)) { // Should be caught by getPeakNodeIndices if m.nodes is corrupt
+				return nil, fmt.Errorf("internal MMR error: other peak index %d out of bounds (%d nodes)", peakPos, len(m.nodes))
+			}
+			proofHashes = append(proofHashes, m.nodes[peakPos])
+		}
+	}
+
+	return proofHashes, nil
 }
 
 // leafIndexToNodePosition converts a 0-indexed logical leaf number to its
