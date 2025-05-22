@@ -16,7 +16,7 @@ library Encoder {
             payload.remoteToken,
             payload.from,
             payload.to,
-            payload.amount,
+            _getLeAmount(payload.amount),
             _getLeLength(payload.extraData.length),
             payload.extraData
         );
@@ -77,5 +77,9 @@ library Encoder {
 
     function _getLeLength(uint256 inp) private pure returns (uint32) {
         return uint32(inp.reverseBytes() >> 224);
+    }
+
+    function _getLeAmount(uint64 amt) private pure returns (uint64) {
+        return uint64(uint256(amt).reverseBytes() >> 192);
     }
 }
