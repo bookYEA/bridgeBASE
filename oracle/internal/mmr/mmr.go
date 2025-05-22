@@ -339,10 +339,12 @@ func (m *MMR) leafIndexToNodePosition(leafIndex uint64) (NodePosition, error) {
 
 			if leafIdxToFind < leavesInThisMountain {
 				// The target leaf is in this current mountain.
-				// Leaves within this mountain are indexed 0 to (leavesInThisMountain-1) locally.
-				// Their actual MMR node positions are: nodesBeforeCurrentMountain + local_leaf_index.
-				// The local_leaf_index for our target is leafIdxToFind.
-				return NodePosition(nodesBeforeCurrentMountain + leafIdxToFind), nil
+				// Leaves within this mountain are indexed 0 to (leavesInThisMountain-1) locally (leafIdxToFind).
+				// Calculate its local node position within this mountain's canonical node list
+				// using the formula: node_pos = 2*local_leaf_idx - popcount(local_leaf_idx).
+				// local_leaf_idx is leafIdxToFind.
+				localLeafNodePos := 2*leafIdxToFind - uint64(bits.OnesCount64(leafIdxToFind))
+				return NodePosition(nodesBeforeCurrentMountain + localLeafNodePos), nil
 			}
 
 			// The target leaf is not in this mountain; skip past this mountain.
