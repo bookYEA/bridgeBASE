@@ -2,9 +2,11 @@
 pragma solidity 0.8.28;
 
 // Libraries
+import {Encoder} from "./libraries/Encoder.sol";
 import {Encoding} from "optimism/packages/contracts-bedrock/src/libraries/Encoding.sol";
 
 // Interfaces
+import {ISolanaMessagePasser} from "./interfaces/ISolanaMessagePasser.sol";
 import {ISemver} from "optimism/packages/contracts-bedrock/interfaces/universal/ISemver.sol";
 
 /// @custom:proxied true
@@ -19,19 +21,7 @@ contract MessagePasser is ISemver {
     struct WithdrawalTransaction {
         uint256 nonce;
         address sender;
-        Instruction[] ixs;
-    }
-
-    struct AccountMeta {
-        bytes32 pubKey;
-        bool isSigner;
-        bool isWritable;
-    }
-
-    struct Instruction {
-        bytes32 programId;
-        AccountMeta[] accounts;
-        bytes data;
+        ISolanaMessagePasser.Instruction[] ixs;
     }
 
     /// @notice The current message version identifier.
@@ -47,13 +37,15 @@ contract MessagePasser is ISemver {
     /// @param nonce          Unique value corresponding to each withdrawal.
     /// @param sender         The L2 account address which initiated the withdrawal.
     /// @param withdrawalHash The hash of the withdrawal.
-    event MessagePassed(uint256 indexed nonce, address indexed sender, Instruction[] ixs, bytes32 withdrawalHash);
+    event MessagePassed(
+        uint256 indexed nonce, address indexed sender, ISolanaMessagePasser.Instruction[] ixs, bytes32 withdrawalHash
+    );
 
     /// @custom:semver 1.1.2
     string public constant version = "1.1.2";
 
     /// @notice Sends a message from L2 to L1.
-    function initiateWithdrawal(Instruction[] calldata ixs) public payable {
+    function initiateWithdrawal(ISolanaMessagePasser.Instruction[] calldata ixs) public payable {
         bytes32 withdrawalHash =
             _hashWithdrawal(WithdrawalTransaction({nonce: messageNonce(), sender: msg.sender, ixs: ixs}));
 
@@ -78,6 +70,6 @@ contract MessagePasser is ISemver {
     /// @param _tx Withdrawal transaction to hash.
     /// @return Hashed withdrawal transaction.
     function _hashWithdrawal(WithdrawalTransaction memory _tx) internal pure returns (bytes32) {
-        return keccak256(abi.encode(_tx));
+        return keccak256(Encoder.encodeMessage(_tx.nonce, _tx.sender, _tx.ixs));
     }
 }
