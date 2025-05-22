@@ -24,3 +24,7 @@ mint-tokens:
 .PHONY: bridge-tokens-to-base
 bridge-tokens-to-base:
 	bun run src/bridgeTokensToBase.ts
+
+.PHONY: bridge-to-solana
+bridge-to-solana:
+	bun run src/orchestrateBridge.ts
