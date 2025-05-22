@@ -3,7 +3,7 @@ import { Program } from "@coral-xyz/anchor";
 import type { Bridge } from "./target/types/bridge";
 
 const REMOTE_TOKEN_ADDRESS = toArray(
-  "08AF32D8482533F5C21DA4Eb99CD287dD52339F1"
+  "d51905478B98b496DF834fb5409eb2e42Fd3Eb2D"
 ); // wrapped SOL on Base Sepolia
 
 async function main() {

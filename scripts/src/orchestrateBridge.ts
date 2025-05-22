@@ -10,6 +10,15 @@ import { createPublicClient, decodeEventLog, http, type Hash } from "viem";
 import { baseSepolia } from "viem/chains";
 import { PublicKey } from "@solana/web3.js";
 import { sleep } from "bun";
+import { getAssociatedTokenAddress, TOKEN_PROGRAM_ID } from "@solana/spl-token";
+
+const provider = anchor.AnchorProvider.env();
+anchor.setProvider(provider);
+
+const program = anchor.workspace.Bridge as Program<Bridge>;
+
+const VERSION = 1;
+const solRemoteAddress = "0x08AF32D8482533F5C21DA4Eb99CD287dD52339F1";
 
 async function runBaseInteraction(): Promise<{
   nonce: number[];
@@ -23,7 +32,8 @@ async function runBaseInteraction(): Promise<{
 
   const baseDir = path.resolve(__dirname, "../../base");
 
-  const command = "make bridge-sol-to-solana";
+  const command = "make bridge-tokens-to-solana";
+  // const command = "make bridge-sol-to-solana";
 
   let scriptOutput = "";
   let txHash: Hash;
@@ -170,11 +180,6 @@ async function runBaseInteraction(): Promise<{
 
 async function waitForRootOnSolana(blockNumber: number) {
   console.log("Waiting for root on Solana...");
-  const provider = anchor.AnchorProvider.env();
-  anchor.setProvider(provider);
-
-  const program = anchor.workspace.Bridge as Program<Bridge>;
-
   const [rootPda] = PublicKey.findProgramAddressSync(
     [Buffer.from("output_root"), new anchor.BN(blockNumber).toBuffer("le", 8)],
     program.programId
@@ -191,9 +196,62 @@ async function waitForRootOnSolana(blockNumber: number) {
         return;
       }
     } catch (e) {
-      await sleep(3000);
+      await sleep(1000);
     }
   }
+}
+
+async function finalizeTransactionOnSolana(
+  transactionHash: number[],
+  user: anchor.web3.PublicKey
+) {
+  const mint = new PublicKey("EpGUaQN3ndd6LvY66kh4NxiStwmZHoApZWtwRMmn5SVS");
+  const [vaultPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("bridge_vault"), new anchor.BN(VERSION).toBuffer("le", 1)],
+    program.programId
+  );
+  const vaultATA = await getAssociatedTokenAddress(mint, vaultPda, true);
+  const userATA = await getAssociatedTokenAddress(mint, user);
+  const [depositPda] = PublicKey.findProgramAddressSync(
+    [
+      Buffer.from("deposit"),
+      mint.toBuffer(),
+      Buffer.from(solRemoteAddress.slice(2), "hex"),
+    ],
+    program.programId
+  );
+  const remainingAccounts = [
+    { pubkey: mint, isWritable: false, isSigner: false },
+    { pubkey: vaultPda, isWritable: false, isSigner: false },
+    { pubkey: vaultATA, isWritable: true, isSigner: false },
+    { pubkey: userATA, isWritable: true, isSigner: false },
+    { pubkey: TOKEN_PROGRAM_ID, isWritable: false, isSigner: false },
+    { pubkey: depositPda, isWritable: true, isSigner: false },
+  ];
+
+  const tx = await program.methods
+    .finalizeTransaction(transactionHash)
+    .accounts({})
+    .remainingAccounts(remainingAccounts)
+    .rpc();
+
+  console.log("Finalize transaction signature", tx);
+  const latestBlockHash = await provider.connection.getLatestBlockhash();
+  await provider.connection.confirmTransaction(
+    {
+      blockhash: latestBlockHash.blockhash,
+      lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
+      signature: tx,
+    },
+    "confirmed"
+  );
+
+  // const [messagePda] = PublicKey.findProgramAddressSync(
+  //   [Buffer.from("message"), Buffer.from(transactionHash)],
+  //   program.programId
+  // );
+  // const message = await program.account.message.fetch(messagePda);
+  // console.log({ message });
 }
 
 async function orchestrate() {
@@ -232,6 +290,28 @@ async function orchestrate() {
     );
 
     console.log("Solana transaction proven successfully.");
+
+    // TODO: extract this from ixs
+    const user = new PublicKey(
+      Buffer.from(
+        "9827993b7b317eb6c74279d49074a13b33a3495a30637c86a7513922014ba424",
+        "hex"
+      )
+    );
+
+    // 3. Finalize the transaction on Solana
+    console.log("Finalizing transaction on Solana...");
+    await finalizeTransactionOnSolana(transactionHash, user);
+
+    const [messagePda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("message"), Buffer.from(transactionHash)],
+      program.programId
+    );
+    const message = await program.account.message.fetch(messagePda);
+    console.log({ message });
+
+    console.log("Solana transaction finalized successfully.");
+
     console.log("Bridge orchestration completed.");
   } catch (error) {
     console.error("Error during bridge orchestration:", error);

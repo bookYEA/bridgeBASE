@@ -5,7 +5,7 @@ import { PublicKey } from "@solana/web3.js";
 
 const mint = new PublicKey("EpGUaQN3ndd6LvY66kh4NxiStwmZHoApZWtwRMmn5SVS");
 const REMOTE_TOKEN_ADDRESS = toArray(
-  "79E25012d16469E3A2D6F6d03BeEca9Fc6012DF4"
+  "0B462901D26be439E8229315aBdA94Bb176b55df"
 ); // wrapped SPL on Base Sepolia
 
 async function main() {
