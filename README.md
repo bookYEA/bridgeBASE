@@ -38,52 +38,66 @@ make deps
 make deploy
 ```
 
-4. Check the deployed addresses file in `base/deployments` for the new addresses
+4. Deploy wSOL
 
-5. Copy the messenger and bridge addresses into [`solana/programs/bridge/src/constants.rs`](solana/programs/bridge/src/constants.rs) for `OTHER_MESSENGER` and `OTHER_BRIDGE`
+```bash
+make create-wrapped-sol
+```
 
-6. Copy the messenger and bridge addresses into [`solana/tests/ixs/messenger.ts`](solana/tests/utils/constants.ts) for `otherMessengerAddress` and `otherBridgeAddress`.
+5. Deploy wSPL
 
-7. Enter solana directory
+```bash
+make create-token
+```
+
+6. Check the deployed addresses file in `base/deployments` for the new addresses
+
+7. Copy the messenger and bridge addresses into [`solana/programs/bridge/src/constants.rs`](solana/programs/bridge/src/constants.rs) for `OTHER_MESSENGER` and `OTHER_BRIDGE`
+
+8. Copy the messenger and bridge addresses into [`solana/tests/ixs/messenger.ts`](solana/tests/utils/constants.ts) for `otherMessengerAddress` and `otherBridgeAddress`.
+
+9. Enter solana directory
 
 ```bash
 cd ../solana
 ```
 
-8. Re-build the program
+10. Re-build the program
 
 ```bash
 anchor build
 ```
 
-9. Run tests to ensure they all still pass
+11. Run tests to ensure they all still pass
 
 ```bash
 anchor test
 ```
 
-10. Uncomment the `TRUSTED_ORACLE` constant for Devnet deployments in [`constants.rs`](solana/programs/bridge/src/constants.rs).
+12. Uncomment the `TRUSTED_ORACLE` constant for Devnet deployments in [`constants.rs`](solana/programs/bridge/src/constants.rs).
 
-11. Build the program
+13. Build the program
 
 ```bash
 anchor build
 ```
 
-12. Set target cluster in [`Anchor.toml`](solana/Anchor.toml) to `Devnet`
+14. Set target cluster in [`Anchor.toml`](solana/Anchor.toml) to `Devnet`
 
 ```toml
 [provider]
 cluster = "Devnet"
 ```
 
-11. Re-deploy program
+15. Re-deploy program
 
 ```bash
 anchor deploy
 ```
 
-12. Reset target cluster in [`Anchor.toml`](solana/Anchor.toml) back to `Localnet`.
+16. Reset the `TRUSTED_ORACLE` constant in [`constants.rs`](solana/programs/bridge/src/constants.rs).
+
+17. Reset target cluster in [`Anchor.toml`](solana/Anchor.toml) back to `Localnet`.
 
 ```toml
 [provider]
