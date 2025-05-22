@@ -3,7 +3,8 @@
 BASE_RPC=https://base-sepolia.cbhq.net
 # BASE_RPC=https://mainnet.base.org
 
-LOCAL_SOL = 0x08AF32D8482533F5C21DA4Eb99CD287dD52339F1
+LOCAL_SOL = 0xd51905478B98b496DF834fb5409eb2e42Fd3Eb2D
+LOCAL_SPL = 0x0B462901D26be439E8229315aBdA94Bb176b55df
 REMOTE_SOL = 0x0501550155015501550155015501550155015501550155015501550155015501
 REMOTE_SPL = 0xcd43b9e91032f9346b89b99c2155981f799ebf0d8cf4f56b03dbec65bdd6bbe5
 
@@ -48,6 +49,14 @@ create-token:
 bridge-sol-to-solana:
 	LOCAL_TOKEN=$(LOCAL_SOL) \
 	REMOTE_TOKEN=$(REMOTE_SOL) \
+	TO=0x9827993b7b317eb6c74279d49074a13b33a3495a30637c86a7513922014ba424 \
+	AMOUNT=1000000 \
+	forge script BridgeTokensToSolanaScript --account testnet-admin --rpc-url $(BASE_RPC) --broadcast -vvvv
+
+.PHONY: bridge-tokens-to-solana
+bridge-tokens-to-solana:
+	LOCAL_TOKEN=$(LOCAL_SPL) \
+	REMOTE_TOKEN=$(REMOTE_SPL) \
 	TO=0x9827993b7b317eb6c74279d49074a13b33a3495a30637c86a7513922014ba424 \
 	AMOUNT=1000000 \
 	forge script BridgeTokensToSolanaScript --account testnet-admin --rpc-url $(BASE_RPC) --broadcast -vvvv
