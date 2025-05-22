@@ -48,13 +48,14 @@ pub struct FinalizeTransaction<'info> {
 pub fn prove_transaction_handler(
     ctx: Context<ProveTransaction>,
     transaction_hash: &[u8; 32],
+    nonce: &[u8; 32],
     remote_sender: &[u8; 20],
     ixs: Vec<Ix>,
     proof: Vec<[u8; 32]>,
     leaf_index: u64,
     total_leaf_count: u64,
 ) -> Result<()> {
-    let message_hash = ix_utils::hash_ixs(remote_sender, &ixs);
+    let message_hash = ix_utils::hash_ixs(nonce, remote_sender, &ixs);
 
     if message_hash != *transaction_hash {
         return err!(ReceiverError::InvalidTransactionHash);

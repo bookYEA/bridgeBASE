@@ -2,10 +2,11 @@ use crate::Ix;
 use anchor_lang::solana_program::keccak;
 
 /// Creates a hash of the instructions to identify the transaction.
-pub fn hash_ixs(remote_sender: &[u8; 20], ixs: &[Ix]) -> [u8; 32] {
+pub fn hash_ixs(nonce: &[u8; 32], remote_sender: &[u8; 20], ixs: &[Ix]) -> [u8; 32] {
     // Create a canonical representation of the instructions.
     let mut data = Vec::new();
 
+    data.extend_from_slice(nonce);
     data.extend_from_slice(remote_sender);
 
     // Add each instruction.

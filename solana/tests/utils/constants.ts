@@ -13,10 +13,10 @@ export const expectedBridgePubkey = new PublicKey(
   )
 );
 export const otherMessengerAddress = [
-  ...Buffer.from("0xD48f8d901b1F9B30FE194252807917aba4a83bAF".slice(2), "hex"),
+  ...Buffer.from("0x9143A3f06fBB81B37A5e9da70F59c54cDc62436a".slice(2), "hex"),
 ];
 export const otherBridgeAddress = [
-  ...Buffer.from("0xE5709130B08f338c4662634B969480BFb4ee126A".slice(2), "hex"),
+  ...Buffer.from("0x351c4b815129D903700F6b35ce2c5d41b6d715d4".slice(2), "hex"),
 ];
 export const toAddress = Array.from({ length: 20 }, (_, i) => i);
 export const dummyData = Buffer.from("sample data payload", "utf-8");

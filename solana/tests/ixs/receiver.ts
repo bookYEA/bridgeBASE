@@ -214,7 +214,8 @@ describe("receiver", () => {
       accounts: transferIx.keys,
       data: transferIx.data,
     };
-    transactionHash = toNumberArray(hashIxs(toAddress, [targetIxParam]));
+    nonce = Array.from(Buffer.from(new anchor.BN(0).toArray("be", 32)));
+    transactionHash = toNumberArray(hashIxs(nonce, toAddress, [targetIxParam]));
 
     const blockNumber = new anchor.BN(20);
     const result = await setupRootAndProof(blockNumber, transactionHash);
@@ -230,6 +231,7 @@ describe("receiver", () => {
           program.methods
             .proveTransaction(
               transaction2,
+              nonce,
               toAddress,
               [targetIxParam],
               proof,
@@ -250,6 +252,7 @@ describe("receiver", () => {
           program.methods
             .proveTransaction(
               transactionHash,
+              nonce,
               toAddress,
               [targetIxParam],
               badProof,
@@ -266,6 +269,7 @@ describe("receiver", () => {
         const tx = await program.methods
           .proveTransaction(
             transactionHash,
+            nonce,
             toAddress,
             [targetIxParam],
             proof,
@@ -335,7 +339,7 @@ describe("receiver", () => {
       messengerIxParam = createMessengerPayload(nonce, sender, targetIxParam);
 
       transactionHash = toNumberArray(
-        hashIxs(otherMessengerAddress, [messengerIxParam])
+        hashIxs(nonce, otherMessengerAddress, [messengerIxParam])
       );
 
       const blockNumber = new anchor.BN(21);
@@ -351,6 +355,7 @@ describe("receiver", () => {
           program.methods
             .proveTransaction(
               transaction2,
+              nonce,
               otherMessengerAddress,
               [messengerIxParam],
               proof,
@@ -371,6 +376,7 @@ describe("receiver", () => {
           program.methods
             .proveTransaction(
               transactionHash,
+              nonce,
               otherMessengerAddress,
               [messengerIxParam],
               badProof,
@@ -387,6 +393,7 @@ describe("receiver", () => {
         const tx = await program.methods
           .proveTransaction(
             transactionHash,
+            nonce,
             otherMessengerAddress,
             [messengerIxParam],
             proof,
@@ -570,7 +577,7 @@ describe("receiver", () => {
       messengerIxParam = createMessengerPayload(nonce, sender, targetIxParam);
 
       transactionHash = toNumberArray(
-        hashIxs(otherMessengerAddress, [messengerIxParam])
+        hashIxs(nonce, otherMessengerAddress, [messengerIxParam])
       );
 
       const blockNumber = new anchor.BN(22);
@@ -586,6 +593,7 @@ describe("receiver", () => {
           program.methods
             .proveTransaction(
               transaction2,
+              nonce,
               otherMessengerAddress,
               [messengerIxParam],
               proof,
@@ -606,6 +614,7 @@ describe("receiver", () => {
           program.methods
             .proveTransaction(
               transactionHash,
+              nonce,
               otherMessengerAddress,
               [messengerIxParam],
               badProof,
@@ -622,6 +631,7 @@ describe("receiver", () => {
         const tx = await program.methods
           .proveTransaction(
             transactionHash,
+            nonce,
             otherMessengerAddress,
             [messengerIxParam],
             proof,
