@@ -72,7 +72,7 @@ func (a *API) handleGenerateProof(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	proof, err := a.mmrInstance.GenerateProof(leafIndex)
+	proof, leafCount, err := a.mmrInstance.GenerateProof(leafIndex)
 	if err != nil {
 		log.Error("Error generating proof", "leafIndex", leafIndex, "error", err)
 		http.Error(w, fmt.Sprintf("Error generating proof: %v", err), http.StatusInternalServerError)
@@ -85,14 +85,12 @@ func (a *API) handleGenerateProof(w http.ResponseWriter, r *http.Request) {
 		rawProof[i] = p // mmr.Hash is []byte, so this direct assignment works element-wise
 	}
 
-	log.Info("Proof generated", "rawProof", rawProof)
-
 	response := struct {
-		LeafIndex uint64   `json:"leafIndex"`
-		Proof     [][]byte `json:"proof"`
+		TotalLeafCount uint64   `json:"totalLeafCount"`
+		Proof          [][]byte `json:"proof"`
 	}{
-		LeafIndex: leafIndex,
-		Proof:     rawProof,
+		TotalLeafCount: leafCount,
+		Proof:          rawProof,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

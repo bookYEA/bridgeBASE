@@ -191,17 +191,17 @@ func (m *MMR) Root() (Hash, error) {
 // The proof consists of sibling hashes along the path from the leaf to its
 // mountain's peak, followed by the hashes of all other mountain peaks.
 // The other mountain peaks are appended in their natural MMR order (right-to-left).
-func (m *MMR) GenerateProof(leafIndex uint64) ([]Hash, error) {
+func (m *MMR) GenerateProof(leafIndex uint64) ([]Hash, uint64, error) {
 	if m.IsEmpty() {
-		return nil, fmt.Errorf("MMR is empty, cannot generate proof")
+		return nil, 0, fmt.Errorf("MMR is empty, cannot generate proof")
 	}
 	if leafIndex >= m.leafCount {
-		return nil, fmt.Errorf("leafIndex %d is out of bounds for leafCount %d", leafIndex, m.leafCount)
+		return nil, 0, fmt.Errorf("leafIndex %d is out of bounds for leafCount %d", leafIndex, m.leafCount)
 	}
 
 	leafNodePos, err := m.leafIndexToNodePosition(leafIndex)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get leaf node position for proof: %w", err)
+		return nil, 0, fmt.Errorf("failed to get leaf node position for proof: %w", err)
 	}
 
 	// Part 1: Find information about the mountain containing the leaf.
@@ -249,7 +249,7 @@ func (m *MMR) GenerateProof(leafIndex uint64) ([]Hash, error) {
 
 	if !foundMountain {
 		// This should not happen if leafIndex is valid and leafIndexToNodePosition succeeded.
-		return nil, fmt.Errorf("internal MMR error: could not locate mountain for leafIndex %d", leafIndex)
+		return nil, 0, fmt.Errorf("internal MMR error: could not locate mountain for leafIndex %d", leafIndex)
 	}
 
 	var proofHashes []Hash
@@ -278,7 +278,7 @@ func (m *MMR) GenerateProof(leafIndex uint64) ([]Hash, error) {
 		}
 
 		if uint64(siblingNodePos) >= uint64(len(m.nodes)) {
-			return nil, fmt.Errorf("internal MMR error: sibling index %d for node %d at height %d out of bounds (%d nodes)", siblingNodePos, currentPathNodePos, hClimb, len(m.nodes))
+			return nil, 0, fmt.Errorf("internal MMR error: sibling index %d for node %d at height %d out of bounds (%d nodes)", siblingNodePos, currentPathNodePos, hClimb, len(m.nodes))
 		}
 		proofHashes = append(proofHashes, m.nodes[siblingNodePos])
 		currentPathNodePos = parentNodePos // Move to the parent for the next iteration.
@@ -286,14 +286,14 @@ func (m *MMR) GenerateProof(leafIndex uint64) ([]Hash, error) {
 
 	// Sanity check: after climbing, currentPathNodePos should be the peak of the leaf's mountain.
 	if currentPathNodePos != actualMountainPeakPos {
-		return nil, fmt.Errorf("internal MMR error: path climbing did not reach mountain peak. Reached %d, expected %d", currentPathNodePos, actualMountainPeakPos)
+		return nil, 0, fmt.Errorf("internal MMR error: path climbing did not reach mountain peak. Reached %d, expected %d", currentPathNodePos, actualMountainPeakPos)
 	}
 
 	// Part 3: Get all peak indices for the MMR.
 	// These are ordered from rightmost peak to leftmost peak.
 	allPeakNodeIndices, err := m.getPeakNodeIndices()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get peak indices for proof: %w", err)
+		return nil, 0, fmt.Errorf("failed to get peak indices for proof: %w", err)
 	}
 
 	// Part 4: Add hashes of other mountain peaks to the proof.
@@ -301,13 +301,13 @@ func (m *MMR) GenerateProof(leafIndex uint64) ([]Hash, error) {
 	for _, peakPos := range allPeakNodeIndices {
 		if peakPos != actualMountainPeakPos {
 			if uint64(peakPos) >= uint64(len(m.nodes)) { // Should be caught by getPeakNodeIndices if m.nodes is corrupt
-				return nil, fmt.Errorf("internal MMR error: other peak index %d out of bounds (%d nodes)", peakPos, len(m.nodes))
+				return nil, 0, fmt.Errorf("internal MMR error: other peak index %d out of bounds (%d nodes)", peakPos, len(m.nodes))
 			}
 			proofHashes = append(proofHashes, m.nodes[peakPos])
 		}
 	}
 
-	return proofHashes, nil
+	return proofHashes, m.leafCount, nil
 }
 
 // leafIndexToNodePosition converts a 0-indexed logical leaf number to its
