@@ -1,5 +1,5 @@
 import * as anchor from "@coral-xyz/anchor";
-import { readFileSync, writeFileSync } from "fs";
+import { readFileSync } from "fs";
 import { main as proveOnSolana } from "./solanaWithdrawal";
 import { Program } from "@coral-xyz/anchor";
 import type { Bridge } from "../target/types/bridge";
@@ -36,7 +36,6 @@ async function runBaseInteraction(): Promise<{
   const command = "make bridge-tokens-to-solana";
   // const command = "make bridge-sol-to-solana";
 
-  let scriptOutput = "";
   let txHash: Hash;
 
   const publicClient = createPublicClient({
@@ -46,12 +45,11 @@ async function runBaseInteraction(): Promise<{
 
   try {
     console.log(`Executing command in ${baseDir}: ${command}`);
-    scriptOutput = execSync(command, {
+    execSync(command, {
       cwd: baseDir,
       stdio: "pipe", // Capture stdout/stderr
       encoding: "utf-8",
     });
-    console.log("Forge script output:", scriptOutput);
 
     const broadcastData = readFileSync(
       path.resolve(

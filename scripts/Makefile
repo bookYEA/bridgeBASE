@@ -28,3 +28,11 @@ bridge-tokens-to-base:
 .PHONY: bridge-to-solana
 bridge-to-solana:
 	bun run src/orchestrateBridge.ts
+
+.PHONY: check-solana-spl-balance
+check-solana-spl-balance:
+	bun run src/checkSolanaBalance.ts
+
+.PHONY: check-base-balance
+check-base-balance:
+	bun run src/checkBaseBalance.ts
