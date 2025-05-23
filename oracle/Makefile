@@ -22,4 +22,7 @@ run-dev:
 
 .PHONY: run-prod
 run-prod:
-	go run ./cmd --target-address $(SOLANA_PROGRAM_ID) --is-mainnet --base-rpc-url $(BASE_MAINNET_RPC_URL) --base-message-passer-address $(BASE_MESSAGE_PASSER_ADDRESS)
+	go run ./cmd --target-address $(SOLANA_PROGRAM_ID) --is-mainnet \
+	--base-rpc-url $(BASE_MAINNET_RPC_URL) \
+	--base-message-passer-address $(BASE_MESSAGE_PASSER_ADDRESS) \
+	--message-passer-deployment-block-number $(MESSAGE_PASSER_DEPLOYMENT_BLOCK_NUMBER)
