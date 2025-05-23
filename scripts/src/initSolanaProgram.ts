@@ -1,6 +1,6 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
-import type { Bridge } from "./target/types/bridge";
+import type { Bridge } from "../target/types/bridge";
 
 async function main() {
   const provider = anchor.AnchorProvider.env();

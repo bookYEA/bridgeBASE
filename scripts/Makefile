@@ -1,17 +1,21 @@
+export MINT = EpGUaQN3ndd6LvY66kh4NxiStwmZHoApZWtwRMmn5SVS
+export USER = 0x8C1a617BdB47342F9C17Ac8750E0b070c372C721
+
 .PHONY: build
 build:
 	rm -rf target
 	cd ../solana && anchor clean && anchor build
 	mkdir target
 	cp -r ../solana/target .
+	cp -r ../base/deployments .
 
 .PHONY: init
 init:
-	bun run init.ts
+	bun run src/initSolanaProgram.ts
 
 .PHONY: bridge-sol-to-base
 bridge-sol-to-base:
-	bun run index.ts
+	bun run src/bridgeSolToBase.ts
 
 .PHONY: create-mint
 create-mint:

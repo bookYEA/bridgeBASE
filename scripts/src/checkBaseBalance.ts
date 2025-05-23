@@ -1,8 +1,7 @@
-import { createPublicClient, formatEther, formatUnits, http } from "viem";
+import { createPublicClient, formatUnits, http, type Address } from "viem";
 import { baseSepolia } from "viem/chains";
-
-const wSPL = "0x7aBc6d57A03f3b3eeA91fc2151638A549050eB42";
-const user = "0x8C1a617BdB47342F9C17Ac8750E0b070c372C721";
+import baseSepoliaAddrs from "../deployments/base_sepolia.json";
+import { loadFromEnv } from "./utils/loadFromEnv";
 
 async function main() {
   const publicClient = createPublicClient({
@@ -11,7 +10,7 @@ async function main() {
   });
 
   const res = await publicClient.readContract({
-    address: wSPL,
+    address: baseSepoliaAddrs.WrappedSPL as Address,
     abi: [
       {
         type: "function",
@@ -34,7 +33,7 @@ async function main() {
       },
     ],
     functionName: "balanceOf",
-    args: [user],
+    args: [loadFromEnv("USER") as Address],
   });
   console.log(`Base balance: ${formatUnits(res, 9)}`);
 }

@@ -11,6 +11,8 @@ import { baseSepolia } from "viem/chains";
 import { PublicKey } from "@solana/web3.js";
 import { sleep } from "bun";
 import { getAssociatedTokenAddress, TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import baseSepoliaAddrs from "../deployments/base_sepolia.json";
+import { loadFromEnv } from "./utils/loadFromEnv";
 
 const provider = anchor.AnchorProvider.env();
 anchor.setProvider(provider);
@@ -18,8 +20,6 @@ anchor.setProvider(provider);
 const program = anchor.workspace.Bridge as Program<Bridge>;
 
 const VERSION = 1;
-const solRemoteAddress = "0x8f2F5D1Eb437A4D64753af43f0993fC95C36cECd";
-const splRemoteAddress = "0x7aBc6d57A03f3b3eeA91fc2151638A549050eB42";
 
 async function runBaseInteraction(): Promise<{
   nonce: number[];
@@ -34,7 +34,6 @@ async function runBaseInteraction(): Promise<{
   const baseDir = path.resolve(__dirname, "../../base");
 
   const command = "make bridge-tokens-to-solana";
-  // const command = "make bridge-sol-to-solana";
 
   let txHash: Hash;
 
@@ -204,7 +203,7 @@ async function finalizeTransactionOnSolana(
   transactionHash: number[],
   userATA: anchor.web3.PublicKey
 ) {
-  const mint = new PublicKey("EpGUaQN3ndd6LvY66kh4NxiStwmZHoApZWtwRMmn5SVS");
+  const mint = new PublicKey(loadFromEnv("MINT"));
   const [vaultPda] = PublicKey.findProgramAddressSync(
     [Buffer.from("bridge_vault"), new anchor.BN(VERSION).toBuffer("le", 1)],
     program.programId
@@ -214,8 +213,7 @@ async function finalizeTransactionOnSolana(
     [
       Buffer.from("deposit"),
       mint.toBuffer(),
-      Buffer.from(splRemoteAddress.slice(2), "hex"),
-      // Buffer.from(solRemoteAddress.slice(2), "hex"),
+      Buffer.from(baseSepoliaAddrs.WrappedSPL.slice(2), "hex"),
     ],
     program.programId
   );

@@ -5,8 +5,9 @@ import {
   TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 import { PublicKey } from "@solana/web3.js";
+import { loadFromEnv } from "./utils/loadFromEnv";
 
-const mint = new PublicKey("EpGUaQN3ndd6LvY66kh4NxiStwmZHoApZWtwRMmn5SVS");
+const mint = new PublicKey(loadFromEnv("MINT"));
 
 async function main() {
   const provider = anchor.AnchorProvider.env();

@@ -2,11 +2,12 @@ import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import type { Bridge } from "../target/types/bridge";
 import { PublicKey } from "@solana/web3.js";
+import baseSepoliaAddrs from "../deployments/base_sepolia.json";
+import { toArray } from "./utils/toArray";
+import { loadFromEnv } from "./utils/loadFromEnv";
 
-const mint = new PublicKey("EpGUaQN3ndd6LvY66kh4NxiStwmZHoApZWtwRMmn5SVS");
-const REMOTE_TOKEN_ADDRESS = toArray(
-  "7aBc6d57A03f3b3eeA91fc2151638A549050eB42"
-); // wrapped SPL on Base Sepolia
+const mint = new PublicKey(loadFromEnv("MINT"));
+const REMOTE_TOKEN_ADDRESS = toArray(baseSepoliaAddrs.WrappedSPL);
 
 async function main() {
   const provider = anchor.AnchorProvider.env();
@@ -14,7 +15,7 @@ async function main() {
 
   const program = anchor.workspace.Bridge as Program<Bridge>;
 
-  const to = toArray("8C1a617BdB47342F9C17Ac8750E0b070c372C721");
+  const to = toArray(loadFromEnv("USER"));
   const value = new anchor.BN(0.001 * anchor.web3.LAMPORTS_PER_SOL);
   const minGasLimit = 100000;
   const extraData = Buffer.from("sample data payload", "utf-8");
@@ -40,7 +41,3 @@ main().catch((e) => {
   console.error(e);
   console.log(e.getLogs());
 });
-
-function toArray(a: string): number[] {
-  return Uint8Array.from(Buffer.from(a, "hex")) as unknown as number[];
-}
