@@ -29,9 +29,13 @@ mint-tokens:
 bridge-tokens-to-base:
 	bun run src/bridgeTokensToBase.ts
 
-.PHONY: bridge-to-solana
-bridge-to-solana:
-	bun run src/orchestrateBridge.ts
+.PHONY: bridge-sol-to-solana
+bridge-sol-to-solana:
+	IS_SOL=true bun run src/orchestrateBridge.ts
+
+.PHONY: bridge-spl-to-solana
+bridge-spl-to-solana:
+	IS_SOL=false bun run src/orchestrateBridge.ts
 
 .PHONY: check-solana-spl-balance
 check-solana-spl-balance:

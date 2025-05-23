@@ -13,13 +13,22 @@ import { sleep } from "bun";
 import { getAssociatedTokenAddress, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import baseSepoliaAddrs from "../deployments/base_sepolia.json";
 import { loadFromEnv } from "./utils/loadFromEnv";
+import { SYSTEM_PROGRAM_ID } from "@coral-xyz/anchor/dist/cjs/native/system";
+
+const IS_SOL = loadFromEnv("IS_SOL") === "true";
 
 const provider = anchor.AnchorProvider.env();
 anchor.setProvider(provider);
 
 const program = anchor.workspace.Bridge as Program<Bridge>;
 
-const VERSION = 1;
+const VERSION = 2;
+const solLocalAddress = new PublicKey(
+  Buffer.from(
+    "0501550155015501550155015501550155015501550155015501550155015501",
+    "hex"
+  )
+);
 
 async function runBaseInteraction(): Promise<{
   nonce: number[];
@@ -33,7 +42,9 @@ async function runBaseInteraction(): Promise<{
 
   const baseDir = path.resolve(__dirname, "../../base");
 
-  const command = "make bridge-tokens-to-solana";
+  const command = IS_SOL
+    ? "make bridge-sol-to-solana"
+    : "make bridge-tokens-to-solana";
 
   let txHash: Hash;
 
@@ -199,7 +210,7 @@ async function waitForRootOnSolana(blockNumber: number) {
   }
 }
 
-async function finalizeTransactionOnSolana(
+async function finalizeTokenTransactionOnSolana(
   transactionHash: number[],
   userATA: anchor.web3.PublicKey
 ) {
@@ -223,6 +234,51 @@ async function finalizeTransactionOnSolana(
     { pubkey: vaultATA, isWritable: true, isSigner: false },
     { pubkey: userATA, isWritable: true, isSigner: false },
     { pubkey: TOKEN_PROGRAM_ID, isWritable: false, isSigner: false },
+    { pubkey: depositPda, isWritable: true, isSigner: false },
+  ];
+
+  const tx = await program.methods
+    .finalizeTransaction(transactionHash)
+    .accounts({})
+    .remainingAccounts(remainingAccounts)
+    .rpc();
+
+  console.log("Finalize transaction signature", tx);
+  const latestBlockHash = await provider.connection.getLatestBlockhash();
+  await provider.connection.confirmTransaction(
+    {
+      blockhash: latestBlockHash.blockhash,
+      lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
+      signature: tx,
+    },
+    "confirmed"
+  );
+
+  const [messagePda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("message"), Buffer.from(transactionHash)],
+    program.programId
+  );
+  const message = await program.account.message.fetch(messagePda);
+  if (!message.successfulMessage) {
+    throw new Error("Finalize transaction completed but message failed");
+  }
+}
+
+async function finalizeSOLTransactionOnSolana(
+  transactionHash: number[],
+  user: anchor.web3.PublicKey
+) {
+  const [depositPda] = PublicKey.findProgramAddressSync(
+    [
+      Buffer.from("deposit"),
+      solLocalAddress.toBuffer(),
+      Buffer.from(baseSepoliaAddrs.WrappedSOL.slice(2), "hex"),
+    ],
+    program.programId
+  );
+  const remainingAccounts = [
+    { pubkey: user, isWritable: true, isSigner: false },
+    { pubkey: SYSTEM_PROGRAM_ID, isWritable: false, isSigner: false },
     { pubkey: depositPda, isWritable: true, isSigner: false },
   ];
 
@@ -297,10 +353,20 @@ async function orchestrate() {
         "hex"
       )
     );
+    const user = new PublicKey(
+      Buffer.from(
+        "9827993b7b317eb6c74279d49074a13b33a3495a30637c86a7513922014ba424",
+        "hex"
+      )
+    );
 
     // 3. Finalize the transaction on Solana
     console.log("Finalizing transaction on Solana...");
-    await finalizeTransactionOnSolana(transactionHash, userATA);
+    if (IS_SOL) {
+      await finalizeSOLTransactionOnSolana(transactionHash, user);
+    } else {
+      await finalizeTokenTransactionOnSolana(transactionHash, userATA);
+    }
 
     console.log("Solana transaction finalized successfully.");
 
