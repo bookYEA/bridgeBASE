@@ -21,7 +21,7 @@ const (
 	OutputRootSeed   = "output_root"
 	MessengerSeed    = "messenger_state"
 	BridgeProgramID  = "Fb7KKBmjgKJh1N3aDUxLTj6TR3exH8Xi368bJ3AcDd5T"
-	Version          = 1
+	Version          = 2
 	SubmitRootIxName = "submit_root"
 )
 
