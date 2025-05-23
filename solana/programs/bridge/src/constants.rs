@@ -103,4 +103,4 @@ pub const GAS_PER_BYTE_COST: u64 = 40;
 pub const BASE_TRANSACTION_COST: u64 = 21000;
 
 #[constant]
-pub const VERSION: u8 = 1;
+pub const VERSION: u8 = 2;

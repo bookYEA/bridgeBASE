@@ -218,7 +218,7 @@ pub fn bridge_tokens_to_handler(
 ///                     to identify the transaction.
 pub fn finalize_bridge_tokens<'info>(
     message_account: &mut Account<'info, Message>,
-    vault_pda_info: &AccountInfo<'info>, // Renamed for clarity
+    vault_pda_info: &AccountInfo<'info>,
     account_infos: &'info [AccountInfo<'info>],
     payload: BridgePayload,
 ) -> Result<()> {
@@ -241,30 +241,40 @@ pub fn finalize_bridge_tokens<'info>(
 
         // IOptimismMintableERC20(_localToken).mint(_to, _amount);
     } else {
-        if payload.local_token == NATIVE_SOL_PUBKEY {
-            return err!(BridgeError::InvalidSolUsage);
-        } else {
-            let (deposit_acct_key, _) = Pubkey::find_program_address(
-                &[
-                    DEPOSIT_SEED,
-                    payload.local_token.as_ref(),
-                    payload.remote_token.as_ref(),
-                ],
-                &crate::ID,
+        let recipient_info = find_account_info_by_key(
+            account_infos,
+            &payload.to,
+            ProgramError::NotEnoughAccountKeys,
+        )?;
+
+        let (deposit_acct_key, _) = Pubkey::find_program_address(
+            &[
+                DEPOSIT_SEED,
+                payload.local_token.as_ref(),
+                payload.remote_token.as_ref(),
+            ],
+            &crate::ID,
+        );
+        let deposit_info = find_account_info_by_key(
+            account_infos,
+            &deposit_acct_key,
+            ProgramError::NotEnoughAccountKeys, // Example error
+        )?;
+        let mut deposit = Account::<Deposit>::try_from(deposit_info)?;
+        if deposit.balance < payload.amount {
+            msg!(
+                "Insufficient balance. Has {:?} needs {:?}",
+                deposit.balance,
+                payload.amount
             );
+            return err!(BridgeError::InsufficientBalance);
+        }
+        deposit.balance -= payload.amount;
 
-            let deposit_info = find_account_info_by_key(
-                account_infos,
-                &deposit_acct_key,
-                ProgramError::NotEnoughAccountKeys, // Example error
-            )?;
-            let mut deposit = Account::<Deposit>::try_from(deposit_info)?;
-
-            if deposit.balance < payload.amount {
-                return err!(BridgeError::InsufficientBalance);
-            }
-            deposit.balance -= payload.amount;
-
+        if payload.local_token == NATIVE_SOL_PUBKEY {
+            **vault_pda_info.try_borrow_mut_lamports()? -= payload.amount;
+            **recipient_info.try_borrow_mut_lamports()? += payload.amount;
+        } else {
             let local_token_mint_info = find_account_info_by_key(
                 account_infos,
                 &payload.local_token,
@@ -285,11 +295,6 @@ pub fn finalize_bridge_tokens<'info>(
                 &vault_ata_key,
                 ProgramError::NotEnoughAccountKeys,
             )?;
-            let recipient_ata_info = find_account_info_by_key(
-                account_infos,
-                &payload.to, // Assuming payload.to is the recipient's ATA pubkey
-                ProgramError::NotEnoughAccountKeys,
-            )?;
 
             // Prepare seeds for the vault PDA
             let version_bytes = VERSION.to_le_bytes();
@@ -298,7 +303,7 @@ pub fn finalize_bridge_tokens<'info>(
             spl_transfer_pda_signed(
                 local_token_mint_info,
                 vault_ata_info,
-                recipient_ata_info,
+                recipient_info,
                 vault_pda_info,
                 vault_pda_seeds, // Pass the combined seeds
                 &crate::ID,      // Program ID that owns the vault PDA

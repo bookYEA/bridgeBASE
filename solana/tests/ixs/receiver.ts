@@ -27,6 +27,7 @@ import {
   mintTo,
   TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
+import { SYSTEM_PROGRAM_ID } from "@coral-xyz/anchor/dist/cjs/native/system";
 
 describe("receiver", () => {
   // Common test setup
@@ -460,7 +461,7 @@ describe("receiver", () => {
     });
   });
 
-  describe("Relayed bridge transaction", () => {
+  describe("Relayed SPL bridge transaction", () => {
     let depositPda: PublicKey;
     let transferAccounts: {
       pubkey: PublicKey;
@@ -581,6 +582,190 @@ describe("receiver", () => {
       );
 
       const blockNumber = new anchor.BN(22);
+      const result = await setupRootAndProof(blockNumber, transactionHash);
+      rootPda = result.rootPda;
+      proof = result.proof;
+      messagePda = result.messagePda;
+    });
+
+    describe("Prove transction", () => {
+      it("Should fail if invalid transaction hash", async () => {
+        await shouldFail(
+          program.methods
+            .proveTransaction(
+              transaction2,
+              nonce,
+              otherMessengerAddress,
+              [messengerIxParam],
+              proof,
+              leafIndexBN,
+              totalLeafCountBN
+            )
+            .accounts({ payer: payer.publicKey, root: rootPda })
+            .rpc(),
+          "Invalid transaction hash"
+        );
+      });
+
+      it("Should fail if invalid proof", async () => {
+        const badProof = structuredClone(proof);
+        badProof.pop();
+
+        await shouldFail(
+          program.methods
+            .proveTransaction(
+              transactionHash,
+              nonce,
+              otherMessengerAddress,
+              [messengerIxParam],
+              badProof,
+              leafIndexBN,
+              totalLeafCountBN
+            )
+            .accounts({ payer: payer.publicKey, root: rootPda })
+            .rpc(),
+          "Invalid proof"
+        );
+      });
+
+      it("Posts output root", async () => {
+        const tx = await program.methods
+          .proveTransaction(
+            transactionHash,
+            nonce,
+            otherMessengerAddress,
+            [messengerIxParam],
+            proof,
+            leafIndexBN,
+            totalLeafCountBN
+          )
+          .accounts({ payer: payer.publicKey, root: rootPda })
+          .rpc();
+
+        await confirmTransaction(provider.connection, tx);
+
+        const message = await program.account.message.fetch(messagePda);
+
+        expect(message.ixs).to.eql([messengerIxParam]);
+        expect(message.isExecuted).to.be.false;
+      });
+    });
+
+    describe("Finalize transaction", () => {
+      before(async () => {
+        const tx = await program.methods
+          .finalizeTransaction(transactionHash)
+          .accounts({})
+          .remainingAccounts(transferAccounts)
+          .rpc();
+
+        await confirmTransaction(provider.connection, tx);
+      });
+
+      it("Should execute transaction", async () => {
+        const message = await program.account.message.fetch(messagePda);
+        expect(message.isExecuted).to.be.true;
+      });
+
+      it("Should mark message successful", async () => {
+        const message = await program.account.message.fetch(messagePda);
+        expect(message.successfulMessage).to.be.true;
+      });
+
+      it("Should fail if already executed", async () => {
+        await shouldFail(
+          program.methods
+            .finalizeTransaction(transactionHash)
+            .accounts({})
+            .remainingAccounts(transferAccounts)
+            .rpc(),
+          "Already executed"
+        );
+      });
+    });
+  });
+
+  describe("Relayed SOL bridge transaction", () => {
+    let depositPda: PublicKey;
+    let transferAccounts: {
+      pubkey: PublicKey;
+      isWritable: boolean;
+      isSigner: boolean;
+    }[];
+
+    const solLocalAddress = new PublicKey(
+      Buffer.from(
+        "0501550155015501550155015501550155015501550155015501550155015501",
+        "hex"
+      )
+    );
+
+    before(async () => {
+      const tx = await program.methods
+        .bridgeSolTo(
+          solRemoteAddress,
+          toAddress,
+          new anchor.BN(TRANSFER_AMOUNT),
+          minGasLimit,
+          dummyData
+        )
+        .accounts({ user: payer.publicKey })
+        .rpc();
+      await confirmTransaction(provider.connection, tx);
+
+      [depositPda] = PublicKey.findProgramAddressSync(
+        [
+          Buffer.from("deposit"),
+          solLocalAddress.toBuffer(),
+          Buffer.from(solRemoteAddress),
+        ],
+        program.programId
+      );
+
+      // Serialize BridgePayload
+      // Fields: local_token: Pubkey, remote_token: [u8; 20], from: [u8; 20], to: Pubkey, amount: u64, extra_data: Vec<u8>
+      const localTokenBuffer = solLocalAddress.toBuffer();
+      const remoteTokenBuffer = Buffer.from(solRemoteAddress);
+      const fromBuffer = Buffer.from(toAddress);
+      const toBuffer = payer.publicKey.toBuffer();
+      const amountBuffer = new anchor.BN(TRANSFER_AMOUNT).toBuffer("le", 8);
+
+      const extraDataBuffer = Buffer.from("random data", "utf-8");
+      const extraDataLenBuffer = Buffer.alloc(4);
+      extraDataLenBuffer.writeUint32LE(extraDataBuffer.length, 0);
+
+      const serializedBridgePayload = Buffer.concat([
+        localTokenBuffer,
+        remoteTokenBuffer,
+        fromBuffer,
+        toBuffer,
+        amountBuffer,
+        extraDataLenBuffer,
+        extraDataBuffer,
+      ]);
+
+      transferAccounts = [
+        { pubkey: payer.publicKey, isWritable: true, isSigner: false },
+        { pubkey: SYSTEM_PROGRAM_ID, isWritable: false, isSigner: false },
+        { pubkey: depositPda, isWritable: true, isSigner: false },
+      ];
+
+      targetIxParam = {
+        programId: expectedBridgePubkey,
+        accounts: [],
+        data: serializedBridgePayload,
+      };
+
+      nonce = Array.from(Buffer.from(new anchor.BN(0).toArray("be", 32)));
+      sender = otherBridgeAddress;
+
+      messengerIxParam = createMessengerPayload(nonce, sender, targetIxParam);
+
+      transactionHash = toNumberArray(
+        hashIxs(nonce, otherMessengerAddress, [messengerIxParam])
+      );
+
+      const blockNumber = new anchor.BN(23);
       const result = await setupRootAndProof(blockNumber, transactionHash);
       rootPda = result.rootPda;
       proof = result.proof;
