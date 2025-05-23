@@ -567,7 +567,7 @@ describe("receiver", () => {
 
       targetIxParam = {
         programId: expectedBridgePubkey,
-        accounts: transferAccounts,
+        accounts: [],
         data: serializedBridgePayload,
       };
 
