@@ -32,74 +32,70 @@ cd base
 make deps
 ```
 
-3. Deploy contracts
+3. Deploy contracts and new wrapped tokens
 
 ```bash
-make deploy
+make dev-deploy
 ```
 
-4. Deploy wSOL
+4. Check the deployed addresses file in `base/deployments` for the new addresses
 
-```bash
-make create-wrapped-sol
-```
+5. Copy the messenger and bridge addresses into [`solana/programs/bridge/src/constants.rs`](solana/programs/bridge/src/constants.rs) for `OTHER_MESSENGER` and `OTHER_BRIDGE`
 
-5. Deploy wSPL
+6. Copy the messenger and bridge addresses into [`solana/tests/ixs/messenger.ts`](solana/tests/utils/constants.ts) for `otherMessengerAddress` and `otherBridgeAddress`.
 
-```bash
-make create-token
-```
-
-6. Check the deployed addresses file in `base/deployments` for the new addresses
-
-7. Copy the messenger and bridge addresses into [`solana/programs/bridge/src/constants.rs`](solana/programs/bridge/src/constants.rs) for `OTHER_MESSENGER` and `OTHER_BRIDGE`
-
-8. Copy the messenger and bridge addresses into [`solana/tests/ixs/messenger.ts`](solana/tests/utils/constants.ts) for `otherMessengerAddress` and `otherBridgeAddress`.
-
-9. Enter solana directory
+7. Enter solana directory
 
 ```bash
 cd ../solana
 ```
 
-10. Re-build the program
+8. Re-build the program
 
 ```bash
 anchor build
 ```
 
-11. Run tests to ensure they all still pass
+9. Run tests to ensure they all still pass
 
 ```bash
 anchor test
 ```
 
-12. Uncomment the `TRUSTED_ORACLE` constant for Devnet deployments in [`constants.rs`](solana/programs/bridge/src/constants.rs).
+10. Uncomment the `TRUSTED_ORACLE` constant for Devnet deployments in [`constants.rs`](solana/programs/bridge/src/constants.rs).
 
-13. Build the program
+11. Build the program
 
 ```bash
 anchor build
 ```
 
-14. Set target cluster in [`Anchor.toml`](solana/Anchor.toml) to `Devnet`
+12. Set target cluster in [`Anchor.toml`](solana/Anchor.toml) to `Devnet`
 
 ```toml
 [provider]
 cluster = "Devnet"
 ```
 
-15. Re-deploy program
+13. Re-deploy program
 
 ```bash
 anchor deploy
 ```
 
-16. Reset the `TRUSTED_ORACLE` constant in [`constants.rs`](solana/programs/bridge/src/constants.rs).
+14. Reset the `TRUSTED_ORACLE` constant in [`constants.rs`](solana/programs/bridge/src/constants.rs).
 
-17. Reset target cluster in [`Anchor.toml`](solana/Anchor.toml) back to `Localnet`.
+15. Reset target cluster in [`Anchor.toml`](solana/Anchor.toml) back to `Localnet`.
 
 ```toml
 [provider]
 cluster = "Localnet"
 ```
+
+16. Ensure scripts directory has latest build / deployment artifacts
+
+```bash
+cd ../scripts && make build
+```
+
+17. Ensure addresses in oracle and base Makefiles are updated accordingly
