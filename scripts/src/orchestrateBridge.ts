@@ -1,5 +1,5 @@
 import * as anchor from "@coral-xyz/anchor";
-import { readFileSync } from "fs";
+import { readFileSync, writeFileSync } from "fs";
 import { main as proveOnSolana } from "./solanaWithdrawal";
 import { Program } from "@coral-xyz/anchor";
 import type { Bridge } from "../target/types/bridge";
@@ -18,7 +18,8 @@ anchor.setProvider(provider);
 const program = anchor.workspace.Bridge as Program<Bridge>;
 
 const VERSION = 1;
-const solRemoteAddress = "0x08AF32D8482533F5C21DA4Eb99CD287dD52339F1";
+const solRemoteAddress = "0x8f2F5D1Eb437A4D64753af43f0993fC95C36cECd";
+const splRemoteAddress = "0x7aBc6d57A03f3b3eeA91fc2151638A549050eB42";
 
 async function runBaseInteraction(): Promise<{
   nonce: number[];
@@ -203,7 +204,7 @@ async function waitForRootOnSolana(blockNumber: number) {
 
 async function finalizeTransactionOnSolana(
   transactionHash: number[],
-  user: anchor.web3.PublicKey
+  userATA: anchor.web3.PublicKey
 ) {
   const mint = new PublicKey("EpGUaQN3ndd6LvY66kh4NxiStwmZHoApZWtwRMmn5SVS");
   const [vaultPda] = PublicKey.findProgramAddressSync(
@@ -211,12 +212,12 @@ async function finalizeTransactionOnSolana(
     program.programId
   );
   const vaultATA = await getAssociatedTokenAddress(mint, vaultPda, true);
-  const userATA = await getAssociatedTokenAddress(mint, user);
   const [depositPda] = PublicKey.findProgramAddressSync(
     [
       Buffer.from("deposit"),
       mint.toBuffer(),
-      Buffer.from(solRemoteAddress.slice(2), "hex"),
+      Buffer.from(splRemoteAddress.slice(2), "hex"),
+      // Buffer.from(solRemoteAddress.slice(2), "hex"),
     ],
     program.programId
   );
@@ -246,12 +247,14 @@ async function finalizeTransactionOnSolana(
     "confirmed"
   );
 
-  // const [messagePda] = PublicKey.findProgramAddressSync(
-  //   [Buffer.from("message"), Buffer.from(transactionHash)],
-  //   program.programId
-  // );
-  // const message = await program.account.message.fetch(messagePda);
-  // console.log({ message });
+  const [messagePda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("message"), Buffer.from(transactionHash)],
+    program.programId
+  );
+  const message = await program.account.message.fetch(messagePda);
+  if (!message.successfulMessage) {
+    throw new Error("Finalize transaction completed but message failed");
+  }
 }
 
 async function orchestrate() {
@@ -292,23 +295,16 @@ async function orchestrate() {
     console.log("Solana transaction proven successfully.");
 
     // TODO: extract this from ixs
-    const user = new PublicKey(
+    const userATA = new PublicKey(
       Buffer.from(
-        "9827993b7b317eb6c74279d49074a13b33a3495a30637c86a7513922014ba424",
+        "1e1112994ab6232a643fd9d1cff130f5b829ac336b910b91c6304a96f776fd9c",
         "hex"
       )
     );
 
     // 3. Finalize the transaction on Solana
     console.log("Finalizing transaction on Solana...");
-    await finalizeTransactionOnSolana(transactionHash, user);
-
-    const [messagePda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("message"), Buffer.from(transactionHash)],
-      program.programId
-    );
-    const message = await program.account.message.fetch(messagePda);
-    console.log({ message });
+    await finalizeTransactionOnSolana(transactionHash, userATA);
 
     console.log("Solana transaction finalized successfully.");
 

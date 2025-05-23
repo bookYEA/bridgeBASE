@@ -21,6 +21,7 @@ async function main() {
     mint,
     payer.publicKey
   );
+  console.log(`User ATA: ${userATA.address.toBuffer().toString("hex")}`);
   console.log(`Minting ${amount} tokens to ${payer.publicKey.toBase58()}`);
   await mintTo(
     provider.connection,

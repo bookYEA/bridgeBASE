@@ -29,17 +29,6 @@ export async function main(
     program.programId
   );
 
-  console.log({
-    transactionHash,
-    remoteSender,
-    ixs,
-    proof: json.proof.map((element: string) =>
-      Array.from(Buffer.from(element, "base64"))
-    ),
-    nonce,
-    totalLeafCount: json.totalLeafCount,
-  });
-
   const tx = await program.methods
     .proveTransaction(
       transactionHash,
