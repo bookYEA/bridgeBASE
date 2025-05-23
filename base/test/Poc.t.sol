@@ -123,17 +123,19 @@ contract Poc is Test {
         bytes32 to = 0xacd56258cfa53dc77d9290116210958c82bf2fc115f1f7f392e530aba3a03fb3;
         uint64 amount = 0x00ca9a3b00000000;
         bytes memory extraData = hex"72616e646f6d2064617461";
-        Bridge.BridgePayload memory payload =
-            Bridge.BridgePayload({
-                localToken: localToken,
-                remoteToken: remoteToken_,
-                from: from,
-                to: to,
-                amount: amount,
-                extraData: extraData
-            });
+        Bridge.BridgePayload memory payload = Bridge.BridgePayload({
+            localToken: localToken,
+            remoteToken: remoteToken_,
+            from: from,
+            to: to,
+            amount: amount,
+            extraData: extraData
+        });
 
-        assertEq(Encoder.encodeBridgePayload(payload), hex"2b2d21b7ff083222845f554b5c1f2e1e4affd92e7597f9f4e9b63e6c369d4cb7e398d7afe84a6339783718935087a4ace6f6dfe8000102030405060708090a0b0c0d0e0f10111213acd56258cfa53dc77d9290116210958c82bf2fc115f1f7f392e530aba3a03fb3000000003b9aca000b00000072616e646f6d2064617461");
+        assertEq(
+            Encoder.encodeBridgePayload(payload),
+            hex"2b2d21b7ff083222845f554b5c1f2e1e4affd92e7597f9f4e9b63e6c369d4cb7e398d7afe84a6339783718935087a4ace6f6dfe8000102030405060708090a0b0c0d0e0f10111213acd56258cfa53dc77d9290116210958c82bf2fc115f1f7f392e530aba3a03fb3000000003b9aca000b00000072616e646f6d2064617461"
+        );
     }
 
     function _bytes32ToAddress(bytes32 value) private pure returns (address) {

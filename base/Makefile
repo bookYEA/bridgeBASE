@@ -34,17 +34,20 @@ checkout-op-commit:
 	git fetch --depth=1 origin $(OP_COMMIT); \
 	git reset --hard FETCH_HEAD
 
+.PHONY: dev-deploy
+dev-deploy: deploy create-wrapped-sol create-token
+
 .PHONY: deploy
 deploy:
 	forge script DeployScript --account testnet-admin --rpc-url $(BASE_RPC) --broadcast -vvvv
 
 .PHONY: create-wrapped-sol
 create-wrapped-sol:
-	REMOTE_TOKEN=$(REMOTE_SOL) forge script CreateTokenScript --account testnet-admin --rpc-url $(BASE_RPC) --broadcast -vvvv
+	TOKEN_NAME=WrappedSOL REMOTE_TOKEN=$(REMOTE_SOL) forge script CreateTokenScript --account testnet-admin --rpc-url $(BASE_RPC) --broadcast -vvvv
 
 .PHONY: create-token
 create-token:
-	REMOTE_TOKEN=$(REMOTE_SPL) forge script CreateTokenScript --account testnet-admin --rpc-url $(BASE_RPC) --broadcast -vvvv
+	TOKEN_NAME=WrappedSPL REMOTE_TOKEN=$(REMOTE_SPL) forge script CreateTokenScript --account testnet-admin --rpc-url $(BASE_RPC) --broadcast -vvvv
 
 .PHONY: bridge-sol-to-solana
 bridge-sol-to-solana:
