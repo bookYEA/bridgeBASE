@@ -1,13 +1,15 @@
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::keccak;
+use anchor_lang::solana_program::program_option::COption;
 use anchor_spl::{
     associated_token::AssociatedToken,
     token::{Mint, Token, TokenAccount},
+    token_interface::{self, MintTo},
 };
 
 use crate::{
     BridgePayload, Deposit, Message, Messenger, ASSOCIATED_TOKEN_PROGRAM_ID, DEPOSIT_SEED,
-    FINALIZE_BRIDGE_TOKEN_SELECTOR, MESSENGER_SEED, NATIVE_SOL_PUBKEY, OTHER_BRIDGE,
+    FINALIZE_BRIDGE_TOKEN_SELECTOR, MESSENGER_SEED, MINT_SEED, NATIVE_SOL_PUBKEY, OTHER_BRIDGE,
     TOKEN_PROGRAM_ID, VAULT_SEED, VERSION,
 };
 
@@ -195,6 +197,7 @@ pub fn bridge_tokens_to_handler(
     };
     initiate_bridge_tokens(
         &ctx.accounts.token_program,
+        ctx.accounts.mint.to_account_info().as_ref(),
         &ctx.accounts.user, // Pass the Signer directly
         &ctx.accounts.from_token_account,
         &ctx.accounts.vault_token_account,
@@ -232,55 +235,68 @@ pub fn finalize_bridge_tokens<'info>(
         return err!(MessengerError::BridgeIsPaused);
     }
 
-    if is_owned_by_bridge(payload.local_token) {
-        // TODO: implement
-        // require(
-        //     _isCorrectTokenPair(_localToken, _remoteToken),
-        //     "StandardBridge: wrong remote token for Optimism Mintable ERC20 local token"
-        // );
+    let recipient_info = find_account_info_by_key(
+        account_infos,
+        &payload.to,
+        ProgramError::NotEnoughAccountKeys,
+    )?;
 
-        // IOptimismMintableERC20(_localToken).mint(_to, _amount);
+    if payload.local_token == NATIVE_SOL_PUBKEY {
+        decrement_vault_balance(account_infos, &payload)?;
+        **vault_pda_info.try_borrow_mut_lamports()? -= payload.amount;
+        **recipient_info.try_borrow_mut_lamports()? += payload.amount;
     } else {
-        let recipient_info = find_account_info_by_key(
+        let local_token_mint_info = find_account_info_by_key(
             account_infos,
-            &payload.to,
+            &payload.local_token,
             ProgramError::NotEnoughAccountKeys,
         )?;
 
-        let (deposit_acct_key, _) = Pubkey::find_program_address(
-            &[
-                DEPOSIT_SEED,
-                payload.local_token.as_ref(),
+        if is_owned_by_bridge(local_token_mint_info)? {
+            let mint_account = Account::<Mint>::try_from(local_token_mint_info)?;
+            let decimals_bytes = mint_account.decimals.to_le_bytes();
+            let base_seeds: &[&[u8]] = &[
+                MINT_SEED,
                 payload.remote_token.as_ref(),
-            ],
-            &crate::ID,
-        );
-        let deposit_info = find_account_info_by_key(
-            account_infos,
-            &deposit_acct_key,
-            ProgramError::NotEnoughAccountKeys, // Example error
-        )?;
-        let mut deposit = Account::<Deposit>::try_from(deposit_info)?;
-        if deposit.balance < payload.amount {
-            msg!(
-                "Insufficient balance. Has {:?} needs {:?}",
-                deposit.balance,
-                payload.amount
-            );
-            return err!(BridgeError::InsufficientBalance);
-        }
-        deposit.balance -= payload.amount;
+                decimals_bytes.as_ref(),
+            ];
+            if !is_valid_token_pair(local_token_mint_info.key(), base_seeds)? {
+                return err!(BridgeError::InvalidTokenPair);
+            }
 
-        if payload.local_token == NATIVE_SOL_PUBKEY {
-            **vault_pda_info.try_borrow_mut_lamports()? -= payload.amount;
-            **recipient_info.try_borrow_mut_lamports()? += payload.amount;
-        } else {
-            let local_token_mint_info = find_account_info_by_key(
+            let token_program_info = find_account_info_by_key(
                 account_infos,
-                &payload.local_token,
+                &TOKEN_PROGRAM_ID,
                 ProgramError::NotEnoughAccountKeys,
             )?;
 
+            let (_expected_pda_key, bump_value) =
+                Pubkey::find_program_address(base_seeds, &crate::ID);
+
+            let bump_slice = [bump_value];
+
+            let mut actual_signer_seeds_elements: Vec<&[u8]> =
+                Vec::with_capacity(base_seeds.len() + 1);
+            actual_signer_seeds_elements.extend_from_slice(base_seeds);
+            actual_signer_seeds_elements.push(&bump_slice);
+
+            let cpi_signer_seeds: &[&[&[u8]]] = &[&[
+                MINT_SEED,
+                payload.remote_token.as_ref(),
+                decimals_bytes.as_ref(),
+                &[bump_value],
+            ]];
+
+            let cpi_accounts = MintTo {
+                mint: local_token_mint_info.clone(),
+                to: recipient_info.clone(),
+                authority: local_token_mint_info.clone(),
+            };
+            let cpi_context = CpiContext::new(token_program_info.clone(), cpi_accounts)
+                .with_signer(cpi_signer_seeds);
+            token_interface::mint_to(cpi_context, payload.amount)?;
+        } else {
+            decrement_vault_balance(account_infos, &payload)?;
             let (vault_ata_key, _) = Pubkey::find_program_address(
                 &[
                     vault_pda_info.key.to_bytes().as_ref(),
@@ -324,6 +340,41 @@ pub fn finalize_bridge_tokens<'info>(
     Ok(())
 }
 
+fn decrement_vault_balance<'info>(
+    account_infos: &'info [AccountInfo<'info>],
+    payload: &BridgePayload,
+) -> Result<()> {
+    let (deposit_acct_key, _) = Pubkey::find_program_address(
+        &[
+            DEPOSIT_SEED,
+            payload.local_token.as_ref(),
+            payload.remote_token.as_ref(),
+        ],
+        &crate::ID,
+    );
+    let deposit_info = find_account_info_by_key(
+        account_infos,
+        &deposit_acct_key,
+        ProgramError::NotEnoughAccountKeys, // Example error
+    )?;
+    let mut deposit = Account::<Deposit>::try_from(deposit_info)?;
+    if deposit.balance < payload.amount {
+        msg!(
+            "Insufficient balance. Has {:?} needs {:?}",
+            deposit.balance,
+            payload.amount
+        );
+        return err!(BridgeError::InsufficientBalance);
+    }
+    deposit.balance -= payload.amount;
+    Ok(())
+}
+
+fn is_valid_token_pair(local_token: Pubkey, seeds: &[&[u8]]) -> Result<bool> {
+    let (mint_key, _) = Pubkey::find_program_address(seeds, &crate::ID);
+    Ok(mint_key == local_token)
+}
+
 fn initiate_bridge_sol<'info>(
     system_program: &Program<'info, System>,
     user_account_info: &AccountInfo<'info>,
@@ -355,6 +406,7 @@ fn initiate_bridge_sol<'info>(
 
 fn initiate_bridge_tokens<'info>(
     token_program: &Program<'info, Token>,
+    mint_info: &AccountInfo<'info>,
     user_signer: &Signer<'info>, // Changed from user_account_info
     user_spl_token_account: &Account<'info, TokenAccount>,
     vault_spl_token_account: &Account<'info, TokenAccount>,
@@ -369,6 +421,7 @@ fn initiate_bridge_tokens<'info>(
     }
 
     spl_transfer_user_signed(
+        mint_info,
         &token_program.to_account_info(),
         user_spl_token_account,
         vault_spl_token_account,
@@ -508,26 +561,41 @@ fn append_padded_abi_bytes(encoded_vec: &mut Vec<u8>, data_slice: &[u8], abi_len
     encoded_vec.extend_from_slice(&padded_data);
 }
 
-// TODO: need to implement
-fn is_owned_by_bridge(_token: Pubkey) -> bool {
-    return false;
+fn is_owned_by_bridge(token_info: &AccountInfo<'_>) -> Result<bool> {
+    // Ensure the account is owned by the SPL Token program
+    if *token_info.owner != TOKEN_PROGRAM_ID {
+        // Not an SPL Mint account or owned by the wrong token program.
+        // Returning false as it's not "owned by bridge" in the intended way.
+        return Ok(false);
+    }
+
+    // Attempt to deserialize the mint data. This will propagate an error if deserialization fails (e.g. wrong data, length).
+    let mint = anchor_spl::token::Mint::try_deserialize(&mut &token_info.try_borrow_data()?[..])?;
+
+    // Check if the mint is initialized and its mint authority is the current program (crate::ID).
+    Ok(mint.is_initialized && mint.mint_authority == COption::Some(token_info.key()))
 }
 
 /// Transfers SPL tokens when the authority is a user Signer.
 fn spl_transfer_user_signed<'info>(
+    mint_info: &AccountInfo<'info>,
     token_program_info: &AccountInfo<'info>,
     from_token_account: &Account<'info, TokenAccount>,
     to_token_account: &Account<'info, TokenAccount>,
     authority_signer: &Signer<'info>,
     amount: u64,
 ) -> Result<()> {
-    let cpi_accounts = anchor_spl::token::Transfer {
-        from: from_token_account.to_account_info(),
-        to: to_token_account.to_account_info(),
-        authority: authority_signer.to_account_info(),
-    };
-    let cpi_ctx = CpiContext::new(token_program_info.clone(), cpi_accounts);
-    anchor_spl::token::transfer(cpi_ctx, amount)?;
+    if is_owned_by_bridge(mint_info)? {
+        // Burn
+    } else {
+        let cpi_accounts = anchor_spl::token::Transfer {
+            from: from_token_account.to_account_info(),
+            to: to_token_account.to_account_info(),
+            authority: authority_signer.to_account_info(),
+        };
+        let cpi_ctx = CpiContext::new(token_program_info.clone(), cpi_accounts);
+        anchor_spl::token::transfer(cpi_ctx, amount)?;
+    }
     Ok(())
 }
 
@@ -593,4 +661,6 @@ pub enum BridgeError {
     OnlyOtherBridgeCanCall,
     #[msg("Insufficient balance")]
     InsufficientBalance,
+    #[msg("Invalid token pair")]
+    InvalidTokenPair,
 }

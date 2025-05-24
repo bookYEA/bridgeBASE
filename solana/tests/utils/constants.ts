@@ -33,3 +33,4 @@ export const solRemoteAddress = Array.from(
   )
 ); // random address for testing
 export const VERSION = 2;
+export const decimals = 10;

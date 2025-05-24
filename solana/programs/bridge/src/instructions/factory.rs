@@ -12,8 +12,8 @@ pub struct CreateMint<'info> {
         init,
         payer = signer,
         mint::decimals = decimals,
-        mint::authority = crate::ID,
-        mint::freeze_authority = crate::ID,
+        mint::authority = mint,
+        mint::freeze_authority = mint,
         seeds = [MINT_SEED, remote_token.as_ref(), decimals.to_le_bytes().as_ref()],
         bump
     )]

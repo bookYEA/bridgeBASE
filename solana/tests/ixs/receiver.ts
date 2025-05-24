@@ -6,6 +6,7 @@ import { confirmTransaction } from "../utils/confirmTransaction";
 import { PublicKey } from "@solana/web3.js";
 import { fundAccount } from "../utils/fundAccount";
 import {
+  decimals,
   dummyData,
   expectedBridgePubkey,
   expectedMessengerPubkey,
@@ -766,6 +767,198 @@ describe("receiver", () => {
       );
 
       const blockNumber = new anchor.BN(23);
+      const result = await setupRootAndProof(blockNumber, transactionHash);
+      rootPda = result.rootPda;
+      proof = result.proof;
+      messagePda = result.messagePda;
+    });
+
+    describe("Prove transction", () => {
+      it("Should fail if invalid transaction hash", async () => {
+        await shouldFail(
+          program.methods
+            .proveTransaction(
+              transaction2,
+              nonce,
+              otherMessengerAddress,
+              [messengerIxParam],
+              proof,
+              leafIndexBN,
+              totalLeafCountBN
+            )
+            .accounts({ payer: payer.publicKey, root: rootPda })
+            .rpc(),
+          "Invalid transaction hash"
+        );
+      });
+
+      it("Should fail if invalid proof", async () => {
+        const badProof = structuredClone(proof);
+        badProof.pop();
+
+        await shouldFail(
+          program.methods
+            .proveTransaction(
+              transactionHash,
+              nonce,
+              otherMessengerAddress,
+              [messengerIxParam],
+              badProof,
+              leafIndexBN,
+              totalLeafCountBN
+            )
+            .accounts({ payer: payer.publicKey, root: rootPda })
+            .rpc(),
+          "Invalid proof"
+        );
+      });
+
+      it("Posts output root", async () => {
+        const tx = await program.methods
+          .proveTransaction(
+            transactionHash,
+            nonce,
+            otherMessengerAddress,
+            [messengerIxParam],
+            proof,
+            leafIndexBN,
+            totalLeafCountBN
+          )
+          .accounts({ payer: payer.publicKey, root: rootPda })
+          .rpc();
+
+        await confirmTransaction(provider.connection, tx);
+
+        const message = await program.account.message.fetch(messagePda);
+
+        expect(message.ixs).to.eql([messengerIxParam]);
+        expect(message.isExecuted).to.be.false;
+      });
+    });
+
+    describe("Finalize transaction", () => {
+      before(async () => {
+        const tx = await program.methods
+          .finalizeTransaction(transactionHash)
+          .accounts({})
+          .remainingAccounts(transferAccounts)
+          .rpc();
+
+        await confirmTransaction(provider.connection, tx);
+      });
+
+      it("Should execute transaction", async () => {
+        const message = await program.account.message.fetch(messagePda);
+        expect(message.isExecuted).to.be.true;
+      });
+
+      it("Should mark message successful", async () => {
+        const message = await program.account.message.fetch(messagePda);
+        expect(message.successfulMessage).to.be.true;
+      });
+
+      it("Should fail if already executed", async () => {
+        await shouldFail(
+          program.methods
+            .finalizeTransaction(transactionHash)
+            .accounts({})
+            .remainingAccounts(transferAccounts)
+            .rpc(),
+          "Already executed"
+        );
+      });
+    });
+  });
+
+  describe("Returned SPL bridge transaction", () => {
+    let depositPda: PublicKey;
+    let transferAccounts: {
+      pubkey: PublicKey;
+      isWritable: boolean;
+      isSigner: boolean;
+    }[];
+
+    const remoteTokenAddress = Array.from(
+      Buffer.from("7aBc6d57A03f3b3eeA91fc2151638A549050eB42", "hex")
+    );
+
+    const [mintPda] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("mint"),
+        Buffer.from(remoteTokenAddress),
+        new anchor.BN(decimals).toBuffer("le", 1),
+      ],
+      program.programId
+    );
+
+    before(async () => {
+      const tx = await program.methods
+        .createMint(remoteTokenAddress, decimals)
+        .accounts({ tokenProgram: TOKEN_PROGRAM_ID })
+        .rpc();
+
+      await confirmTransaction(provider.connection, tx);
+
+      [depositPda] = PublicKey.findProgramAddressSync(
+        [
+          Buffer.from("deposit"),
+          mintPda.toBuffer(),
+          Buffer.from(remoteTokenAddress),
+        ],
+        program.programId
+      );
+
+      const userATA = await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        payer.payer,
+        mintPda,
+        payer.publicKey
+      );
+
+      // Serialize BridgePayload
+      // Fields: local_token: Pubkey, remote_token: [u8; 20], from: [u8; 20], to: Pubkey, amount: u64, extra_data: Vec<u8>
+      const localTokenBuffer = mintPda.toBuffer();
+      const remoteTokenBuffer = Buffer.from(remoteTokenAddress);
+      const fromBuffer = Buffer.from(toAddress);
+      const toBuffer = userATA.address.toBuffer();
+      const amountBuffer = new anchor.BN(TRANSFER_AMOUNT).toBuffer("le", 8);
+
+      const extraDataBuffer = Buffer.from("random data", "utf-8");
+      const extraDataLenBuffer = Buffer.alloc(4);
+      extraDataLenBuffer.writeUint32LE(extraDataBuffer.length, 0);
+
+      const serializedBridgePayload = Buffer.concat([
+        localTokenBuffer,
+        remoteTokenBuffer,
+        fromBuffer,
+        toBuffer,
+        amountBuffer,
+        extraDataLenBuffer,
+        extraDataBuffer,
+      ]);
+
+      transferAccounts = [
+        { pubkey: userATA.address, isWritable: true, isSigner: false },
+        { pubkey: mintPda, isWritable: true, isSigner: false },
+        { pubkey: TOKEN_PROGRAM_ID, isWritable: false, isSigner: false },
+      ];
+
+      targetIxParam = {
+        programId: expectedBridgePubkey,
+        accounts: [],
+        data: serializedBridgePayload,
+      };
+
+      nonce = Array.from(Buffer.from(new anchor.BN(0).toArray("be", 32)));
+      sender = otherBridgeAddress;
+
+      messengerIxParam = createMessengerPayload(nonce, sender, targetIxParam);
+
+      transactionHash = toNumberArray(
+        hashIxs(nonce, otherMessengerAddress, [messengerIxParam])
+      );
+
+      const blockNumber = new anchor.BN(24);
       const result = await setupRootAndProof(blockNumber, transactionHash);
       rootPda = result.rootPda;
       proof = result.proof;
