@@ -83,6 +83,9 @@ pub const MESSAGE_SEED: &[u8] = b"message";
 pub const DEPOSIT_SEED: &[u8] = b"deposit";
 
 #[constant]
+pub const MINT_SEED: &[u8] = b"mint";
+
+#[constant]
 // pub const TRUSTED_ORACLE: Pubkey = pubkey!("eEwCrQLBdQchykrkYitkYUZskd7MPrU2YxBXcPDPnMt"); // un-comment for Devnet deployments
 pub const TRUSTED_ORACLE: Pubkey = pubkey!("H4BF4JEUcLaNTEp4ppU5YBx8buWfQKnp32UMBH25Rp2V"); // for local testing
 

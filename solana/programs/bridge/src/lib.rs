@@ -109,4 +109,12 @@ pub mod bridge {
     ) -> Result<()> {
         receiver::finalize_transaction_handler(ctx, &transaction_hash)
     }
+
+    pub fn create_mint(
+        ctx: Context<CreateMint>,
+        _remote_token: [u8; 20],
+        _decimals: u8,
+    ) -> Result<()> {
+        factory::create_mint_handler(ctx)
+    }
 }
