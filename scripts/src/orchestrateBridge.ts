@@ -1,9 +1,7 @@
 import * as anchor from "@coral-xyz/anchor";
 import { readFileSync } from "fs";
-import { main as proveOnSolana } from "./solanaWithdrawal";
 import { Program } from "@coral-xyz/anchor";
 import type { Bridge } from "../target/types/bridge";
-import type { IxParam } from "./solanaWithdrawal";
 import { execSync } from "child_process";
 import * as path from "path";
 import { createPublicClient, decodeEventLog, http, type Hash } from "viem";
@@ -16,29 +14,99 @@ import { loadFromEnv } from "./utils/loadFromEnv";
 import { SYSTEM_PROGRAM_ID } from "@coral-xyz/anchor/dist/cjs/native/system";
 import MessagePassedEvent from "./abis/MessagePassedEvent";
 
+type IxParam = Parameters<
+  Program<Bridge>["methods"]["proveTransaction"]
+>[3][number];
+type Account = { pubkey: PublicKey; isWritable: boolean; isSigner: boolean };
+
 const IS_SOL = loadFromEnv("IS_SOL", true) === "true";
 const IS_ERC20 = loadFromEnv("IS_ERC20", true) === "true";
 
-const provider = anchor.AnchorProvider.env();
-anchor.setProvider(provider);
+let CFG: {
+  provider: anchor.AnchorProvider;
+  program: Program<Bridge>;
+  version: anchor.BN;
+  localToken: PublicKey;
+  remoteToken: Buffer;
+  baseContractsCommand: string;
+  remainingAccounts: Account[];
+  messagePassedEventTopic: string;
+  oracleUrl: string;
+};
 
-const program = anchor.workspace.Bridge as Program<Bridge>;
+async function init() {
+  anchor.setProvider(CFG.provider);
 
-const VERSION = 2;
-const solLocalAddress = new PublicKey(
-  Buffer.from(
-    "0501550155015501550155015501550155015501550155015501550155015501",
-    "hex"
-  )
-);
+  let localToken: PublicKey;
+  let remoteToken: Buffer;
+  let remainingAccounts: Account[];
+  let baseContractsCommand: string;
 
-function getBaseContractsCommand(): string {
   if (IS_SOL) {
-    return "make bridge-sol-to-solana";
+    localToken = new PublicKey(
+      Buffer.from(
+        "0501550155015501550155015501550155015501550155015501550155015501",
+        "hex"
+      )
+    );
+    remoteToken = Buffer.from(baseSepoliaAddrs.WrappedSOL.slice(2), "hex");
+    baseContractsCommand = "make bridge-sol-to-solana";
   } else if (IS_ERC20) {
-    return "make bridge-erc20-to-solana";
+    localToken = new PublicKey(loadFromEnv("ERC20_MINT"));
+    remoteToken = Buffer.from(baseSepoliaAddrs.ERC20.slice(2), "hex");
+    baseContractsCommand = "make bridge-erc20-to-solana";
+  } else {
+    localToken = new PublicKey(loadFromEnv("MINT"));
+    remoteToken = Buffer.from(baseSepoliaAddrs.WrappedSPL.slice(2), "hex");
+    baseContractsCommand = "make bridge-tokens-to-solana";
   }
-  return "make bridge-tokens-to-solana";
+
+  const [depositPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("deposit"), localToken.toBuffer(), remoteToken],
+    CFG.program.programId
+  );
+
+  if (IS_SOL) {
+    remainingAccounts = [
+      { pubkey: SYSTEM_PROGRAM_ID, isWritable: false, isSigner: false },
+      { pubkey: depositPda, isWritable: true, isSigner: false },
+    ];
+  } else if (IS_ERC20) {
+    remainingAccounts = [
+      { pubkey: localToken, isWritable: true, isSigner: false },
+      { pubkey: TOKEN_PROGRAM_ID, isWritable: false, isSigner: false },
+    ];
+  } else {
+    const [vaultPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("bridge_vault"), CFG.version.toBuffer("le", 1)],
+      CFG.program.programId
+    );
+    const vaultATA = await getAssociatedTokenAddress(
+      CFG.localToken,
+      vaultPda,
+      true
+    );
+    return [
+      { pubkey: CFG.localToken, isWritable: false, isSigner: false },
+      { pubkey: vaultPda, isWritable: false, isSigner: false },
+      { pubkey: vaultATA, isWritable: true, isSigner: false },
+      { pubkey: TOKEN_PROGRAM_ID, isWritable: false, isSigner: false },
+      { pubkey: depositPda, isWritable: true, isSigner: false },
+    ];
+  }
+
+  CFG = {
+    provider: anchor.AnchorProvider.env(),
+    program: anchor.workspace.Bridge as Program<Bridge>,
+    version: new anchor.BN(2),
+    localToken: localToken,
+    remoteToken: remoteToken,
+    baseContractsCommand: baseContractsCommand,
+    remainingAccounts: remainingAccounts,
+    messagePassedEventTopic:
+      "0x157b3e0c97c86afb7b397c7ce91299a7812096cb61a249153094208e1f74a1b8",
+    oracleUrl: "http://localhost:8080",
+  };
 }
 
 async function runBaseInteraction(): Promise<{
@@ -52,7 +120,7 @@ async function runBaseInteraction(): Promise<{
   console.log("Executing Base interaction via Forge script...");
 
   const baseDir = path.resolve(__dirname, "../../base");
-  const command = getBaseContractsCommand();
+  const command = CFG.baseContractsCommand;
 
   let txHash: Hash;
 
@@ -98,10 +166,10 @@ async function runBaseInteraction(): Promise<{
   }
 
   const receipt = await publicClient.getTransactionReceipt({ hash: txHash });
-  const targetTopic =
-    "0x157b3e0c97c86afb7b397c7ce91299a7812096cb61a249153094208e1f74a1b8";
 
-  const targetLog = receipt.logs.find((r) => r.topics[0] === targetTopic);
+  const targetLog = receipt.logs.find(
+    (r) => r.topics[0] === CFG.messagePassedEventTopic
+  );
   if (!targetLog) {
     throw new Error("Message passer log not found");
   }
@@ -137,17 +205,22 @@ async function runBaseInteraction(): Promise<{
   };
 }
 
-async function waitForRootOnSolana(blockNumber: number) {
-  console.log("Waiting for root on Solana...");
+function getRootPda(blockNumber: number): PublicKey {
   const [rootPda] = PublicKey.findProgramAddressSync(
     [Buffer.from("output_root"), new anchor.BN(blockNumber).toBuffer("le", 8)],
-    program.programId
+    CFG.program.programId
   );
+  return rootPda;
+}
+
+async function waitForRootOnSolana(blockNumber: number) {
+  console.log("Waiting for root on Solana...");
+  const rootPda = getRootPda(blockNumber);
   let tries = 0;
 
   while (tries++ < 10) {
     try {
-      const rootAccount = await program.account.outputRoot.fetch(rootPda);
+      const rootAccount = await CFG.program.account.outputRoot.fetch(rootPda);
       const blockNumberOnSolana = rootAccount.blockNumber.toNumber();
 
       if (blockNumberOnSolana >= blockNumber) {
@@ -160,78 +233,9 @@ async function waitForRootOnSolana(blockNumber: number) {
   }
 }
 
-async function getRemainingAccounts(recipient: PublicKey): Promise<
-  {
-    pubkey: PublicKey;
-    isWritable: boolean;
-    isSigner: boolean;
-  }[]
-> {
-  if (IS_SOL) {
-    const [depositPda] = PublicKey.findProgramAddressSync(
-      [
-        Buffer.from("deposit"),
-        solLocalAddress.toBuffer(),
-        Buffer.from(baseSepoliaAddrs.WrappedSOL.slice(2), "hex"),
-      ],
-      program.programId
-    );
-    return [
-      { pubkey: recipient, isWritable: true, isSigner: false },
-      { pubkey: SYSTEM_PROGRAM_ID, isWritable: false, isSigner: false },
-      { pubkey: depositPda, isWritable: true, isSigner: false },
-    ];
-  } else if (IS_ERC20) {
-    const mint = new PublicKey(loadFromEnv(IS_ERC20 ? "ERC20_MINT" : "MINT"));
-    return [
-      { pubkey: recipient, isWritable: true, isSigner: false },
-      { pubkey: mint, isWritable: true, isSigner: false },
-      { pubkey: TOKEN_PROGRAM_ID, isWritable: false, isSigner: false },
-    ];
-  }
-
-  const mint = new PublicKey(loadFromEnv(IS_ERC20 ? "ERC20_MINT" : "MINT"));
-  const remoteToken = IS_ERC20
-    ? baseSepoliaAddrs.ERC20
-    : baseSepoliaAddrs.WrappedSPL;
-  const [vaultPda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("bridge_vault"), new anchor.BN(VERSION).toBuffer("le", 1)],
-    program.programId
-  );
-  const vaultATA = await getAssociatedTokenAddress(mint, vaultPda, true);
-  const [depositPda] = PublicKey.findProgramAddressSync(
-    [
-      Buffer.from("deposit"),
-      mint.toBuffer(),
-      Buffer.from(remoteToken.slice(2), "hex"),
-    ],
-    program.programId
-  );
-  return [
-    { pubkey: mint, isWritable: false, isSigner: false },
-    { pubkey: vaultPda, isWritable: false, isSigner: false },
-    { pubkey: vaultATA, isWritable: true, isSigner: false },
-    { pubkey: recipient, isWritable: true, isSigner: false },
-    { pubkey: TOKEN_PROGRAM_ID, isWritable: false, isSigner: false },
-    { pubkey: depositPda, isWritable: true, isSigner: false },
-  ];
-}
-
-async function finalizeTransactionOnSolana(
-  transactionHash: number[],
-  recipient: anchor.web3.PublicKey
-) {
-  const remainingAccounts = await getRemainingAccounts(recipient);
-
-  const tx = await program.methods
-    .finalizeTransaction(transactionHash)
-    .accounts({})
-    .remainingAccounts(remainingAccounts)
-    .rpc();
-
-  console.log("Finalize transaction signature", tx);
-  const latestBlockHash = await provider.connection.getLatestBlockhash();
-  await provider.connection.confirmTransaction(
+async function confirmTransaction(tx: string) {
+  const latestBlockHash = await CFG.provider.connection.getLatestBlockhash();
+  await CFG.provider.connection.confirmTransaction(
     {
       blockhash: latestBlockHash.blockhash,
       lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
@@ -239,12 +243,64 @@ async function finalizeTransactionOnSolana(
     },
     "confirmed"
   );
+}
+
+async function proveOnSolana(
+  nonce: number[],
+  transactionHash: number[],
+  remoteSender: number[],
+  ixs: IxParam[],
+  leafIndex: number,
+  blockNumber: number
+) {
+  const oracleUrl = `${CFG.oracleUrl}/proof/${leafIndex}`;
+  const res = await fetch(oracleUrl);
+  const json = await res.json();
+
+  const rootPda = getRootPda(blockNumber);
+
+  const tx = await CFG.program.methods
+    .proveTransaction(
+      transactionHash,
+      nonce,
+      remoteSender,
+      ixs,
+      json.proof.map((element: string) =>
+        Array.from(Buffer.from(element, "base64"))
+      ),
+      new anchor.BN(leafIndex),
+      new anchor.BN(json.totalLeafCount)
+    )
+    .accounts({ root: rootPda })
+    .rpc();
+
+  console.log("Prove transaction signature", tx);
+  await confirmTransaction(tx);
+}
+
+async function finalizeTransactionOnSolana(
+  transactionHash: number[],
+  recipient: anchor.web3.PublicKey
+) {
+  const remainingAccounts = [
+    ...CFG.remainingAccounts,
+    { pubkey: recipient, isWritable: true, isSigner: false },
+  ];
+
+  const tx = await CFG.program.methods
+    .finalizeTransaction(transactionHash)
+    .accounts({})
+    .remainingAccounts(remainingAccounts)
+    .rpc();
+
+  console.log("Finalize transaction signature", tx);
+  await confirmTransaction(tx);
 
   const [messagePda] = PublicKey.findProgramAddressSync(
     [Buffer.from("message"), Buffer.from(transactionHash)],
-    program.programId
+    CFG.program.programId
   );
-  const message = await program.account.message.fetch(messagePda);
+  const message = await CFG.program.account.message.fetch(messagePda);
   if (!message.successfulMessage) {
     throw new Error("Finalize transaction completed but message failed");
   }
@@ -260,6 +316,7 @@ function extractRecipientFromIxs(ixs: number[]): PublicKey {
 }
 
 async function orchestrate() {
+  init();
   try {
     console.log("Starting bridge orchestration...");
 
