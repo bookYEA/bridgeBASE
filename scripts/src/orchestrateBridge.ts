@@ -14,8 +14,10 @@ import { getAssociatedTokenAddress, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import baseSepoliaAddrs from "../deployments/base_sepolia.json";
 import { loadFromEnv } from "./utils/loadFromEnv";
 import { SYSTEM_PROGRAM_ID } from "@coral-xyz/anchor/dist/cjs/native/system";
+import MessagePassedEvent from "./abis/MessagePassedEvent";
 
-const IS_SOL = loadFromEnv("IS_SOL") === "true";
+const IS_SOL = loadFromEnv("IS_SOL", true) === "true";
+const IS_ERC20 = loadFromEnv("IS_ERC20", true) === "true";
 
 const provider = anchor.AnchorProvider.env();
 anchor.setProvider(provider);
@@ -30,6 +32,15 @@ const solLocalAddress = new PublicKey(
   )
 );
 
+function getBaseContractsCommand(): string {
+  if (IS_SOL) {
+    return "make bridge-sol-to-solana";
+  } else if (IS_ERC20) {
+    return "make bridge-erc20-to-solana";
+  }
+  return "make bridge-tokens-to-solana";
+}
+
 async function runBaseInteraction(): Promise<{
   nonce: number[];
   transactionHash: number[];
@@ -41,10 +52,7 @@ async function runBaseInteraction(): Promise<{
   console.log("Executing Base interaction via Forge script...");
 
   const baseDir = path.resolve(__dirname, "../../base");
-
-  const command = IS_SOL
-    ? "make bridge-sol-to-solana"
-    : "make bridge-tokens-to-solana";
+  const command = getBaseContractsCommand();
 
   let txHash: Hash;
 
@@ -69,7 +77,15 @@ async function runBaseInteraction(): Promise<{
       "utf-8"
     );
     const decodedData = JSON.parse(broadcastData);
-    txHash = decodedData.transactions[0].hash;
+    const transaction = decodedData.transactions.find(
+      (t: any) =>
+        t.contractAddress.toLowerCase() ===
+        baseSepoliaAddrs.Bridge.toLowerCase()
+    );
+    if (!transaction) {
+      throw new Error("Bridge transaction not found in receipt");
+    }
+    txHash = transaction.hash;
   } catch (error: any) {
     console.error("Error executing Forge script:", error.message);
     if (error.stdout) {
@@ -90,73 +106,7 @@ async function runBaseInteraction(): Promise<{
     throw new Error("Message passer log not found");
   }
   const decodedLog = decodeEventLog({
-    abi: [
-      {
-        type: "event",
-        name: "MessagePassed",
-        inputs: [
-          {
-            name: "nonce",
-            type: "uint256",
-            indexed: true,
-            internalType: "uint256",
-          },
-          {
-            name: "sender",
-            type: "address",
-            indexed: true,
-            internalType: "address",
-          },
-          {
-            name: "ixs",
-            type: "tuple[]",
-            indexed: false,
-            internalType: "struct MessagePasser.Instruction[]",
-            components: [
-              {
-                name: "programId",
-                type: "bytes32",
-                internalType: "bytes32",
-              },
-              {
-                name: "accounts",
-                type: "tuple[]",
-                internalType: "struct MessagePasser.AccountMeta[]",
-                components: [
-                  {
-                    name: "pubKey",
-                    type: "bytes32",
-                    internalType: "bytes32",
-                  },
-                  {
-                    name: "isSigner",
-                    type: "bool",
-                    internalType: "bool",
-                  },
-                  {
-                    name: "isWritable",
-                    type: "bool",
-                    internalType: "bool",
-                  },
-                ],
-              },
-              {
-                name: "data",
-                type: "bytes",
-                internalType: "bytes",
-              },
-            ],
-          },
-          {
-            name: "withdrawalHash",
-            type: "bytes32",
-            indexed: false,
-            internalType: "bytes32",
-          },
-        ],
-        anonymous: false,
-      },
-    ],
+    abi: MessagePassedEvent,
     data: targetLog.data,
     topics: targetLog.topics,
   });
@@ -182,7 +132,7 @@ async function runBaseInteraction(): Promise<{
       Buffer.from(decodedLog.args.sender.slice(2), "hex")
     ),
     ixs: decodedIxs,
-    leafIndex: Number(BigInt(targetLog.topics[1]?.slice(6) ?? "0")),
+    leafIndex: Number(BigInt("0x" + (targetLog.topics[1]?.slice(6) ?? "0"))),
     blockNumber: Number(targetLog.blockNumber),
   };
 }
@@ -210,11 +160,40 @@ async function waitForRootOnSolana(blockNumber: number) {
   }
 }
 
-async function finalizeTokenTransactionOnSolana(
-  transactionHash: number[],
-  userATA: anchor.web3.PublicKey
-) {
-  const mint = new PublicKey(loadFromEnv("MINT"));
+async function getRemainingAccounts(recipient: PublicKey): Promise<
+  {
+    pubkey: PublicKey;
+    isWritable: boolean;
+    isSigner: boolean;
+  }[]
+> {
+  if (IS_SOL) {
+    const [depositPda] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("deposit"),
+        solLocalAddress.toBuffer(),
+        Buffer.from(baseSepoliaAddrs.WrappedSOL.slice(2), "hex"),
+      ],
+      program.programId
+    );
+    return [
+      { pubkey: recipient, isWritable: true, isSigner: false },
+      { pubkey: SYSTEM_PROGRAM_ID, isWritable: false, isSigner: false },
+      { pubkey: depositPda, isWritable: true, isSigner: false },
+    ];
+  } else if (IS_ERC20) {
+    const mint = new PublicKey(loadFromEnv(IS_ERC20 ? "ERC20_MINT" : "MINT"));
+    return [
+      { pubkey: recipient, isWritable: true, isSigner: false },
+      { pubkey: mint, isWritable: true, isSigner: false },
+      { pubkey: TOKEN_PROGRAM_ID, isWritable: false, isSigner: false },
+    ];
+  }
+
+  const mint = new PublicKey(loadFromEnv(IS_ERC20 ? "ERC20_MINT" : "MINT"));
+  const remoteToken = IS_ERC20
+    ? baseSepoliaAddrs.ERC20
+    : baseSepoliaAddrs.WrappedSPL;
   const [vaultPda] = PublicKey.findProgramAddressSync(
     [Buffer.from("bridge_vault"), new anchor.BN(VERSION).toBuffer("le", 1)],
     program.programId
@@ -224,18 +203,25 @@ async function finalizeTokenTransactionOnSolana(
     [
       Buffer.from("deposit"),
       mint.toBuffer(),
-      Buffer.from(baseSepoliaAddrs.WrappedSPL.slice(2), "hex"),
+      Buffer.from(remoteToken.slice(2), "hex"),
     ],
     program.programId
   );
-  const remainingAccounts = [
+  return [
     { pubkey: mint, isWritable: false, isSigner: false },
     { pubkey: vaultPda, isWritable: false, isSigner: false },
     { pubkey: vaultATA, isWritable: true, isSigner: false },
-    { pubkey: userATA, isWritable: true, isSigner: false },
+    { pubkey: recipient, isWritable: true, isSigner: false },
     { pubkey: TOKEN_PROGRAM_ID, isWritable: false, isSigner: false },
     { pubkey: depositPda, isWritable: true, isSigner: false },
   ];
+}
+
+async function finalizeTransactionOnSolana(
+  transactionHash: number[],
+  recipient: anchor.web3.PublicKey
+) {
+  const remainingAccounts = await getRemainingAccounts(recipient);
 
   const tx = await program.methods
     .finalizeTransaction(transactionHash)
@@ -264,49 +250,13 @@ async function finalizeTokenTransactionOnSolana(
   }
 }
 
-async function finalizeSOLTransactionOnSolana(
-  transactionHash: number[],
-  user: anchor.web3.PublicKey
-) {
-  const [depositPda] = PublicKey.findProgramAddressSync(
-    [
-      Buffer.from("deposit"),
-      solLocalAddress.toBuffer(),
-      Buffer.from(baseSepoliaAddrs.WrappedSOL.slice(2), "hex"),
-    ],
-    program.programId
-  );
-  const remainingAccounts = [
-    { pubkey: user, isWritable: true, isSigner: false },
-    { pubkey: SYSTEM_PROGRAM_ID, isWritable: false, isSigner: false },
-    { pubkey: depositPda, isWritable: true, isSigner: false },
-  ];
-
-  const tx = await program.methods
-    .finalizeTransaction(transactionHash)
-    .accounts({})
-    .remainingAccounts(remainingAccounts)
-    .rpc();
-
-  console.log("Finalize transaction signature", tx);
-  const latestBlockHash = await provider.connection.getLatestBlockhash();
-  await provider.connection.confirmTransaction(
-    {
-      blockhash: latestBlockHash.blockhash,
-      lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
-      signature: tx,
-    },
-    "confirmed"
-  );
-
-  const [messagePda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("message"), Buffer.from(transactionHash)],
-    program.programId
-  );
-  const message = await program.account.message.fetch(messagePda);
-  if (!message.successfulMessage) {
-    throw new Error("Finalize transaction completed but message failed");
+// NOTE: This assumes there is one relevant bridge ix and that it includes no accounts
+function extractRecipientFromIxs(ixs: number[]): PublicKey {
+  if (ixs.length < 204) {
+    throw new Error("Ixs length unexpectedly short");
   }
+  const recipient = ixs.slice(172, 204);
+  return new PublicKey(Buffer.from(recipient));
 }
 
 async function orchestrate() {
@@ -346,27 +296,12 @@ async function orchestrate() {
 
     console.log("Solana transaction proven successfully.");
 
-    // TODO: extract this from ixs
-    const userATA = new PublicKey(
-      Buffer.from(
-        "1e1112994ab6232a643fd9d1cff130f5b829ac336b910b91c6304a96f776fd9c",
-        "hex"
-      )
-    );
-    const user = new PublicKey(
-      Buffer.from(
-        "9827993b7b317eb6c74279d49074a13b33a3495a30637c86a7513922014ba424",
-        "hex"
-      )
-    );
-
     // 3. Finalize the transaction on Solana
     console.log("Finalizing transaction on Solana...");
-    if (IS_SOL) {
-      await finalizeSOLTransactionOnSolana(transactionHash, user);
-    } else {
-      await finalizeTokenTransactionOnSolana(transactionHash, userATA);
-    }
+    await finalizeTransactionOnSolana(
+      transactionHash,
+      extractRecipientFromIxs(ixs[0].data)
+    );
 
     console.log("Solana transaction finalized successfully.");
 
