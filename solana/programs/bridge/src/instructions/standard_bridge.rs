@@ -3,7 +3,7 @@ use anchor_lang::solana_program::keccak;
 use anchor_lang::solana_program::program_option::COption;
 use anchor_spl::{
     associated_token::AssociatedToken,
-    token::{Mint, Token, TokenAccount},
+    token::{Burn, Mint, Token, TokenAccount},
     token_interface::{self, MintTo},
 };
 
@@ -52,6 +52,7 @@ pub struct BridgeTokensTo<'info> {
 
     // SPL Token specific accounts.
     // These accounts must be provided by the client.
+    #[account(mut)]
     pub mint: Account<'info, Mint>,
 
     #[account(
@@ -197,8 +198,8 @@ pub fn bridge_tokens_to_handler(
     };
     initiate_bridge_tokens(
         &ctx.accounts.token_program,
-        ctx.accounts.mint.to_account_info().as_ref(),
-        &ctx.accounts.user, // Pass the Signer directly
+        &ctx.accounts.mint,
+        &ctx.accounts.user,
         &ctx.accounts.from_token_account,
         &ctx.accounts.vault_token_account,
         &mut ctx.accounts.msg_state,
@@ -406,7 +407,7 @@ fn initiate_bridge_sol<'info>(
 
 fn initiate_bridge_tokens<'info>(
     token_program: &Program<'info, Token>,
-    mint_info: &AccountInfo<'info>,
+    mint_account: &Account<'info, Mint>,
     user_signer: &Signer<'info>, // Changed from user_account_info
     user_spl_token_account: &Account<'info, TokenAccount>,
     vault_spl_token_account: &Account<'info, TokenAccount>,
@@ -420,14 +421,23 @@ fn initiate_bridge_tokens<'info>(
         return err!(BridgeError::InvalidSolUsage);
     }
 
-    spl_transfer_user_signed(
-        mint_info,
-        &token_program.to_account_info(),
-        user_spl_token_account,
-        vault_spl_token_account,
-        user_signer,
-        bridge_params.amount,
-    )?;
+    if is_owned_by_bridge(&mint_account.to_account_info())? {
+        let cpi_accounts = Burn {
+            mint: mint_account.to_account_info(),
+            from: user_spl_token_account.to_account_info(),
+            authority: user_signer.to_account_info(),
+        };
+        let cpi_context = CpiContext::new(token_program.to_account_info(), cpi_accounts);
+        anchor_spl::token::burn(cpi_context, bridge_params.amount)?;
+    } else {
+        spl_transfer_user_signed(
+            &token_program.to_account_info(),
+            user_spl_token_account,
+            vault_spl_token_account,
+            user_signer,
+            bridge_params.amount,
+        )?;
+    }
 
     emit_event_and_send_message(
         msg_state,
@@ -578,24 +588,20 @@ fn is_owned_by_bridge(token_info: &AccountInfo<'_>) -> Result<bool> {
 
 /// Transfers SPL tokens when the authority is a user Signer.
 fn spl_transfer_user_signed<'info>(
-    mint_info: &AccountInfo<'info>,
     token_program_info: &AccountInfo<'info>,
     from_token_account: &Account<'info, TokenAccount>,
     to_token_account: &Account<'info, TokenAccount>,
     authority_signer: &Signer<'info>,
     amount: u64,
 ) -> Result<()> {
-    if is_owned_by_bridge(mint_info)? {
-        // Burn
-    } else {
-        let cpi_accounts = anchor_spl::token::Transfer {
-            from: from_token_account.to_account_info(),
-            to: to_token_account.to_account_info(),
-            authority: authority_signer.to_account_info(),
-        };
-        let cpi_ctx = CpiContext::new(token_program_info.clone(), cpi_accounts);
-        anchor_spl::token::transfer(cpi_ctx, amount)?;
-    }
+    let cpi_accounts = anchor_spl::token::Transfer {
+        from: from_token_account.to_account_info(),
+        to: to_token_account.to_account_info(),
+        authority: authority_signer.to_account_info(),
+    };
+    let cpi_ctx = CpiContext::new(token_program_info.clone(), cpi_accounts);
+    anchor_spl::token::transfer(cpi_ctx, amount)?;
+
     Ok(())
 }
 

@@ -12,15 +12,22 @@ import {
   getAssociatedTokenAddress,
 } from "@solana/spl-token";
 import {
+  decimals,
   dummyData,
+  expectedBridgePubkey,
   expectedMessengerPubkey,
   minGasLimit,
+  otherBridgeAddress,
   otherMessengerAddress,
   toAddress,
   VERSION,
 } from "../utils/constants";
 import { getOpaqueDataFromBridge } from "../utils/getOpaqueData";
 import { confirmTransaction } from "../utils/confirmTransaction";
+import { hashIxs, IxParam } from "../utils/hashIxs";
+import { createMessengerPayload } from "../utils/createMessengerPayload";
+import { toNumberArray } from "../utils/toNumberArray";
+import { setupRootAndProof } from "../utils/setupRootAndProof";
 
 describe("standard bridge", () => {
   // Configure the client to use the local cluster.
@@ -279,6 +286,104 @@ describe("standard bridge", () => {
           dummyData
         )
         .accounts({ user: user.publicKey, mint: mintSC })
+        .rpc();
+
+      // Get user balance after
+      const userBalanceAfterRes =
+        await provider.connection.getTokenAccountBalance(tokenAccount);
+      const userBalanceAfter = Number(userBalanceAfterRes.value.amount);
+
+      expect(userBalanceAfter).to.equal(userBalanceBefore - value.toNumber());
+    });
+  });
+
+  describe("ERC20 bridging", () => {
+    const remoteTokenAddress = Array.from(
+      Buffer.from("7aBc6d57A03f3b3eeA91fc2151638A549050eB42", "hex")
+    );
+
+    const [mintPda] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("mint"),
+        Buffer.from(remoteTokenAddress),
+        new anchor.BN(decimals).toBuffer("le", 1),
+      ],
+      program.programId
+    );
+
+    it("Deposits a transaction and emits an event", async () => {
+      let listener = null;
+      let [event, slot]: [any, number] = await new Promise(
+        async (resolve, reject) => {
+          listener = program.addEventListener(
+            "transactionDeposited",
+            (event, slot) => {
+              resolve([event, slot]);
+            }
+          );
+
+          try {
+            const tx = await program.methods
+              .bridgeTokensTo(
+                remoteTokenAddress,
+                toAddress,
+                value,
+                minGasLimit,
+                dummyData
+              )
+              .accounts({
+                user: user.publicKey,
+                mint: mintPda,
+              })
+              .rpc();
+
+            await confirmTransaction(provider.connection, tx);
+          } catch (e) {
+            reject(e);
+          }
+        }
+      );
+
+      const expectedOpaqueData = await getOpaqueDataFromBridge(
+        program,
+        remoteTokenAddress,
+        mintPda,
+        toAddress,
+        value,
+        dummyData,
+        user.publicKey,
+        minGasLimit
+      );
+
+      await program.removeEventListener(listener);
+
+      expect(slot).to.be.gt(0);
+      expect(event.from.equals(expectedMessengerPubkey)).to.be.true;
+      expect(event.to).to.deep.equal(otherMessengerAddress);
+      expect(event.version.eq(new anchor.BN(0))).to.be.true;
+      expect(Buffer.from(event.opaqueData)).to.eql(expectedOpaqueData);
+    });
+
+    it("transfers tokens from user", async () => {
+      const tokenAccount = await getAssociatedTokenAddress(
+        mintPda,
+        user.publicKey,
+        true
+      );
+
+      const userBalanceBeforeRes =
+        await provider.connection.getTokenAccountBalance(tokenAccount);
+      const userBalanceBefore = Number(userBalanceBeforeRes.value.amount);
+
+      await program.methods
+        .bridgeTokensTo(
+          remoteTokenAddress,
+          toAddress,
+          value,
+          minGasLimit,
+          dummyData
+        )
+        .accounts({ user: user.publicKey, mint: mintPda })
         .rpc();
 
       // Get user balance after
