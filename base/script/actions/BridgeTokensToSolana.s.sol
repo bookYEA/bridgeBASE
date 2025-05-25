@@ -31,6 +31,9 @@ contract BridgeTokensToSolanaScript is Script {
 
     function run() public {
         vm.startBroadcast();
+        if (vm.envOr("NEEDS_APPROVAL", false)) {
+            ERC20(LOCAL_TOKEN).approve(address(bridge), AMOUNT);
+        }
         bridge.bridgeToken(LOCAL_TOKEN, REMOTE_TOKEN, TO, AMOUNT, extraData);
         vm.stopBroadcast();
     }

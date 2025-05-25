@@ -4,10 +4,15 @@ BASE_RPC=https://base-sepolia.cbhq.net
 # BASE_RPC=https://mainnet.base.org
 
 LOCAL_SOL = 0x8f2F5D1Eb437A4D64753af43f0993fC95C36cECd
-LOCAL_SPL = 0x7aBc6d57A03f3b3eeA91fc2151638A549050eB42
 REMOTE_SOL = 0x0501550155015501550155015501550155015501550155015501550155015501
+
+LOCAL_SPL = 0x7aBc6d57A03f3b3eeA91fc2151638A549050eB42
 REMOTE_SPL = 0xcd43b9e91032f9346b89b99c2155981f799ebf0d8cf4f56b03dbec65bdd6bbe5
 USER_SPL_ATA = 0x1e1112994ab6232a643fd9d1cff130f5b829ac336b910b91c6304a96f776fd9c
+
+LOCAL_ERC20 = 0x62C1332822983B8412A6Ffda0fd77cd7d5733Ee9
+REMOTE_ERC20 = 0xcc3440262c62c93feec031ae37197e0e940947ab70c30709a3634316e17bad1d
+USER_REMOTE_ERC20_ATA = 0xd0444439bbe07a2edbdf4c683cbf02ff75c870e649db23f5ec69f56ec25c0501
 
 .PHONY: deps
 deps: clean-lib forge-deps checkout-op-commit
@@ -49,6 +54,10 @@ create-wrapped-sol:
 create-token:
 	TOKEN_NAME=WrappedSPL REMOTE_TOKEN=$(REMOTE_SPL) forge script CreateTokenScript --account testnet-admin --rpc-url $(BASE_RPC) --broadcast -vvvv
 
+.PHONY: create-mock-token
+create-mock-token:
+	ADMIN=0x8C1a617BdB47342F9C17Ac8750E0b070c372C721 forge script DeployERC20 --account testnet-admin --rpc-url $(BASE_RPC) --broadcast -vvvv
+
 .PHONY: bridge-sol-to-solana
 bridge-sol-to-solana:
 	LOCAL_TOKEN=$(LOCAL_SOL) \
@@ -63,4 +72,13 @@ bridge-tokens-to-solana:
 	REMOTE_TOKEN=$(REMOTE_SPL) \
 	TO=$(USER_SPL_ATA) \
 	AMOUNT=1000000 \
+	forge script BridgeTokensToSolanaScript --account testnet-admin --rpc-url $(BASE_RPC) --broadcast -vvvv
+
+.PHONY: bridge-erc20-to-solana
+bridge-erc20-to-solana:
+	LOCAL_TOKEN=$(LOCAL_ERC20) \
+	REMOTE_TOKEN=$(REMOTE_ERC20) \
+	TO=$(USER_REMOTE_ERC20_ATA) \
+	AMOUNT=1000000 \
+	NEEDS_APPROVAL=true \
 	forge script BridgeTokensToSolanaScript --account testnet-admin --rpc-url $(BASE_RPC) --broadcast -vvvv
