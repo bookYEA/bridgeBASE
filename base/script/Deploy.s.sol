@@ -57,8 +57,7 @@ contract DeployScript is Script {
     }
 
     function _deployMessenger(address messagePasser) private returns (address) {
-        CrossChainMessenger messengerImpl =
-            new CrossChainMessenger(MessagePasser(payable(messagePasser)), REMOTE_MESSENGER);
+        CrossChainMessenger messengerImpl = new CrossChainMessenger(messagePasser, REMOTE_MESSENGER);
         CrossChainMessenger messengerProxy = CrossChainMessenger(
             ERC1967Factory(ERC1967FactoryConstants.ADDRESS).deployAndCall({
                 implementation: address(messengerImpl),

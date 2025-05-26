@@ -67,7 +67,10 @@ contract CrossChainMessenger is Initializable {
     bytes32 internal constant DEFAULT_L2_SENDER =
         bytes32(0x000000000000000000000000000000000000000000000000000000000000dEaD);
 
-    MessagePasser public immutable SOLANA_MESSAGE_PASSER;
+    /// @notice MessagePasser contract on this chain.
+    address public immutable SOLANA_MESSAGE_PASSER;
+
+    /// @notice Solana program ID of the Solana Messenger program.
     bytes32 public immutable SOLANA_MESSENGER_PROGRAM;
 
     //////////////////////////////////////////////////////////////
@@ -105,7 +108,7 @@ contract CrossChainMessenger is Initializable {
     //////////////////////////////////////////////////////////////
 
     /// @notice Constructs the CrossChainMessenger contract.
-    constructor(MessagePasser solanaMessagePasser, bytes32 solanaMessengerProgram) {
+    constructor(address solanaMessagePasser, bytes32 solanaMessengerProgram) {
         SOLANA_MESSAGE_PASSER = solanaMessagePasser;
         SOLANA_MESSENGER_PROGRAM = solanaMessengerProgram;
         _disableInitializers();
@@ -247,6 +250,7 @@ contract CrossChainMessenger is Initializable {
     /// @notice Retrieves the next message nonce. Message version will be added to the upper two
     ///         bytes of the message nonce. Message version allows us to treat messages as having
     ///         different structures.
+    ///
     /// @return Nonce of the next message to be sent, with added message version.
     function messageNonce() public view returns (uint256) {
         return Encoding.encodeVersionedNonce(msgNonce, MESSAGE_VERSION);
@@ -255,17 +259,17 @@ contract CrossChainMessenger is Initializable {
     //////////////////////////////////////////////////////////////
     ///                       Internal Functions               ///
     //////////////////////////////////////////////////////////////
+
     /// @notice Sends a low-level message to the remote messenger.
     ///
     /// @param ixs The instructions array to be executed from the Solana MessagePasser program
     function _sendMessage(MessagePasser.Instruction[] memory ixs) internal {
-        SOLANA_MESSAGE_PASSER.initiateWithdrawal(ixs);
+        MessagePasser(SOLANA_MESSAGE_PASSER).initiateWithdrawal(ixs);
     }
 
     /// @notice Checks whether the message is coming from the remote messenger.
     ///
     /// @return Whether the message is coming from the remote messenger.
-
     function _isRemoteMessenger() internal view virtual returns (bool) {
         return _bytes32ToAddress(remoteMessenger) == msg.sender;
     }
