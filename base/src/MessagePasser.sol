@@ -88,6 +88,15 @@ contract MessagePasser {
         return "1.1.2";
     }
 
+    /// @notice Retrieves the next message nonce. Message version will be added to the upper two
+    ///         bytes of the message nonce. Message version allows us to treat messages as having
+    ///         different structures.
+    ///
+    /// @return Nonce of the next message to be sent, with added message version.
+    function messageNonce() public view returns (uint256) {
+        return Encoding.encodeVersionedNonce(_msgNonce, MESSAGE_VERSION);
+    }
+
     /// @notice Sends a message from L2 to L1.
     ///
     /// @param ixs Instructions to execute.
@@ -104,25 +113,16 @@ contract MessagePasser {
         }
     }
 
-    /// @notice Retrieves the next message nonce. Message version will be added to the upper two
-    ///         bytes of the message nonce. Message version allows us to treat messages as having
-    ///         different structures.
-    ///
-    /// @return Nonce of the next message to be sent, with added message version.
-    function messageNonce() public view returns (uint256) {
-        return Encoding.encodeVersionedNonce(_msgNonce, MESSAGE_VERSION);
-    }
-
     //////////////////////////////////////////////////////////////
     ///                       Internal Functions               ///
     //////////////////////////////////////////////////////////////
 
     /// @notice Derives the withdrawal hash according to the encoding in the L2 Withdrawer contract
     ///
-    /// @param _tx Withdrawal transaction to hash.
+    /// @param withdrawal Withdrawal transaction to hash.
     ///
     /// @return Hashed withdrawal transaction.
-    function _hashWithdrawal(WithdrawalTransaction memory _tx) internal pure returns (bytes32) {
-        return keccak256(Encoder.encodeMessage(_tx.nonce, _tx.sender, _tx.ixs));
+    function _hashWithdrawal(WithdrawalTransaction memory withdrawal) internal pure returns (bytes32) {
+        return keccak256(Encoder.encodeMessage(withdrawal.nonce, withdrawal.sender, withdrawal.ixs));
     }
 }

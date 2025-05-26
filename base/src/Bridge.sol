@@ -122,21 +122,19 @@ contract Bridge is Initializable {
     }
 
     /// @notice Sends ERC20 tokens to the sender's address on the other chain.
-    /// @param _localToken  Address of the ERC20 on this chain.
-    /// @param _remoteToken Address of the corresponding token on the remote chain.
-    /// @param _to          Solana pubkey to send tokens to
-    /// @param _amount      Amount of local tokens to deposit.
-    /// @param _extraData   Extra data to be sent with the transaction. Note that the recipient will
+    /// @param localToken  Address of the ERC20 on this chain.
+    /// @param remoteToken Address of the corresponding token on the remote chain.
+    /// @param to          Solana pubkey to send tokens to
+    /// @param amount      Amount of local tokens to deposit.
+    /// @param extraData   Extra data to be sent with the transaction. Note that the recipient will
     ///                     not be triggered with this data, but it will be emitted and can be used
     ///                     to identify the transaction.
-    function bridgeToken(
-        address _localToken,
-        bytes32 _remoteToken,
-        bytes32 _to,
-        uint64 _amount,
-        bytes calldata _extraData
-    ) public virtual onlyEOA {
-        _initiateBridgeERC20(_localToken, _remoteToken, msg.sender, _to, _amount, _extraData);
+    function bridgeToken(address localToken, bytes32 remoteToken, bytes32 to, uint64 amount, bytes calldata extraData)
+        public
+        virtual
+        onlyEOA
+    {
+        _initiateBridgeERC20(localToken, remoteToken, msg.sender, to, amount, extraData);
     }
 
     /// @notice Finalizes a token bridge on this chain. Can only be triggered by the Bridge contract on the remote
@@ -186,36 +184,36 @@ contract Bridge is Initializable {
     //////////////////////////////////////////////////////////////
 
     /// @notice Sends ERC20 tokens to a receiver's address on the other chain.
-    /// @param _localToken  Address of the ERC20 on this chain.
-    /// @param _remoteToken Address of the corresponding token on the remote chain.
-    /// @param _to          Address of the receiver.
-    /// @param _amount      Amount of local tokens to deposit.
-    /// @param _extraData   Extra data to be sent with the transaction. Note that the recipient will
+    /// @param localToken  Address of the ERC20 on this chain.
+    /// @param remoteToken Address of the corresponding token on the remote chain.
+    /// @param to          Address of the receiver.
+    /// @param amount      Amount of local tokens to deposit.
+    /// @param extraData   Extra data to be sent with the transaction. Note that the recipient will
     ///                     not be triggered with this data, but it will be emitted and can be used
     ///                     to identify the transaction.
     function _initiateBridgeERC20(
-        address _localToken,
-        bytes32 _remoteToken,
-        address _from,
-        bytes32 _to,
-        uint64 _amount,
-        bytes memory _extraData
+        address localToken,
+        bytes32 remoteToken,
+        address from,
+        bytes32 to,
+        uint64 amount,
+        bytes memory extraData
     ) internal {
         require(msg.value == 0, "StandardBridge: cannot send value");
 
-        if (_isCrossChainERC20(_localToken)) {
+        if (_isCrossChainERC20(localToken)) {
             require(
-                _isCorrectTokenPair(CrossChainERC20(_localToken), _remoteToken),
+                _isCorrectTokenPair(CrossChainERC20(localToken), remoteToken),
                 "StandardBridge: wrong remote token for Optimism Mintable ERC20 local token"
             );
 
-            CrossChainERC20(_localToken).burn(_from, _amount);
+            CrossChainERC20(localToken).burn(from, amount);
         } else {
-            SafeTransferLib.safeTransferFrom({token: _localToken, from: _from, to: address(this), amount: _amount});
-            deposits[_localToken][_remoteToken] = deposits[_localToken][_remoteToken] + _amount;
+            SafeTransferLib.safeTransferFrom({token: localToken, from: from, to: address(this), amount: amount});
+            deposits[localToken][remoteToken] = deposits[localToken][remoteToken] + amount;
         }
 
-        emit ERC20BridgeInitiated(_localToken, _remoteToken, _from, _to, _amount, _extraData);
+        emit ERC20BridgeInitiated(localToken, remoteToken, from, to, amount, extraData);
 
         MessagePasser.Instruction[] memory messageIxs = new MessagePasser.Instruction[](1);
         messageIxs[0] = MessagePasser.Instruction({
@@ -223,12 +221,12 @@ contract Bridge is Initializable {
             accounts: new MessagePasser.AccountMeta[](0),
             data: Encoder.encodeBridgePayload(
                 BridgePayload({
-                    localToken: _remoteToken,
-                    remoteToken: _localToken,
-                    from: _from,
-                    to: _to,
-                    amount: _amount,
-                    extraData: _extraData
+                    localToken: remoteToken,
+                    remoteToken: localToken,
+                    from: from,
+                    to: to,
+                    amount: amount,
+                    extraData: extraData
                 })
             )
         });

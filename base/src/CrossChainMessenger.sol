@@ -124,6 +124,15 @@ contract CrossChainMessenger is Initializable {
         return _xChainMsgSender;
     }
 
+    /// @notice Retrieves the next message nonce. Message version will be added to the upper two
+    ///         bytes of the message nonce. Message version allows us to treat messages as having
+    ///         different structures.
+    ///
+    /// @return Nonce of the next message to be sent, with added message version.
+    function messageNonce() public view returns (uint256) {
+        return Encoding.encodeVersionedNonce(_msgNonce, MESSAGE_VERSION);
+    }
+
     /// @notice Initializer.
     ///
     /// @param remoteMessenger_ Address of the messenger on the remote chain.
@@ -245,15 +254,6 @@ contract CrossChainMessenger is Initializable {
             // if that amount is greater than the minimum gas limit specified by the user.
             require(tx.origin != ESTIMATION_ADDRESS, "CrossChainMessenger: failed to relay message");
         }
-    }
-
-    /// @notice Retrieves the next message nonce. Message version will be added to the upper two
-    ///         bytes of the message nonce. Message version allows us to treat messages as having
-    ///         different structures.
-    ///
-    /// @return Nonce of the next message to be sent, with added message version.
-    function messageNonce() public view returns (uint256) {
-        return Encoding.encodeVersionedNonce(_msgNonce, MESSAGE_VERSION);
     }
 
     //////////////////////////////////////////////////////////////

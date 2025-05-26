@@ -21,6 +21,7 @@ contract CrossChainERC20 is ERC20 {
     /// @param from Address of the account tokens are being burned from.
     /// @param amount  Amount of tokens burned.
     event Burn(address indexed from, uint256 amount);
+
     //////////////////////////////////////////////////////////////
     ///                       Constants                        ///
     //////////////////////////////////////////////////////////////
@@ -72,32 +73,33 @@ contract CrossChainERC20 is ERC20 {
         return "1.0.1";
     }
 
-    /// @dev Returns the bridge address.
+    /// @notice Returns the bridge address.
     function bridge() public view returns (address) {
         return _bridge;
     }
 
-    /// @dev Returns the remote token address.
+    /// @notice Returns the remote token address.
     function remoteToken() public view returns (bytes32) {
         return _remoteToken;
     }
 
-    /// @dev Returns the name of the token.
+    /// @notice Returns the name of the token.
     function name() public view override returns (string memory) {
         return _name;
     }
 
-    /// @dev Returns the symbol of the token.
+    /// @notice Returns the symbol of the token.
     function symbol() public view override returns (string memory) {
         return _symbol;
     }
 
-    /// @dev Returns the decimals places of the token.
+    /// @notice Returns the decimals places of the token.
     function decimals() public view override returns (uint8) {
         return _decimals;
     }
 
     /// @notice Allows the Bridge to mint tokens.
+    ///
     /// @param to Address to mint tokens to.
     /// @param amount Amount of tokens to mint.
     function mint(address to, uint256 amount) external onlyBridge {
@@ -108,6 +110,7 @@ contract CrossChainERC20 is ERC20 {
     }
 
     /// @notice Allows the Bridge to burn tokens.
+    ///
     /// @param from Address to burn tokens from.
     /// @param amount Amount of tokens to burn.
     function burn(address from, uint256 amount) external onlyBridge {
