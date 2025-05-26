@@ -154,15 +154,13 @@ contract CrossChainMessenger is Initializable {
     ///
     /// @param messageIxs Solana instructions to execute.
     function sendMessage(MessagePasser.Instruction[] calldata messageIxs) external {
-        uint256 messageNonce = messageNonce();
+        uint256 nonce = messageNonce();
 
         MessagePasser.Instruction[] memory ixs = new MessagePasser.Instruction[](1);
         ixs[0] = MessagePasser.Instruction({
             programId: solanaMessengerProgram,
             accounts: new MessagePasser.AccountMeta[](0),
-            data: Encoder.encodeMessengerPayload(
-                MessengerPayload({nonce: messageNonce, sender: msg.sender, ixs: messageIxs})
-            )
+            data: Encoder.encodeMessengerPayload(MessengerPayload({nonce: nonce, sender: msg.sender, ixs: messageIxs}))
         });
 
         // Triggers a message to the remote messenger. Note that the amount of gas provided to the
@@ -171,7 +169,7 @@ contract CrossChainMessenger is Initializable {
         // the minimum gas limit specified by the user.
         _sendMessage(ixs);
 
-        emit SentMessage(msg.sender, messageIxs, messageNonce);
+        emit SentMessage(msg.sender, messageIxs, nonce);
 
         unchecked {
             ++_msgNonce;

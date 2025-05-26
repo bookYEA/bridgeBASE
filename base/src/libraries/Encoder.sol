@@ -10,6 +10,10 @@ import {MessagePasser} from "../MessagePasser.sol";
 library Encoder {
     using LibBit for uint256;
 
+    //////////////////////////////////////////////////////////////
+    ///                       Internal Functions               ///
+    //////////////////////////////////////////////////////////////
+
     function encodeBridgePayload(Bridge.BridgePayload memory payload) internal pure returns (bytes memory) {
         return abi.encodePacked(
             payload.localToken,
@@ -30,7 +34,7 @@ library Encoder {
         bytes memory serializedIxs = abi.encodePacked(_getLeLength(payload.ixs.length));
 
         for (uint256 i; i < payload.ixs.length; i++) {
-            serializedIxs = abi.encodePacked(serializedIxs, serializeIx(payload.ixs[i]));
+            serializedIxs = abi.encodePacked(serializedIxs, _serializeIx(payload.ixs[i]));
         }
 
         return abi.encodePacked(payload.nonce, payload.sender, _getLeLength(serializedIxs.length), serializedIxs);
@@ -44,13 +48,17 @@ library Encoder {
         bytes memory serializedIxs = abi.encodePacked(nonce, sender);
 
         for (uint256 i; i < ixs.length; i++) {
-            serializedIxs = abi.encodePacked(serializedIxs, serializeIxPacked(ixs[i]));
+            serializedIxs = abi.encodePacked(serializedIxs, _serializeIxPacked(ixs[i]));
         }
 
         return serializedIxs;
     }
 
-    function serializeIx(MessagePasser.Instruction memory ix) internal pure returns (bytes memory) {
+    //////////////////////////////////////////////////////////////
+    ///                       Private Functions                ///
+    //////////////////////////////////////////////////////////////
+
+    function _serializeIx(MessagePasser.Instruction memory ix) private pure returns (bytes memory) {
         bytes memory data = abi.encodePacked(ix.programId);
         data = abi.encodePacked(data, _getLeLength(ix.accounts.length));
 
@@ -64,7 +72,7 @@ library Encoder {
         return data;
     }
 
-    function serializeIxPacked(MessagePasser.Instruction memory ix) internal pure returns (bytes memory) {
+    function _serializeIxPacked(MessagePasser.Instruction memory ix) private pure returns (bytes memory) {
         bytes memory data = abi.encodePacked(ix.programId);
 
         for (uint256 i; i < ix.accounts.length; i++) {
