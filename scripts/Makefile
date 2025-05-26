@@ -38,6 +38,10 @@ bridge-sol-to-base:
 bridge-spl-to-base:
 	bun run src/bridgeTokensToBase.ts
 
+.PHONY: bridge-erc20-to-base
+bridge-erc20-to-base:
+	IS_ERC20=true bun run src/bridgeTokensToBase.ts
+
 .PHONY: bridge-sol-to-solana
 bridge-sol-to-solana:
 	IS_SOL=true bun run src/orchestrateBridge.ts

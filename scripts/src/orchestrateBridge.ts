@@ -35,7 +35,9 @@ let CFG: {
 };
 
 async function init() {
-  anchor.setProvider(CFG.provider);
+  anchor.setProvider(anchor.AnchorProvider.env());
+
+  const program = anchor.workspace.Bridge as Program<Bridge>;
 
   let localToken: PublicKey;
   let remoteToken: Buffer;
@@ -63,8 +65,10 @@ async function init() {
 
   const [depositPda] = PublicKey.findProgramAddressSync(
     [Buffer.from("deposit"), localToken.toBuffer(), remoteToken],
-    CFG.program.programId
+    program.programId
   );
+
+  const version = new anchor.BN(2);
 
   if (IS_SOL) {
     remainingAccounts = [
@@ -78,16 +82,16 @@ async function init() {
     ];
   } else {
     const [vaultPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("bridge_vault"), CFG.version.toBuffer("le", 1)],
-      CFG.program.programId
+      [Buffer.from("bridge_vault"), version.toBuffer("le", 1)],
+      program.programId
     );
     const vaultATA = await getAssociatedTokenAddress(
-      CFG.localToken,
+      localToken,
       vaultPda,
       true
     );
-    return [
-      { pubkey: CFG.localToken, isWritable: false, isSigner: false },
+    remainingAccounts = [
+      { pubkey: localToken, isWritable: false, isSigner: false },
       { pubkey: vaultPda, isWritable: false, isSigner: false },
       { pubkey: vaultATA, isWritable: true, isSigner: false },
       { pubkey: TOKEN_PROGRAM_ID, isWritable: false, isSigner: false },
@@ -97,8 +101,8 @@ async function init() {
 
   CFG = {
     provider: anchor.AnchorProvider.env(),
-    program: anchor.workspace.Bridge as Program<Bridge>,
-    version: new anchor.BN(2),
+    program: program,
+    version: version,
     localToken: localToken,
     remoteToken: remoteToken,
     baseContractsCommand: baseContractsCommand,
@@ -316,7 +320,7 @@ function extractRecipientFromIxs(ixs: number[]): PublicKey {
 }
 
 async function orchestrate() {
-  init();
+  await init();
   try {
     console.log("Starting bridge orchestration...");
 

@@ -6,8 +6,14 @@ import baseSepoliaAddrs from "../deployments/base_sepolia.json";
 import { toArray } from "./utils/toArray";
 import { loadFromEnv } from "./utils/loadFromEnv";
 
-const mint = new PublicKey(loadFromEnv("MINT"));
-const REMOTE_TOKEN_ADDRESS = toArray(baseSepoliaAddrs.WrappedSPL);
+const IS_ERC20 = loadFromEnv("IS_ERC20", true) === "true";
+
+const mint = new PublicKey(
+  IS_ERC20 ? loadFromEnv("ERC20_MINT") : loadFromEnv("MINT")
+);
+const REMOTE_TOKEN_ADDRESS = toArray(
+  IS_ERC20 ? baseSepoliaAddrs.ERC20 : baseSepoliaAddrs.WrappedSPL
+);
 
 async function main() {
   const provider = anchor.AnchorProvider.env();
