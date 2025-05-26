@@ -49,11 +49,7 @@ contract CreateTokenScript is Script {
         vm.writeFile(string.concat("deployments/", chain.chainAlias, ".json"), data);
     }
 
-    function _record(string memory out, string memory key, address addr)
-        private
-        pure
-        returns (string memory)
-    {
+    function _record(string memory out, string memory key, address addr) private pure returns (string memory) {
         return string.concat(out, "\"", key, "\": \"", vm.toString(addr), "\"");
     }
 }

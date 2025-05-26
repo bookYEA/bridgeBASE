@@ -11,6 +11,8 @@ import {Bridge} from "../../src/Bridge.sol";
 contract BridgeTokensToSolanaScript is Script {
     using stdJson for string;
 
+    address public constant ETH_ADDRESS = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
+
     address public immutable LOCAL_TOKEN = vm.envAddress("LOCAL_TOKEN");
     bytes32 public immutable REMOTE_TOKEN = vm.envBytes32("REMOTE_TOKEN");
     bytes32 public immutable TO = vm.envBytes32("TO");
@@ -29,12 +31,13 @@ contract BridgeTokensToSolanaScript is Script {
         bridge = Bridge(bridgeAddress);
     }
 
-    function run() public {
+    function run() public payable {
         vm.startBroadcast();
         if (vm.envOr("NEEDS_APPROVAL", false)) {
             ERC20(LOCAL_TOKEN).approve(address(bridge), AMOUNT);
         }
-        bridge.bridgeToken(LOCAL_TOKEN, REMOTE_TOKEN, TO, AMOUNT, extraData);
+        uint256 value = LOCAL_TOKEN == ETH_ADDRESS ? AMOUNT : 0;
+        bridge.bridgeToken{value: value}(LOCAL_TOKEN, REMOTE_TOKEN, TO, AMOUNT, extraData);
         vm.stopBroadcast();
     }
 }

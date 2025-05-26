@@ -68,6 +68,13 @@ contract Bridge is Initializable {
     );
 
     //////////////////////////////////////////////////////////////
+    ///                       Constants                        ///
+    //////////////////////////////////////////////////////////////
+
+    /// @notice The ERC-7528 address representing native ETH
+    address public constant ETH_ADDRESS = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
+
+    //////////////////////////////////////////////////////////////
     ///                       Storage                          ///
     //////////////////////////////////////////////////////////////
 
@@ -81,6 +88,12 @@ contract Bridge is Initializable {
 
     /// @notice Mapping that stores deposits for a given pair of local and remote tokens.
     mapping(address localToken => mapping(bytes32 remoteToken => uint256 amount)) public deposits;
+
+    //////////////////////////////////////////////////////////////
+    ///                       Errors                           ///
+    //////////////////////////////////////////////////////////////
+
+    error InvalidMsgValue();
 
     //////////////////////////////////////////////////////////////
     ///                       Modifiers                        ///
@@ -131,6 +144,7 @@ contract Bridge is Initializable {
     ///                     to identify the transaction.
     function bridgeToken(address localToken, bytes32 remoteToken, bytes32 to, uint64 amount, bytes calldata extraData)
         public
+        payable
         virtual
         onlyEOA
     {
@@ -166,7 +180,11 @@ contract Bridge is Initializable {
             localToken_.mint(to, amount);
         } else {
             deposits[localToken][remoteToken] = deposits[localToken][remoteToken] - amount;
-            SafeTransferLib.safeTransfer({token: localToken, to: to, amount: amount});
+            if (localToken == ETH_ADDRESS) {
+                SafeTransferLib.safeTransferETH({to: to, amount: amount});
+            } else {
+                SafeTransferLib.safeTransfer({token: localToken, to: to, amount: amount});
+            }
         }
 
         emit TokenBridgeFinalized({
@@ -199,8 +217,6 @@ contract Bridge is Initializable {
         uint64 amount,
         bytes memory extraData
     ) internal {
-        require(msg.value == 0, "StandardBridge: cannot send value");
-
         if (_isCrossChainERC20(localToken)) {
             require(
                 _isCorrectTokenPair(CrossChainERC20(localToken), remoteToken),
@@ -209,8 +225,14 @@ contract Bridge is Initializable {
 
             CrossChainERC20(localToken).burn(from, amount);
         } else {
-            SafeTransferLib.safeTransferFrom({token: localToken, from: from, to: address(this), amount: amount});
             deposits[localToken][remoteToken] = deposits[localToken][remoteToken] + amount;
+            if (localToken == ETH_ADDRESS) {
+                if (msg.value != amount) {
+                    revert InvalidMsgValue();
+                }
+            } else {
+                SafeTransferLib.safeTransferFrom({token: localToken, from: from, to: address(this), amount: amount});
+            }
         }
 
         emit ERC20BridgeInitiated(localToken, remoteToken, from, to, amount, extraData);
