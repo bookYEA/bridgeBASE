@@ -11,7 +11,6 @@ import {Bridge} from "../src/Bridge.sol";
 import {CrossChainERC20Factory} from "../src/CrossChainERC20Factory.sol";
 import {CrossChainMessenger} from "../src/CrossChainMessenger.sol";
 import {MessagePasser} from "../src/MessagePasser.sol";
-import {ISolanaMessagePasser} from "../src/interfaces/ISolanaMessagePasser.sol";
 
 contract DeployScript is Script {
     address public constant PROXY_ADMIN = 0x0fe884546476dDd290eC46318785046ef68a0BA9;
@@ -59,7 +58,7 @@ contract DeployScript is Script {
 
     function _deployMessenger(address messagePasser) private returns (address) {
         CrossChainMessenger messengerImpl =
-            new CrossChainMessenger(ISolanaMessagePasser(payable(messagePasser)), REMOTE_MESSENGER);
+            new CrossChainMessenger(MessagePasser(payable(messagePasser)), REMOTE_MESSENGER);
         CrossChainMessenger messengerProxy = CrossChainMessenger(
             ERC1967Factory(ERC1967FactoryConstants.ADDRESS).deployAndCall({
                 implementation: address(messengerImpl),

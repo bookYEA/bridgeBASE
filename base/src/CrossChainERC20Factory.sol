@@ -1,20 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {ISemver} from "optimism/packages/contracts-bedrock/interfaces/universal/ISemver.sol";
 import {Initializable} from "solady/utils/Initializable.sol";
 
 import {CrossChainERC20} from "./CrossChainERC20.sol";
 
-contract CrossChainERC20Factory is ISemver, Initializable {
-    //////////////////////////////////////////////////////////////
-    ///                       Constants                        ///
-    //////////////////////////////////////////////////////////////
-
-    /// @notice Semantic version.
-    /// @custom:semver 1.0.1
-    string public constant version = "1.0.1";
-
+contract CrossChainERC20Factory is Initializable {
     //////////////////////////////////////////////////////////////
     ///                       Events                           ///
     //////////////////////////////////////////////////////////////
@@ -25,6 +16,10 @@ contract CrossChainERC20Factory is ISemver, Initializable {
     /// @param remoteToken Address of the corresponding token on the remote chain.
     /// @param deployer Address of the account that deployed the token.
     event CrossChainERC20Created(address indexed localToken, bytes32 indexed remoteToken, address deployer);
+
+    //////////////////////////////////////////////////////////////
+    ///                       Constants                        ///
+    //////////////////////////////////////////////////////////////
 
     //////////////////////////////////////////////////////////////
     ///                       Storage                          ///
@@ -44,6 +39,13 @@ contract CrossChainERC20Factory is ISemver, Initializable {
     /// @notice Constructs the Bridge contract.
     constructor() {
         _disableInitializers();
+    }
+
+    /// @notice Semantic version.
+    ///
+    /// @custom:semver 1.0.1
+    function version() external pure returns (string memory) {
+        return "1.0.1";
     }
 
     /// @notice Initializer.

@@ -11,7 +11,6 @@ import {CrossChainERC20} from "../src/CrossChainERC20.sol";
 import {CrossChainERC20Factory} from "../src/CrossChainERC20Factory.sol";
 import {CrossChainMessenger} from "../src/CrossChainMessenger.sol";
 import {MessagePasser} from "../src/MessagePasser.sol";
-import {ISolanaMessagePasser} from "../src/interfaces/ISolanaMessagePasser.sol";
 import {Encoder} from "../src/libraries/Encoder.sol";
 
 contract Poc is Test {
@@ -41,7 +40,7 @@ contract Poc is Test {
 
         // Deploy the CrossChainMessenger
         CrossChainMessenger messengerImpl =
-            new CrossChainMessenger(ISolanaMessagePasser(payable(address(messagePasser))), remoteMessenger);
+            new CrossChainMessenger(MessagePasser(payable(address(messagePasser))), remoteMessenger);
         messengerProxy = CrossChainMessenger(
             ERC1967Factory(ERC1967FactoryConstants.ADDRESS).deployAndCall({
                 implementation: address(messengerImpl),
@@ -98,11 +97,11 @@ contract Poc is Test {
     function test_encoder() external pure {
         uint256 nonce = 0;
         address sender = 0x22B66c7FBC67f57d16FC94e862902098CD7b2972;
-        ISolanaMessagePasser.Instruction[] memory ixs = new ISolanaMessagePasser.Instruction[](1);
-        ISolanaMessagePasser.AccountMeta[] memory accounts = new ISolanaMessagePasser.AccountMeta[](0);
+        MessagePasser.Instruction[] memory ixs = new MessagePasser.Instruction[](1);
+        MessagePasser.AccountMeta[] memory accounts = new MessagePasser.AccountMeta[](0);
         bytes memory data =
             hex"5974ca4b16cafc5c28f2b4227f26f8c58fd70559312c4f612f7866280e394265e398d7afe84a6339783718935087a4ace6f6dfe8000102030405060708090a0b0c0d0e0f1011121301a2dac43f8b87f394d468ef6842e6360a980ebeb99e8df71faa5daab591adf700ca9a3b000000000b00000072616e646f6d2064617461";
-        ixs[0] = ISolanaMessagePasser.Instruction({
+        ixs[0] = MessagePasser.Instruction({
             programId: 0x7a25452c36304317d6fe970091c383b0d45e9b0b06485d2561156f025c6936af,
             accounts: accounts,
             data: data

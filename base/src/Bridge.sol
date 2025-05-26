@@ -7,10 +7,24 @@ import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 
 import {CrossChainERC20} from "./CrossChainERC20.sol";
 import {CrossChainMessenger} from "./CrossChainMessenger.sol";
-import {ISolanaMessagePasser} from "./interfaces/ISolanaMessagePasser.sol";
+import {MessagePasser} from "./MessagePasser.sol";
 import {Encoder} from "./libraries/Encoder.sol";
 
 contract Bridge is Initializable {
+    //////////////////////////////////////////////////////////////
+    ///                       Structs                          ///
+    //////////////////////////////////////////////////////////////
+
+    /// @notice Struct representing a bridge payload.
+    ///
+    /// @custom:field localToken Address of the ERC20 on this chain.
+    /// @custom:field remoteToken Address of the corresponding token on the remote chain.
+    /// @custom:field from Address of the sender.
+    /// @custom:field to Address of the receiver.
+    /// @custom:field amount Amount of the ERC20 being bridged.
+    /// @custom:field extraData Extra data to be sent with the transaction. Note that the recipient will not be
+    ///                         triggered with this data, but it will be emitted and can be used to identify the
+    ///                         transaction.
     struct BridgePayload {
         bytes32 localToken;
         address remoteToken;
@@ -203,10 +217,10 @@ contract Bridge is Initializable {
 
         emit ERC20BridgeInitiated(_localToken, _remoteToken, _from, _to, _amount, _extraData);
 
-        ISolanaMessagePasser.Instruction[] memory messageIxs = new ISolanaMessagePasser.Instruction[](1);
-        messageIxs[0] = ISolanaMessagePasser.Instruction({
+        MessagePasser.Instruction[] memory messageIxs = new MessagePasser.Instruction[](1);
+        messageIxs[0] = MessagePasser.Instruction({
             programId: remoteBridge,
-            accounts: new ISolanaMessagePasser.AccountMeta[](0),
+            accounts: new MessagePasser.AccountMeta[](0),
             data: Encoder.encodeBridgePayload(
                 BridgePayload({
                     localToken: _remoteToken,

@@ -5,7 +5,7 @@ import {LibBit} from "solady/utils/LibBit.sol";
 
 import {Bridge} from "../Bridge.sol";
 import {CrossChainMessenger} from "../CrossChainMessenger.sol";
-import {ISolanaMessagePasser} from "../interfaces/ISolanaMessagePasser.sol";
+import {MessagePasser} from "../MessagePasser.sol";
 
 library Encoder {
     using LibBit for uint256;
@@ -36,7 +36,7 @@ library Encoder {
         return abi.encodePacked(payload.nonce, payload.sender, _getLeLength(serializedIxs.length), serializedIxs);
     }
 
-    function encodeMessage(uint256 nonce, address sender, ISolanaMessagePasser.Instruction[] memory ixs)
+    function encodeMessage(uint256 nonce, address sender, MessagePasser.Instruction[] memory ixs)
         internal
         pure
         returns (bytes memory)
@@ -50,12 +50,12 @@ library Encoder {
         return serializedIxs;
     }
 
-    function serializeIx(ISolanaMessagePasser.Instruction memory ix) internal pure returns (bytes memory) {
+    function serializeIx(MessagePasser.Instruction memory ix) internal pure returns (bytes memory) {
         bytes memory data = abi.encodePacked(ix.programId);
         data = abi.encodePacked(data, _getLeLength(ix.accounts.length));
 
         for (uint256 i; i < ix.accounts.length; i++) {
-            ISolanaMessagePasser.AccountMeta memory account = ix.accounts[i];
+            MessagePasser.AccountMeta memory account = ix.accounts[i];
             data = abi.encodePacked(data, account.pubKey, account.isWritable, account.isSigner);
         }
 
@@ -64,11 +64,11 @@ library Encoder {
         return data;
     }
 
-    function serializeIxPacked(ISolanaMessagePasser.Instruction memory ix) internal pure returns (bytes memory) {
+    function serializeIxPacked(MessagePasser.Instruction memory ix) internal pure returns (bytes memory) {
         bytes memory data = abi.encodePacked(ix.programId);
 
         for (uint256 i; i < ix.accounts.length; i++) {
-            ISolanaMessagePasser.AccountMeta memory account = ix.accounts[i];
+            MessagePasser.AccountMeta memory account = ix.accounts[i];
             data = abi.encodePacked(data, account.pubKey, account.isWritable, account.isSigner);
         }
 
