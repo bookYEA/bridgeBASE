@@ -11,11 +11,13 @@ contract CrossChainERC20 is ERC20 {
     //////////////////////////////////////////////////////////////
 
     /// @notice Emitted whenever tokens are minted for an account.
+    ///
     /// @param to Address of the account tokens are being minted for.
     /// @param amount  Amount of tokens minted.
     event Mint(address indexed to, uint256 amount);
 
     /// @notice Emitted whenever tokens are burned from an account.
+    ///
     /// @param from Address of the account tokens are being burned from.
     /// @param amount  Amount of tokens burned.
     event Burn(address indexed from, uint256 amount);

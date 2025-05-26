@@ -68,10 +68,10 @@ contract CrossChainMessenger is Initializable {
         bytes32(0x000000000000000000000000000000000000000000000000000000000000dEaD);
 
     /// @notice MessagePasser contract on this chain.
-    address public immutable SOLANA_MESSAGE_PASSER;
+    address public immutable solanaMessagePasser;
 
     /// @notice Solana program ID of the Solana Messenger program.
-    bytes32 public immutable SOLANA_MESSENGER_PROGRAM;
+    bytes32 public immutable solanaMessengerProgram;
 
     //////////////////////////////////////////////////////////////
     ///                       Storage                          ///
@@ -93,7 +93,7 @@ contract CrossChainMessenger is Initializable {
     /// @notice Nonce for the next message to be sent, without the message version applied. Use the
     ///         messageNonce getter which will insert the message version into the nonce to give you
     ///         the actual nonce to be used for the message.
-    uint240 internal msgNonce;
+    uint240 internal _msgNonce;
 
     /// @notice Address of the message sender that interacted with the messenger on the remote chain.
     ///
@@ -108,9 +108,9 @@ contract CrossChainMessenger is Initializable {
     //////////////////////////////////////////////////////////////
 
     /// @notice Constructs the CrossChainMessenger contract.
-    constructor(address solanaMessagePasser, bytes32 solanaMessengerProgram) {
-        SOLANA_MESSAGE_PASSER = solanaMessagePasser;
-        SOLANA_MESSENGER_PROGRAM = solanaMessengerProgram;
+    constructor(address solanaMessagePasser_, bytes32 solanaMessengerProgram_) {
+        solanaMessagePasser = solanaMessagePasser_;
+        solanaMessengerProgram = solanaMessengerProgram_;
         _disableInitializers();
     }
 
@@ -147,7 +147,7 @@ contract CrossChainMessenger is Initializable {
     function sendMessage(MessagePasser.Instruction[] calldata messageIxs) external {
         MessagePasser.Instruction[] memory ixs = new MessagePasser.Instruction[](1);
         ixs[0] = MessagePasser.Instruction({
-            programId: SOLANA_MESSENGER_PROGRAM,
+            programId: solanaMessengerProgram,
             accounts: new MessagePasser.AccountMeta[](0),
             data: Encoder.encodeMessengerPayload(
                 MessengerPayload({nonce: messageNonce(), sender: msg.sender, ixs: messageIxs})
@@ -163,7 +163,7 @@ contract CrossChainMessenger is Initializable {
         emit SentMessage(msg.sender, messageIxs, messageNonce());
 
         unchecked {
-            ++msgNonce;
+            ++_msgNonce;
         }
     }
 
@@ -253,7 +253,7 @@ contract CrossChainMessenger is Initializable {
     ///
     /// @return Nonce of the next message to be sent, with added message version.
     function messageNonce() public view returns (uint256) {
-        return Encoding.encodeVersionedNonce(msgNonce, MESSAGE_VERSION);
+        return Encoding.encodeVersionedNonce(_msgNonce, MESSAGE_VERSION);
     }
 
     //////////////////////////////////////////////////////////////
@@ -264,7 +264,7 @@ contract CrossChainMessenger is Initializable {
     ///
     /// @param ixs The instructions array to be executed from the Solana MessagePasser program
     function _sendMessage(MessagePasser.Instruction[] memory ixs) internal {
-        MessagePasser(SOLANA_MESSAGE_PASSER).initiateWithdrawal(ixs);
+        MessagePasser(solanaMessagePasser).initiateWithdrawal(ixs);
     }
 
     /// @notice Checks whether the message is coming from the remote messenger.

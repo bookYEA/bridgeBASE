@@ -75,7 +75,7 @@ contract MessagePasser {
     mapping(bytes32 withdrawalHash => bool sent) public sentMessages;
 
     /// @notice A unique value hashed with each withdrawal.
-    uint240 internal msgNonce;
+    uint240 internal _msgNonce;
 
     //////////////////////////////////////////////////////////////
     ///                       Public Functions                 ///
@@ -100,7 +100,7 @@ contract MessagePasser {
         emit MessagePassed(nonce, msg.sender, ixs, withdrawalHash);
 
         unchecked {
-            ++msgNonce;
+            ++_msgNonce;
         }
     }
 
@@ -110,7 +110,7 @@ contract MessagePasser {
     ///
     /// @return Nonce of the next message to be sent, with added message version.
     function messageNonce() public view returns (uint256) {
-        return Encoding.encodeVersionedNonce(msgNonce, MESSAGE_VERSION);
+        return Encoding.encodeVersionedNonce(_msgNonce, MESSAGE_VERSION);
     }
 
     //////////////////////////////////////////////////////////////
