@@ -7,13 +7,21 @@ import { toArray } from "./utils/toArray";
 import { loadFromEnv } from "./utils/loadFromEnv";
 
 const IS_ERC20 = loadFromEnv("IS_ERC20", true) === "true";
+const IS_ETH = loadFromEnv("IS_ETH", true) === "true";
 
-const mint = new PublicKey(
-  IS_ERC20 ? loadFromEnv("ERC20_MINT") : loadFromEnv("MINT")
-);
-const REMOTE_TOKEN_ADDRESS = toArray(
-  IS_ERC20 ? baseSepoliaAddrs.ERC20 : baseSepoliaAddrs.WrappedSPL
-);
+let mint: PublicKey;
+let REMOTE_TOKEN_ADDRESS: number[];
+
+if (IS_ERC20) {
+  mint = new PublicKey(loadFromEnv("ERC20_MINT"));
+  REMOTE_TOKEN_ADDRESS = toArray(baseSepoliaAddrs.ERC20);
+} else if (IS_ETH) {
+  mint = new PublicKey(loadFromEnv("ETH_MINT"));
+  REMOTE_TOKEN_ADDRESS = toArray(baseSepoliaAddrs.ETH);
+} else {
+  mint = new PublicKey(loadFromEnv("MINT"));
+  REMOTE_TOKEN_ADDRESS = toArray(baseSepoliaAddrs.WrappedSPL);
+}
 
 async function main() {
   const provider = anchor.AnchorProvider.env();

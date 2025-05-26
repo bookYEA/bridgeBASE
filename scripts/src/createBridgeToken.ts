@@ -23,6 +23,7 @@ async function main() {
     program.programId
   );
   console.log({ mintPda: mintPda.toBuffer().toString("hex") });
+  console.log({ mintPda: mintPda.toBase58() });
 
   const tx = await program.methods
     .createMint(REMOTE_TOKEN_ADDRESS, DECIMALS)

@@ -21,6 +21,7 @@ type Account = { pubkey: PublicKey; isWritable: boolean; isSigner: boolean };
 
 const IS_SOL = loadFromEnv("IS_SOL", true) === "true";
 const IS_ERC20 = loadFromEnv("IS_ERC20", true) === "true";
+const IS_ETH = loadFromEnv("IS_ETH", true) === "true";
 
 let CFG: {
   provider: anchor.AnchorProvider;
@@ -57,6 +58,10 @@ async function init() {
     localToken = new PublicKey(loadFromEnv("ERC20_MINT"));
     remoteToken = Buffer.from(baseSepoliaAddrs.ERC20.slice(2), "hex");
     baseContractsCommand = "make bridge-erc20-to-solana";
+  } else if (IS_ETH) {
+    localToken = new PublicKey(loadFromEnv("ETH_MINT"));
+    remoteToken = Buffer.from(baseSepoliaAddrs.ETH.slice(2), "hex");
+    baseContractsCommand = "make bridge-eth-to-solana";
   } else {
     localToken = new PublicKey(loadFromEnv("MINT"));
     remoteToken = Buffer.from(baseSepoliaAddrs.WrappedSPL.slice(2), "hex");
@@ -75,7 +80,7 @@ async function init() {
       { pubkey: SYSTEM_PROGRAM_ID, isWritable: false, isSigner: false },
       { pubkey: depositPda, isWritable: true, isSigner: false },
     ];
-  } else if (IS_ERC20) {
+  } else if (IS_ERC20 || IS_ETH) {
     remainingAccounts = [
       { pubkey: localToken, isWritable: true, isSigner: false },
       { pubkey: TOKEN_PROGRAM_ID, isWritable: false, isSigner: false },
