@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-// Libraries
-import {Encoder} from "./libraries/Encoder.sol";
 import {Encoding} from "optimism/packages/contracts-bedrock/src/libraries/Encoding.sol";
+
+import {Encoder} from "./libraries/Encoder.sol";
 
 /// @custom:proxied true
 /// @title L2ToL1MessagePasser
