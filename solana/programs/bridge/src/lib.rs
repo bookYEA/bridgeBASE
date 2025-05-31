@@ -80,12 +80,13 @@ pub mod bridge {
         post_root::submit_root_handler(ctx, root, block_number)
     }
 
+    #[allow(clippy::too_many_arguments)]
     // TODO: we may need to worry about proof size here
     pub fn prove_transaction(
         ctx: Context<ProveTransaction>,
         transaction_hash: [u8; 32],
         nonce: [u8; 32],
-        remote_sender: [u8; 20],
+        message_passer_caller: [u8; 20],
         ixs: Vec<Ix>,
         proof: Vec<[u8; 32]>,
         leaf_index: u64,
@@ -95,7 +96,7 @@ pub mod bridge {
             ctx,
             &transaction_hash,
             &nonce,
-            &remote_sender,
+            &message_passer_caller,
             ixs,
             proof,
             leaf_index,
@@ -105,9 +106,8 @@ pub mod bridge {
 
     pub fn finalize_transaction<'a, 'info>(
         ctx: Context<'a, '_, 'info, 'info, FinalizeTransaction<'info>>,
-        transaction_hash: [u8; 32],
     ) -> Result<()> {
-        receiver::finalize_transaction_handler(ctx, &transaction_hash)
+        receiver::finalize_transaction_handler(ctx)
     }
 
     pub fn create_mint(

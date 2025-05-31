@@ -2,7 +2,7 @@ FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04
 
 ARG RUST_TOOLCHAIN="1.87.0"
 ARG SOLANA_CLI="2.1.21"
-ARG ANCHOR_CLI="0.30.1"
+ARG ANCHOR_CLI="0.31.0"
 ARG NODE_VERSION="node"
 
 USER vscode
@@ -27,8 +27,7 @@ RUN source /home/vscode/.cargo/env && \
 RUN cd /tmp && git clone --depth 1 --branch v${SOLANA_CLI} https://github.com/anza-xyz/agave.git && \
     cd agave && CARGO_BUILD_JOBS=8 scripts/cargo-install-all.sh ~/.local
 
-RUN cargo install --git https://github.com/coral-xyz/anchor avm --force
-RUN avm install ${ANCHOR_CLI} && avm use ${ANCHOR_CLI}
+RUN cargo install --git https://github.com/coral-xyz/anchor --tag v${ANCHOR_CLI} anchor-cli
 
 RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/master/install.sh | bash
 RUN source /home/vscode/.nvm/nvm.sh && \

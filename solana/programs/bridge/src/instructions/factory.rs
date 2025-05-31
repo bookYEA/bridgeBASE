@@ -8,16 +8,18 @@ use crate::MINT_SEED;
 pub struct CreateMint<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
+
     #[account(
         init,
         payer = signer,
-        mint::decimals = decimals,
+        mint::decimals = decimals, // TODO: Decimals might need to be clamped to 9.
         mint::authority = mint,
         mint::freeze_authority = mint,
         seeds = [MINT_SEED, remote_token.as_ref(), decimals.to_le_bytes().as_ref()],
         bump
     )]
     pub mint: InterfaceAccount<'info, Mint>,
+
     pub token_program: Interface<'info, TokenInterface>,
     pub system_program: Program<'info, System>,
 }

@@ -1,29 +1,36 @@
 use crate::{
-    constants::OTHER_MESSENGER, ENCODING_OVERHEAD, FLOOR_CALLDATA_OVERHEAD, MESSAGE_VERSION,
-    MESSENGER_SEED, MIN_GAS_CALLDATA_OVERHEAD, MIN_GAS_DYNAMIC_OVERHEAD_DENOMINATOR,
+    BridgePayload, Ix, Message, Messenger, DEFAULT_MESSENGER_CALLER, ENCODING_OVERHEAD,
+    FLOOR_CALLDATA_OVERHEAD, GAS_FEE_RECEIVER, MESSAGE_VERSION, MESSENGER_SEED,
+    MIN_GAS_CALLDATA_OVERHEAD, MIN_GAS_DYNAMIC_OVERHEAD_DENOMINATOR,
     MIN_GAS_DYNAMIC_OVERHEAD_NUMERATOR, RELAY_CALL_OVERHEAD, RELAY_CONSTANT_OVERHEAD,
-    RELAY_GAS_CHECK_BUFFER, RELAY_RESERVED_GAS, TX_BASE_GAS,
+    RELAY_GAS_CHECK_BUFFER, RELAY_MESSAGE_SELECTOR, RELAY_RESERVED_GAS, REMOTE_MESSENGER,
+    TX_BASE_GAS, VERSION,
 };
-use crate::{BridgePayload, Ix, Message, Messenger, MessengerPayload, DEFAULT_SENDER, VERSION};
-use anchor_lang::solana_program::instruction::Instruction;
 use anchor_lang::solana_program::keccak;
 use anchor_lang::{prelude::*, solana_program};
-use hex_literal::hex;
 use std::cmp::max;
 
 use super::{portal, standard_bridge};
 
 #[derive(Accounts)]
 pub struct SendMessage<'info> {
+    // Portal accounts
     #[account(mut)]
     pub user: Signer<'info>,
 
+    #[account(mut, address = GAS_FEE_RECEIVER)]
+    /// CHECK: This is the hardcoded gas fee receiver account.
+    pub gas_fee_receiver: AccountInfo<'info>,
+
+    pub system_program: Program<'info, System>,
+
+    // Messenger accounts
     #[account(mut, seeds = [MESSENGER_SEED, VERSION.to_le_bytes().as_ref()], bump)]
-    pub msg_state: Account<'info, Messenger>,
+    pub messenger: Account<'info, Messenger>,
 }
 
 #[event]
-// Emitted whenever a message is sent to the other chain.
+// Emitted whenever a message is sent to the remote chain.
 pub struct SentMessage {
     pub target: [u8; 20],        // Address of the recipient of the message.
     pub sender: Pubkey,          // Address of the sender of the message.
@@ -47,7 +54,7 @@ pub struct FailedRelayedMessage {
 
 /// @notice Sends a message to some target address on Base. Note that if the call
 ///         always reverts, then the message will be unrelayable, and any SOL sent will be
-///         permanently locked. The same will occur if the target on the other chain is
+///         permanently locked. The same will occur if the target on the remote chain is
 ///         considered unsafe (see the _isUnsafeTarget() function).
 /// @param _target      Target contract or wallet address.
 /// @param _message     Message to trigger the target address with.
@@ -59,7 +66,10 @@ pub fn send_message_handler(
     min_gas_limit: u32,
 ) -> Result<()> {
     send_message_internal(
-        &mut ctx.accounts.msg_state,
+        &ctx.accounts.system_program,
+        &ctx.accounts.user,
+        &ctx.accounts.gas_fee_receiver,
+        &mut ctx.accounts.messenger,
         ctx.accounts.user.key(),
         target,
         message,
@@ -67,56 +77,71 @@ pub fn send_message_handler(
     )
 }
 
-/// @notice Relays a message that was sent by the other CrossDomainMessenger contract. Can only
-///         be executed via cross-chain call from the other messenger OR if the message was
+#[derive(AnchorDeserialize)]
+pub struct MessengerPayload {
+    pub nonce: [u8; 32],
+    pub messenger_caller: [u8; 20],
+    pub message: Vec<u8>,
+}
+
+/// @notice Relays a message that was sent by the remote CrossDomainMessenger contract. Can only
+///         be executed via cross-chain call from the remote messenger OR if the message was
 ///         already received once and is currently being replayed.
 /// @param _nonce       Nonce of the message being relayed.
 /// @param _sender      Address of the user who sent the message.
 /// @param _message     Message to send to the target.
 pub fn relay_message<'info>(
-    message_account: &mut Account<'info, Message>,
-    vault: &AccountInfo<'info>,
-    account_infos: &'info [AccountInfo<'info>],
-    remote_sender: &[u8; 20],
-    msg: MessengerPayload,
+    message: &mut Account<'info, Message>,
+    authority_vault: &AccountInfo<'info>,
+    remaining_accounts: &'info [AccountInfo<'info>],
+    messenger_payload: MessengerPayload,
+    is_called_from_receiver: bool,
 ) -> Result<()> {
     // On L1 this function will check the Portal for its paused status.
     // On L2 this function should be a no-op, because paused will always return false.
-    if paused() {
-        return err!(MessengerError::BridgeIsPaused);
-    }
+    require!(!paused(), MessengerError::BridgeIsPaused);
 
     // We use the v1 message hash as the unique identifier for the message because it commits
     // to the value and minimum gas limit of the message.
-    let versioned_hash = hash_message(msg.nonce, msg.sender, &msg.message);
+    // TODO: Fix this, it should be linked with the message account.
+    let versioned_hash = hash_message(&messenger_payload);
 
-    if remote_sender == &OTHER_MESSENGER {
+    if is_called_from_receiver && message.message_passer_caller == REMOTE_MESSENGER {
         // These properties should always hold when the message is first submitted (as
         // opposed to being replayed).
-        if message_account.failed_message {
-            return err!(MessengerError::CannotBeFailedMessage);
-        }
+        require!(
+            !message.failed_message,
+            MessengerError::CannotBeFailedMessage
+        );
     } else {
-        if !message_account.failed_message {
-            return err!(MessengerError::CanOnlyRetryAFailedMessage);
-        }
+        require!(
+            message.failed_message,
+            MessengerError::CanOnlyRetryAFailedMessage
+        );
     }
 
-    if message_account.successful_message {
-        return err!(MessengerError::MessageHasAlreadyBeenRelayed);
-    }
+    require!(
+        !message.successful_message,
+        MessengerError::MessageHasAlreadyBeenRelayed
+    );
 
-    message_account.sender = msg.sender;
-    let success = handle_ixs(account_infos, message_account, vault, &msg.message);
-    message_account.sender = DEFAULT_SENDER;
+    message.messenger_caller = messenger_payload.messenger_caller;
+    let success = handle_ixs(
+        remaining_accounts,
+        message,
+        authority_vault,
+        &messenger_payload.message,
+    );
+    message.messenger_caller = DEFAULT_MESSENGER_CALLER;
 
     if success == Ok(()) {
-        message_account.successful_message = true;
+        message.successful_message = true;
         emit!(RelayedMessage {
             msg_hash: versioned_hash
         });
     } else {
-        message_account.failed_message = true;
+        message.failed_message = true;
+
         emit!(FailedRelayedMessage {
             msg_hash: versioned_hash
         })
@@ -125,66 +150,84 @@ pub fn relay_message<'info>(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn send_message_internal<'info>(
-    msg_state: &mut Account<'info, Messenger>,
+    system_program: &Program<'info, System>,
+    gas_fee_payer: &Signer<'info>,
+    gas_fee_receiver: &AccountInfo<'info>,
+    messenger: &mut Account<'info, Messenger>,
     from: Pubkey,
     target: [u8; 20],
     message: Vec<u8>,
     min_gas_limit: u32,
 ) -> Result<()> {
-    // Triggers a message to the other messenger. Note that the amount of gas provided to the
+    let message_nonce = encode_versioned_nonce(messenger.msg_nonce, MESSAGE_VERSION);
+
+    // Triggers a message to the remote messenger. Note that the amount of gas provided to the
     // message is the amount of gas requested by the user PLUS the base gas value. We want to
     // guarantee the property that the call to the target contract will always have at least
     // the minimum gas limit specified by the user.
     send_message(
-        OTHER_MESSENGER,
+        system_program,
+        gas_fee_payer,
+        gas_fee_receiver,
+        REMOTE_MESSENGER,
         base_gas(message.len() as u64, min_gas_limit),
-        encode_with_selector(
-            message_nonce(msg_state.msg_nonce),
-            from,
-            target,
-            0,
-            min_gas_limit,
-            message.clone(),
-        ),
+        &encode_relay_message_call(message_nonce, from, target, 0, min_gas_limit, &message),
     )?;
 
     emit!(SentMessage {
         target,
         sender: from,
         message,
-        message_nonce: message_nonce(msg_state.msg_nonce),
+        message_nonce,
         value: 0,
         gas_limit: min_gas_limit as u64,
     });
 
-    msg_state.msg_nonce += 1;
+    messenger.msg_nonce += 1;
 
     Ok(())
 }
 
-/// @notice Sends a low-level message to the other messenger.
+/// @notice Sends a low-level message to the remote messenger.
 ///
-/// @param _to       Recipient of the message on the other chain.
+/// @param _to       Recipient of the message on the remote chain.
 /// @param _gasLimit Minimum gas limit the message can be executed with.
 /// @param _data     Message data.
-fn send_message<'info>(to: [u8; 20], gas_limit: u64, data: Vec<u8>) -> Result<()> {
-    portal::deposit_transaction_internal(local_messenger_pubkey(), to, gas_limit, false, data)
+fn send_message<'info>(
+    system_program: &Program<'info, System>,
+    gas_fee_payer: &Signer<'info>,
+    gas_fee_receiver: &AccountInfo<'info>,
+    to: [u8; 20],
+    gas_limit: u64,
+    data: &[u8],
+) -> Result<()> {
+    portal::deposit_transaction_internal(
+        system_program,
+        gas_fee_payer,
+        gas_fee_receiver,
+        local_messenger_pubkey(),
+        to,
+        gas_limit,
+        false,
+        data,
+    )
 }
 
 pub fn local_messenger_pubkey() -> Pubkey {
     // Equivalent to keccak256(abi.encodePacked(programId, "messenger"));
     let mut data_to_hash = Vec::new();
     data_to_hash.extend_from_slice(crate::ID.as_ref());
-    data_to_hash.extend_from_slice(b"messenger");
+    data_to_hash.extend_from_slice(MESSENGER_SEED);
     let hash = keccak::hash(&data_to_hash);
-    return Pubkey::new_from_array(hash.to_bytes());
+    Pubkey::new_from_array(hash.to_bytes())
 }
 
 /// @notice Computes the amount of gas required to guarantee that a given message will be
 ///         received on Base without running out of gas. Guaranteeing that a message will
 ///         not run out of gas is important because this ensures that a message can always
-///         be replayed on the other chain if it fails to execute completely.
+///         be replayed on the remote chain if it fails to execute completely.
 /// @param message_len  Length of message to compute the amount of required gas for.
 /// @param _minGasLimit Minimum desired gas limit when message goes to target.
 /// @return Amount of gas required to guarantee message receipt.
@@ -194,7 +237,7 @@ fn base_gas(message_len: u64, min_gas_limit: u32) -> u64 {
     // of this function.
 
     // We need a minimum amount of execution gas to ensure that the message will be received on
-    // the other side without running out of gas (stored within the failedMessages mapping).
+    // the remote side without running out of gas (stored within the failedMessages mapping).
     // If we get beyond the hasMinGas check, then we *must* supply more than minGasLimit to
     // the external call.
     let execution_gas = RELAY_CONSTANT_OVERHEAD // Constant costs for relayMessage
@@ -218,27 +261,27 @@ fn base_gas(message_len: u64, min_gas_limit: u32) -> u64 {
     // cost of the message but it doesn't hurt in the Base -> SOL case. After EIP-7623, the cost
     // of a transaction is floored by its calldata size. We don't need to account for the
     // contract creation case because this is always a call to relayMessage.
-    return TX_BASE_GAS
+    TX_BASE_GAS
         + max(
             execution_gas + (total_message_size * MIN_GAS_CALLDATA_OVERHEAD),
             total_message_size * FLOOR_CALLDATA_OVERHEAD,
-        );
+        )
 }
 
-fn encode_with_selector(
+fn encode_relay_message_call(
     nonce: [u8; 32],
     sender: Pubkey,
     target: [u8; 20],
     value: u64,
     min_gas_limit: u32,
-    message: Vec<u8>,
+    message: &[u8],
 ) -> Vec<u8> {
     // Create a vector to hold the encoded data
     let mut encoded = Vec::new();
 
     // Add selector for Base.CrossChainMessenger.relayMessage(bytes32,address,address,uint256,uint256,bytes)
     // Selector: 0x54aa43a3 (first 4 bytes of keccak256 hash of the function signature)
-    encoded.extend_from_slice(&hex!("54aa43a3"));
+    encoded.extend_from_slice(&RELAY_MESSAGE_SELECTOR);
 
     // Add nonce (32 bytes) - nonce is already 32 bytes
     encoded.extend_from_slice(&nonce);
@@ -274,21 +317,13 @@ fn encode_with_selector(
     encoded.extend_from_slice(&length_bytes);
 
     // Add message data
-    encoded.extend_from_slice(&message);
+    encoded.extend_from_slice(message);
 
     // Pad message data to multiple of 32 bytes
     let padding_bytes = (32 - (message.len() % 32)) % 32;
     encoded.extend_from_slice(&vec![0u8; padding_bytes]);
 
-    return encoded;
-}
-
-/// @notice Retrieves the next message nonce. Message version will be added to the upper two
-///         bytes of the message nonce. Message version allows us to treat messages as having
-///         different structures.
-/// @return Nonce of the next message to be sent, with added message version.
-fn message_nonce(msg_nonce: u64) -> [u8; 32] {
-    return encode_versioned_nonce(msg_nonce, MESSAGE_VERSION);
+    encoded
 }
 
 /// @notice Adds a version number into the first two bytes of a message nonce.
@@ -299,37 +334,36 @@ fn encode_versioned_nonce(nonce: u64, version: u16) -> [u8; 32] {
     let mut nonce_bytes = [0u8; 32];
     nonce_bytes[0..2].copy_from_slice(&version.to_be_bytes());
     nonce_bytes[24..32].copy_from_slice(&nonce.to_be_bytes()); // Store nonce in the lower bytes for EVM compatibility
-    return nonce_bytes;
+    nonce_bytes
 }
 
-fn hash_message(nonce: [u8; 32], sender: [u8; 20], message: &Vec<u8>) -> [u8; 32] {
+fn hash_message(messenger_payload: &MessengerPayload) -> [u8; 32] {
     let mut data = Vec::new();
-
-    data.extend_from_slice(&nonce);
-    data.extend_from_slice(&sender);
-    data.extend_from_slice(message);
-
-    return keccak::hash(&data).0;
+    data.extend_from_slice(&messenger_payload.nonce);
+    data.extend_from_slice(&messenger_payload.messenger_caller);
+    data.extend_from_slice(&messenger_payload.message);
+    keccak::hash(&data).0
 }
 
 fn handle_ixs<'info>(
-    account_infos: &'info [AccountInfo<'info>],
-    message_account: &mut Account<'info, Message>,
-    vault: &AccountInfo<'info>,
-    message: &Vec<u8>,
+    remaining_accounts: &'info [AccountInfo<'info>],
+    message: &mut Account<'info, Message>,
+    authority_vault: &AccountInfo<'info>,
+    message_data: &[u8],
 ) -> Result<()> {
-    let ixs_vec = Vec::<Ix>::try_from_slice(message)?;
+    let ixs_vec = Vec::<Ix>::try_from_slice(message_data)?;
     for ix in &ixs_vec {
-        let ix_converted: Instruction = ix.into();
-        if ix_converted.program_id == standard_bridge::local_bridge_pubkey() {
+        if ix.program_id == standard_bridge::local_bridge_pubkey() {
+            msg!("Executing standard bridge ix: {:?}", ix.program_id);
             standard_bridge::finalize_bridge_tokens(
-                message_account,
-                vault,
-                account_infos,
-                BridgePayload::try_from_slice(&ix_converted.data)?,
+                message,
+                authority_vault,
+                remaining_accounts,
+                BridgePayload::try_from_slice(&ix.data)?,
             )?;
         } else {
-            solana_program::program::invoke(&ix_converted, account_infos)?;
+            msg!("Executing ix: {:?}", ix.program_id);
+            solana_program::program::invoke(&ix.into(), remaining_accounts)?;
         }
     }
 
@@ -349,5 +383,5 @@ pub enum MessengerError {
 }
 
 pub fn paused() -> bool {
-    return false;
+    false
 }

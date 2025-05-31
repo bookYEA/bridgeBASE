@@ -1,16 +1,22 @@
-import * as anchor from "@coral-xyz/anchor";
 import { PublicKey } from "@solana/web3.js";
+import * as anchor from "@coral-xyz/anchor";
 
-export function encodeMessengerData(
-  nonce: number,
-  message: Buffer,
-  sender: PublicKey,
-  toAddress: number[],
-  minGasLimit: number
-): Buffer {
+import { programConstant } from "./constants";
+
+export function encodeMessengerData(p: {
+  nonce: number;
+  message: Buffer;
+  sender: PublicKey;
+  toAddress: number[];
+  minGasLimit: number;
+}): Buffer {
+  const { nonce, message, sender, toAddress, minGasLimit } = p;
+  const RELAY_MESSAGE_SELECTOR = programConstant("relayMessageSelector");
+
   const paddingBytes = 32 - (message.length % 32);
+
   return Buffer.concat([
-    Buffer.from([84, 170, 67, 163]), // function selector
+    Buffer.from(RELAY_MESSAGE_SELECTOR), // function selector
     Buffer.from(
       Array.from({ length: 32 }, (_, i) => {
         if (i === 1) {

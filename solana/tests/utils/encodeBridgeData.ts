@@ -1,17 +1,25 @@
-import * as anchor from "@coral-xyz/anchor";
 import { PublicKey } from "@solana/web3.js";
+import * as anchor from "@coral-xyz/anchor";
 
-export function encodeBridgeData(
-  extraData: Buffer,
-  remoteToken: number[],
-  localToken: PublicKey,
-  from: PublicKey,
-  target: number[],
-  value: anchor.BN
-): Buffer {
+import { programConstant } from "./constants";
+
+export function encodeBridgeData(p: {
+  extraData: Buffer;
+  remoteToken: number[];
+  localToken: PublicKey;
+  from: PublicKey;
+  target: number[];
+  value: anchor.BN;
+}): Buffer {
+  const { extraData, remoteToken, localToken, from, target, value } = p;
   const extraDataPaddingBytes = 32 - (extraData.length % 32);
+
+  const FINALIZE_BRIDGE_TOKEN_SELECTOR = programConstant(
+    "finalizeBridgeTokenSelector"
+  );
+
   return Buffer.concat([
-    Buffer.from("2d916920", "hex"), // function selector
+    Buffer.from(FINALIZE_BRIDGE_TOKEN_SELECTOR), // function selector
     Buffer.from([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...remoteToken]), // remote token
     localToken.toBuffer(), // local token
     from.toBuffer(), // from

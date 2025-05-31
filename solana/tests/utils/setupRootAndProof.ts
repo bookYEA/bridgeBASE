@@ -1,9 +1,11 @@
-import * as anchor from "@coral-xyz/anchor";
 import { PublicKey } from "@solana/web3.js";
-import { deriveRoot } from "./deriveRoot";
+import * as anchor from "@coral-xyz/anchor";
+
 import { Bridge } from "../../target/types/bridge";
+
+import { deriveRoot } from "./deriveRoot";
 import { confirmTransaction } from "./confirmTransaction";
-import { oracleSecretKey } from "./constants";
+import { programConstant, ORACLE_SECRET_KEY } from "./constants";
 import { toNumberArray } from "./toNumberArray";
 
 const transaction2 = toNumberArray(
@@ -16,11 +18,15 @@ const transaction4 = toNumberArray(
   "0x8898b39e1f8771a1c07b2da4a191fabfc54de53b74c0fa1e82eea6de000bc424"
 );
 
-export async function setupRootAndProof(
-  program: anchor.Program<Bridge>,
-  blockNumber: anchor.BN,
-  transactionHash: number[]
-): Promise<{
+export type SetupRootAndProofResult = Awaited<
+  ReturnType<typeof setupRootAndProof>
+>;
+
+export async function setupRootAndProof(p: {
+  program: anchor.Program<Bridge>;
+  blockNumber: anchor.BN;
+  transactionHash: number[];
+}): Promise<{
   rootPda: PublicKey;
   proof: number[][];
   messagePda: PublicKey;
@@ -28,9 +34,13 @@ export async function setupRootAndProof(
   totalLeafCountBN: anchor.BN;
   transaction2: number[];
 }> {
-  const oracle = anchor.web3.Keypair.fromSecretKey(oracleSecretKey);
+  const { program, blockNumber, transactionHash } = p;
+  const oracle = anchor.web3.Keypair.fromSecretKey(ORACLE_SECRET_KEY);
+  const OUTPUT_ROOT_SEED = programConstant("outputRootSeed");
+  const MESSAGE_SEED = programConstant("messageSeed");
+
   const [rootPda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("output_root"), blockNumber.toBuffer("le", 8)],
+    [Buffer.from(OUTPUT_ROOT_SEED), blockNumber.toBuffer("le", 8)],
     program.programId
   );
 
@@ -45,7 +55,7 @@ export async function setupRootAndProof(
   const leafIndexBN = new anchor.BN(0); // transactionHash is the first leaf
   const totalLeafCountBN = new anchor.BN(transactionsBatch.length);
 
-  const { root, proof } = await deriveRoot(transactionsBatch);
+  const { root, proof } = await deriveRoot({ batch: transactionsBatch });
 
   const tx = await program.methods
     .submitRoot(root as unknown as number[], blockNumber)
@@ -53,10 +63,10 @@ export async function setupRootAndProof(
     .signers([oracle])
     .rpc();
 
-  await confirmTransaction(program.provider.connection, tx);
+  await confirmTransaction({ connection: program.provider.connection, tx });
 
   const [messagePda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("message"), Buffer.from(transactionHash)],
+    [Buffer.from(MESSAGE_SEED), Buffer.from(transactionHash)],
     program.programId
   );
 

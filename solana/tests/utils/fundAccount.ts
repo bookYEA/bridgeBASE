@@ -1,11 +1,12 @@
 import * as anchor from "@coral-xyz/anchor";
 
-export async function fundAccount(
-  provider: anchor.AnchorProvider,
-  from: anchor.web3.PublicKey,
-  to: anchor.web3.PublicKey,
-  amount?: number
-) {
+export async function fundAccount(p: {
+  provider: anchor.AnchorProvider;
+  from: anchor.web3.PublicKey;
+  to: anchor.web3.PublicKey;
+  amount?: number;
+}) {
+  const { provider, from, to, amount } = p;
   // Transfer SOL from testAdmin to wallet
   const transferTransaction = new anchor.web3.Transaction().add(
     anchor.web3.SystemProgram.transfer({

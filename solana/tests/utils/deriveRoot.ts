@@ -1,4 +1,4 @@
-import { keccak256 } from "js-sha3";
+import * as sha3 from "js-sha3";
 
 // Helper to convert a number array (bytes) to Uint8Array
 function toUint8Array(arr: number[]): Uint8Array {
@@ -52,7 +52,7 @@ function internalHash(node1: Uint8Array, node2: Uint8Array): Uint8Array {
   concatenated.set(firstNode, 0);
   concatenated.set(secondNode, firstNode.length);
 
-  const hashHex = keccak256(concatenated);
+  const hashHex = sha3.keccak256(concatenated);
   return new Uint8Array(Buffer.from(hashHex, "hex"));
 }
 
@@ -137,12 +137,13 @@ function getPeakNodePositions(
   return peakIndices.reverse(); // Go reverses, so we match (right-to-left peaks)
 }
 
-export async function deriveRoot(batch: number[][]): Promise<{
+export async function deriveRoot(p: { batch: number[][] }): Promise<{
   root: number[];
   proof: number[][];
   leafIndexForProof: number; // leaf index for which the proof is generated
   totalLeaves: number; // total leaves in this MMR
 }> {
+  const { batch } = p;
   const leafHashes = batch.map(toUint8Array);
   const totalLeaves = leafHashes.length;
 

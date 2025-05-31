@@ -4,15 +4,10 @@ use anchor_lang::{prelude::*, solana_program::instruction::Instruction};
 #[account]
 pub struct Message {
     pub is_executed: bool,
-
     pub failed_message: bool,
-
     pub successful_message: bool,
-
-    pub remote_sender: [u8; 20],
-
-    pub sender: [u8; 20],
-
+    pub message_passer_caller: [u8; 20],
+    pub messenger_caller: [u8; 20],
     #[max_len(10)]
     pub ixs: Vec<Ix>,
 }
@@ -64,14 +59,7 @@ impl From<&IxAccount> for AccountMeta {
     }
 }
 
-#[derive(AnchorDeserialize)]
-pub struct MessengerPayload {
-    pub nonce: [u8; 32],
-    pub sender: [u8; 20],
-    pub message: Vec<u8>,
-}
-
-#[derive(AnchorDeserialize)]
+#[derive(AnchorDeserialize, AnchorSerialize)]
 pub struct BridgePayload {
     pub local_token: Pubkey,
     pub remote_token: [u8; 20],

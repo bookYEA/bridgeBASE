@@ -10,14 +10,14 @@ pub const MESSAGE_VERSION: u16 = 1;
 
 #[constant]
 // L2CrossDomainMessenger at 0x2c85Bb93B4c1F07E80a242FfB3Fa9c0e8b72BB00 (baseSepolia)
-pub const OTHER_MESSENGER: [u8; 20] = hex!("2c85Bb93B4c1F07E80a242FfB3Fa9c0e8b72BB00");
+pub const REMOTE_MESSENGER: [u8; 20] = hex!("2c85Bb93B4c1F07E80a242FfB3Fa9c0e8b72BB00");
 
 #[constant]
 // L2StandardBridge at 0xC7ae1af5aFd9ED2E65495BFdF4639FbDB3a2ab57 (baseSepolia)
-pub const OTHER_BRIDGE: [u8; 20] = hex!("C7ae1af5aFd9ED2E65495BFdF4639FbDB3a2ab57");
+pub const REMOTE_BRIDGE: [u8; 20] = hex!("C7ae1af5aFd9ED2E65495BFdF4639FbDB3a2ab57");
 
 #[constant]
-pub const DEFAULT_SENDER: [u8; 20] = hex!("000000000000000000000000000000000000dEaD");
+pub const DEFAULT_MESSENGER_CALLER: [u8; 20] = hex!("000000000000000000000000000000000000dEaD");
 
 #[constant]
 /// @notice Constant overhead added to the base gas for a message.
@@ -65,13 +65,13 @@ pub const MIN_GAS_CALLDATA_OVERHEAD: u64 = 16;
 pub const FLOOR_CALLDATA_OVERHEAD: u64 = 40;
 
 #[constant]
-pub const VAULT_SEED: &[u8] = b"bridge_vault";
+pub const AUTHORITY_VAULT_SEED: &[u8] = b"authority_vault";
 
 #[constant]
-pub const MESSENGER_SEED: &[u8] = b"messenger_state";
+pub const TOKEN_VAULT_SEED: &[u8] = b"token_vault";
 
 #[constant]
-pub const NATIVE_SOL_PUBKEY: Pubkey = pubkey!("LYDZWqhCarLgXtQsmWFr4DaqRE7c21xd49fpdVUUaBr");
+pub const MESSENGER_SEED: &[u8] = b"messenger";
 
 #[constant]
 pub const OUTPUT_ROOT_SEED: &[u8] = b"output_root";
@@ -86,12 +86,14 @@ pub const DEPOSIT_SEED: &[u8] = b"deposit";
 pub const MINT_SEED: &[u8] = b"mint";
 
 #[constant]
-// pub const TRUSTED_ORACLE: Pubkey = pubkey!("eEwCrQLBdQchykrkYitkYUZskd7MPrU2YxBXcPDPnMt"); // un-comment for Devnet deployments
-pub const TRUSTED_ORACLE: Pubkey = pubkey!("H4BF4JEUcLaNTEp4ppU5YBx8buWfQKnp32UMBH25Rp2V"); // for local testing
+pub const BRIDGE_SEED: &[u8] = b"bridge";
 
 #[constant]
-pub const ASSOCIATED_TOKEN_PROGRAM_ID: Pubkey =
-    pubkey!("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
+pub const NATIVE_SOL_PUBKEY: Pubkey = pubkey!("SoL1111111111111111111111111111111111111111");
+
+#[constant]
+// pub const TRUSTED_ORACLE: Pubkey = pubkey!("eEwCrQLBdQchykrkYitkYUZskd7MPrU2YxBXcPDPnMt"); // un-comment for Devnet deployments
+pub const TRUSTED_ORACLE: Pubkey = pubkey!("H4BF4JEUcLaNTEp4ppU5YBx8buWfQKnp32UMBH25Rp2V"); // for local testing
 
 #[constant]
 pub const TOKEN_PROGRAM_ID: Pubkey = pubkey!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
@@ -100,10 +102,19 @@ pub const TOKEN_PROGRAM_ID: Pubkey = pubkey!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9S
 pub const FINALIZE_BRIDGE_TOKEN_SELECTOR: [u8; 4] = hex!("2d916920");
 
 #[constant]
+pub const RELAY_MESSAGE_SELECTOR: [u8; 4] = hex!("54aa43a3");
+
+#[constant]
 pub const GAS_PER_BYTE_COST: u64 = 40;
 
 #[constant]
 pub const BASE_TRANSACTION_COST: u64 = 21000;
+
+#[constant]
+pub const SOL_TO_ETH_FACTOR: u64 = 15;
+
+#[constant]
+pub const GAS_FEE_RECEIVER: Pubkey = pubkey!("H4BF4JEUcLaNTEp4ppU5YBx8buWfQKnp32UMBH25Rp2V");
 
 #[constant]
 pub const VERSION: u8 = 2;

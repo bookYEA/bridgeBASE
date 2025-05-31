@@ -17,7 +17,9 @@
 				"tamasfe.even-better-toml",
 				"Gruntfuggly.todo-tree",
 				"rust-lang.rust-analyzer",
-				"fill-labs.dependi"
+				"fill-labs.dependi",
+				"golang.Go",
+				"esbenp.prettier-vscode"
 			]
 		}
 	}

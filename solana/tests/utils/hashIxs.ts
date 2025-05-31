@@ -1,16 +1,18 @@
+import * as sha3 from "js-sha3";
 import { Program } from "@coral-xyz/anchor";
 import { Bridge } from "../../target/types/bridge";
-import { keccak256 } from "js-sha3";
+import { toNumberArray } from "./toNumberArray";
 
 export type IxParam = Parameters<
   Program<Bridge>["methods"]["proveTransaction"]
 >[3][number];
 
-export function hashIxs(
-  nonce: number[],
-  remoteSender: number[],
-  ixs: IxParam[]
-): string {
+export function hashIxs(p: {
+  nonce: number[];
+  remoteSender: number[];
+  ixs: IxParam[];
+}) {
+  const { nonce, remoteSender, ixs } = p;
   let data = Buffer.alloc(0);
 
   data = Buffer.concat([data, Buffer.from(nonce)]);
@@ -28,5 +30,5 @@ export function hashIxs(
   }
 
   // Return the keccak256 hash
-  return keccak256(data);
+  return toNumberArray(sha3.keccak256(data));
 }

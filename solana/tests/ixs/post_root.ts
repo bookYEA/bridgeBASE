@@ -1,30 +1,41 @@
+import { expect } from "chai";
+import { PublicKey } from "@solana/web3.js";
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
+
 import { Bridge } from "../../target/types/bridge";
-import { expect } from "chai";
+
 import { confirmTransaction } from "../utils/confirmTransaction";
-import { PublicKey } from "@solana/web3.js";
 import { fundAccount } from "../utils/fundAccount";
-import { oracleSecretKey } from "../utils/constants";
+import { programConstant, ORACLE_SECRET_KEY } from "../utils/constants";
 
 describe("post root", () => {
-  // Configure the client to use the local cluster.
+  // Common test setup
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
-
   const program = anchor.workspace.Bridge as Program<Bridge>;
-  const oracle = anchor.web3.Keypair.fromSecretKey(oracleSecretKey);
 
-  let root = new Uint8Array(new Array(32).fill(0)) as any;
-  const blockNumber = new anchor.BN(10);
+  // Test constants
+  const ORACLE = anchor.web3.Keypair.fromSecretKey(ORACLE_SECRET_KEY);
+  const BLOCK_NUMBER = new anchor.BN(10);
 
+  // Program constants
+  const OUTPUT_ROOT_SEED = programConstant("outputRootSeed");
+
+  // PDAs
   const [rootPda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("output_root"), blockNumber.toBuffer("le", 8)],
+    [Buffer.from(OUTPUT_ROOT_SEED), BLOCK_NUMBER.toBuffer("le", 8)],
     program.programId
   );
 
+  let root = new Uint8Array(new Array(32).fill(0)) as any;
+
   before(async () => {
-    await fundAccount(provider, provider.wallet.publicKey, oracle.publicKey);
+    await fundAccount({
+      provider,
+      from: provider.wallet.publicKey,
+      to: ORACLE.publicKey,
+    });
   });
 
   beforeEach(() => {
@@ -34,16 +45,16 @@ describe("post root", () => {
 
   it("Posts output root", async () => {
     const tx = await program.methods
-      .submitRoot(root as unknown as number[], blockNumber)
-      .accounts({ payer: oracle.publicKey })
-      .signers([oracle])
+      .submitRoot(root as unknown as number[], BLOCK_NUMBER)
+      .accounts({ payer: ORACLE.publicKey })
+      .signers([ORACLE])
       .rpc();
 
-    await confirmTransaction(provider.connection, tx);
+    await confirmTransaction({ connection: provider.connection, tx });
 
     const outputRoot = await program.account.outputRoot.fetch(rootPda);
 
     expect(outputRoot.root).to.deep.equal(root);
-    expect(outputRoot.blockNumber.eq(blockNumber)).to.be.true;
+    expect(outputRoot.blockNumber.eq(BLOCK_NUMBER)).to.be.true;
   });
 });
