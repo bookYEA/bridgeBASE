@@ -61,7 +61,7 @@ fn calculate_mmr_root_from_proof(
     let mut leaf_s_mountain_details: Option<(u32, u64)> = None; // (height, leaf_idx_in_mountain)
 
     let max_h = if total_leaf_count > 0 {
-        (64 - total_leaf_count.leading_zeros() - 1) as u32
+        64 - total_leaf_count.leading_zeros() - 1
     } else {
         0
     };
@@ -139,11 +139,11 @@ fn calculate_mmr_root_from_proof(
     }
 
     let mut current_root = all_peak_hashes[0]; // Start with the rightmost peak.
-    for i in 1..all_peak_hashes.len() {
+    for peak_hash in all_peak_hashes.iter().skip(1) {
         // next_peak_hash is to the left of current_root.
         // Hashing order for bagging: H(LeftPeak, H(MiddlePeak, RightPeak))
         // So, current_root is the right operand, all_peak_hashes[i] is the left.
-        current_root = commutative_keccak256(all_peak_hashes[i], current_root);
+        current_root = commutative_keccak256(*peak_hash, current_root);
     }
 
     Ok(current_root)
