@@ -6,11 +6,11 @@ import {Test} from "forge-std/Test.sol";
 import {ERC1967Factory} from "solady/utils/ERC1967Factory.sol";
 import {ERC1967FactoryConstants} from "solady/utils/ERC1967FactoryConstants.sol";
 
-import {Bridge} from "../src/Bridge.sol";
 import {CrossChainERC20} from "../src/CrossChainERC20.sol";
 import {CrossChainERC20Factory} from "../src/CrossChainERC20Factory.sol";
 import {CrossChainMessenger} from "../src/CrossChainMessenger.sol";
 import {MessagePasser} from "../src/MessagePasser.sol";
+import {TokenBridge} from "../src/TokenBridge.sol";
 import {Encoder} from "../src/libraries/Encoder.sol";
 
 contract Poc is Test {
@@ -21,7 +21,7 @@ contract Poc is Test {
     bytes32 remoteToken;
 
     CrossChainMessenger messengerProxy;
-    Bridge bridgeProxy;
+    TokenBridge bridgeProxy;
 
     CrossChainERC20 cbSOL;
 
@@ -48,13 +48,13 @@ contract Poc is Test {
             })
         );
 
-        // Deploy the Bridge
-        Bridge bridgeImpl = new Bridge();
-        bridgeProxy = Bridge(
+        // Deploy the TokenBridge
+        TokenBridge bridgeImpl = new TokenBridge();
+        bridgeProxy = TokenBridge(
             ERC1967Factory(ERC1967FactoryConstants.ADDRESS).deployAndCall({
                 implementation: address(bridgeImpl),
                 admin: proxyAdmin,
-                data: abi.encodeCall(Bridge.initialize, (address(messengerProxy), remoteBridge))
+                data: abi.encodeCall(TokenBridge.initialize, (address(messengerProxy), remoteBridge))
             })
         );
 
@@ -87,7 +87,9 @@ contract Poc is Test {
             target: address(bridgeProxy),
             value: 0,
             minGasLimit: 0,
-            message: abi.encodeCall(Bridge.finalizeBridgeToken, (address(cbSOL), remoteToken, from, to, amount, extraData))
+            message: abi.encodeCall(
+                TokenBridge.finalizeBridgeToken, (address(cbSOL), remoteToken, from, to, amount, extraData)
+            )
         });
 
         vm.assertEq(cbSOL.balanceOf(to), amount);
@@ -121,7 +123,7 @@ contract Poc is Test {
         bytes32 to = 0xacd56258cfa53dc77d9290116210958c82bf2fc115f1f7f392e530aba3a03fb3;
         uint64 amount = 0x00ca9a3b00000000;
         bytes memory extraData = hex"72616e646f6d2064617461";
-        Bridge.BridgePayload memory payload = Bridge.BridgePayload({
+        TokenBridge.BridgePayload memory payload = TokenBridge.BridgePayload({
             localToken: localToken,
             remoteToken: remoteToken_,
             from: from,

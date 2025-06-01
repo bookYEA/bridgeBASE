@@ -6,7 +6,7 @@ import {stdJson} from "forge-std/StdJson.sol";
 import {console} from "forge-std/console.sol";
 import {ERC20} from "solady/tokens/ERC20.sol";
 
-import {Bridge} from "../../src/Bridge.sol";
+import {TokenBridge} from "../../src/TokenBridge.sol";
 
 contract BridgeTokensToSolanaScript is Script {
     using stdJson for string;
@@ -19,7 +19,7 @@ contract BridgeTokensToSolanaScript is Script {
     uint64 public immutable AMOUNT = uint64(vm.envUint("AMOUNT"));
     bytes public extraData = bytes("Dummy extra data");
 
-    Bridge public bridge;
+    TokenBridge public bridge;
 
     function setUp() public {
         Chain memory chain = getChain(block.chainid);
@@ -27,8 +27,8 @@ contract BridgeTokensToSolanaScript is Script {
 
         string memory rootPath = vm.projectRoot();
         string memory path = string.concat(rootPath, "/deployments/", chain.chainAlias, ".json");
-        address bridgeAddress = vm.readFile(path).readAddress(".Bridge");
-        bridge = Bridge(bridgeAddress);
+        address bridgeAddress = vm.readFile(path).readAddress(".TokenBridge");
+        bridge = TokenBridge(bridgeAddress);
     }
 
     function run() public payable {
