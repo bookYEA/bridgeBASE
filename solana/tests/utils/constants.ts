@@ -58,7 +58,6 @@ export const programConstant = <T extends BridgeConstantNames>(
 
     case "u64":
     case "u16":
-    case "u8":
       return parseInt(value, 10) as unknown as ParsedConstantValue<T>;
 
     case "bytes":

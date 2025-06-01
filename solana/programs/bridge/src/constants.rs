@@ -65,7 +65,7 @@ pub const MIN_GAS_CALLDATA_OVERHEAD: u64 = 16;
 pub const FLOOR_CALLDATA_OVERHEAD: u64 = 40;
 
 #[constant]
-pub const AUTHORITY_VAULT_SEED: &[u8] = b"authority_vault";
+pub const SOL_VAULT_SEED: &[u8] = b"sol_vault";
 
 #[constant]
 pub const TOKEN_VAULT_SEED: &[u8] = b"token_vault";
@@ -78,9 +78,6 @@ pub const OUTPUT_ROOT_SEED: &[u8] = b"output_root";
 
 #[constant]
 pub const MESSAGE_SEED: &[u8] = b"message";
-
-#[constant]
-pub const DEPOSIT_SEED: &[u8] = b"deposit";
 
 #[constant]
 pub const MINT_SEED: &[u8] = b"mint";
@@ -115,6 +112,3 @@ pub const SOL_TO_ETH_FACTOR: u64 = 15;
 
 #[constant]
 pub const GAS_FEE_RECEIVER: Pubkey = pubkey!("H4BF4JEUcLaNTEp4ppU5YBx8buWfQKnp32UMBH25Rp2V");
-
-#[constant]
-pub const VERSION: u8 = 2;

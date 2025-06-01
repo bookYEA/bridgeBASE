@@ -4,8 +4,8 @@ use anchor_lang::{
 };
 
 use crate::{
-    ix_utils, merkle_utils, Ix, Message, MessengerPayload, OutputRoot, AUTHORITY_VAULT_SEED,
-    DEFAULT_MESSENGER_CALLER, MESSAGE_SEED, VERSION,
+    ix_utils, merkle_utils, Ix, Message, MessengerPayload, OutputRoot, DEFAULT_MESSENGER_CALLER,
+    MESSAGE_SEED,
 };
 
 use super::messenger;
@@ -34,16 +34,6 @@ pub struct ProveTransaction<'info> {
 pub struct FinalizeTransaction<'info> {
     #[account(mut)]
     pub message: Account<'info, Message>,
-
-    /// CHECK: This is the vault authority PDA.
-    ///        - For SOL, it receives SOL.
-    ///        - For SPL, it's the authority of the vault token account.
-    #[account(
-        mut,
-        seeds = [AUTHORITY_VAULT_SEED, VERSION.to_le_bytes().as_ref()],
-        bump
-    )]
-    pub authority_vault: AccountInfo<'info>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -91,32 +81,24 @@ pub fn finalize_transaction_handler<'a, 'info>(
     );
 
     ctx.accounts.message.is_executed = true;
-    handle_ixs(
-        ctx.remaining_accounts,
-        &mut ctx.accounts.message,
-        &ctx.accounts.authority_vault,
-    )
+    handle_ixs(ctx.remaining_accounts, &mut ctx.accounts.message)
 }
 
 fn handle_ixs<'info>(
     remaining_accounts: &'info [AccountInfo<'info>],
     message: &mut Account<'info, Message>,
-    authority_vault: &AccountInfo<'info>,
 ) -> Result<()> {
     // Clone `ixs` because `messenger::relay_message` requires a mutable borrow of `message`,
     // which would conflict with an immutable borrow for iterating `message.ixs` directly.
     for ix in &message.ixs.clone() {
         if ix.program_id == messenger::local_messenger_pubkey() {
-            msg!("Executing messenger ix: {:?}", ix.program_id);
             messenger::relay_message(
                 message,
-                authority_vault,
                 remaining_accounts,
                 MessengerPayload::try_from_slice(&ix.data)?,
                 true,
             )?;
         } else {
-            msg!("Executing ix: {:?}", ix.program_id);
             solana_program::program::invoke(&ix.into(), remaining_accounts)?;
         }
     }

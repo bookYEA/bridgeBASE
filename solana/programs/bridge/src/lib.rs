@@ -17,8 +17,7 @@ pub mod bridge {
     use super::*;
 
     pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
-        msg!("Initializing: {:?}", ctx.program_id);
-        Ok(())
+        initializer::initialize_handler(ctx)
     }
 
     pub fn bridge_sol_to(
