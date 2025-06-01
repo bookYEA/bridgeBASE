@@ -29,7 +29,6 @@ import {
   mintTo,
   TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
-import { printLogs } from "../utils/printLogs";
 
 describe("receiver", () => {
   // Common test setup
@@ -48,10 +47,9 @@ describe("receiver", () => {
   const DEFAULT_MESSENGER_CALLER = programConstant("defaultMessengerCaller");
   const REMOTE_BRIDGE = programConstant("remoteBridge");
   const REMOTE_MESSENGER = programConstant("remoteMessenger");
-  const DEPOSIT_SEED = programConstant("depositSeed");
   const NATIVE_SOL_PUBKEY = programConstant("nativeSolPubkey");
+  const SOL_VAULT_SEED = programConstant("solVaultSeed");
   const TOKEN_VAULT_SEED = programConstant("tokenVaultSeed");
-  const VERSION = programConstant("version");
   const MINT_SEED = programConstant("mintSeed");
 
   before(async () => {
@@ -435,18 +433,19 @@ describe("receiver", () => {
   describe("Relayed SOL bridge transaction", () => {
     const FROM = Array.from({ length: 20 }, (_, i) => i);
 
-    const [depositPda] = PublicKey.findProgramAddressSync(
-      [
-        Buffer.from(DEPOSIT_SEED),
-        NATIVE_SOL_PUBKEY.toBuffer(),
-        Buffer.from(REMOTE_TOKEN_ADDRESS),
-      ],
+    const [solVault] = PublicKey.findProgramAddressSync(
+      [Buffer.from(SOL_VAULT_SEED), Buffer.from(REMOTE_TOKEN_ADDRESS)],
       program.programId
     );
 
     const finalizeSolBridgeAccounts = [
       { pubkey: user.publicKey, isWritable: true, isSigner: false },
-      { pubkey: depositPda, isWritable: true, isSigner: false },
+      { pubkey: solVault, isWritable: true, isSigner: false },
+      {
+        pubkey: anchor.web3.SystemProgram.programId,
+        isWritable: false,
+        isSigner: false,
+      },
     ];
 
     const bridgeIxParam = createBridgeIxParam({
@@ -623,15 +622,6 @@ describe("receiver", () => {
     const MINT = MINT_KEYPAIR.publicKey;
     const FROM = Array.from({ length: 20 }, (_, i) => i);
 
-    const [depositPda] = PublicKey.findProgramAddressSync(
-      [
-        Buffer.from(DEPOSIT_SEED),
-        MINT.toBuffer(),
-        Buffer.from(REMOTE_TOKEN_ADDRESS),
-      ],
-      program.programId
-    );
-
     const userTokenAccount = getAssociatedTokenAddressSync(
       MINT,
       user.publicKey,
@@ -642,7 +632,7 @@ describe("receiver", () => {
       [
         Buffer.from(TOKEN_VAULT_SEED),
         MINT.toBuffer(),
-        new anchor.BN(VERSION).toBuffer("le", 1),
+        Buffer.from(REMOTE_TOKEN_ADDRESS),
       ],
       program.programId
     );
@@ -650,7 +640,6 @@ describe("receiver", () => {
     const finalizeSplBridgeAccounts = [
       { pubkey: userTokenAccount, isWritable: true, isSigner: false },
       { pubkey: MINT, isWritable: false, isSigner: false },
-      { pubkey: depositPda, isWritable: true, isSigner: false },
       { pubkey: tokenVault, isWritable: true, isSigner: false },
       { pubkey: TOKEN_PROGRAM_ID, isWritable: false, isSigner: false },
     ];
@@ -1002,8 +991,6 @@ describe("receiver", () => {
           .rpc();
 
         await confirmTransaction({ connection: provider.connection, tx });
-
-        await printLogs({ connection: provider.connection, tx });
       });
 
       it("Should execute transaction", async () => {

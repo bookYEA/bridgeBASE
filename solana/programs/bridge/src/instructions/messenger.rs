@@ -4,7 +4,7 @@ use crate::{
     MIN_GAS_CALLDATA_OVERHEAD, MIN_GAS_DYNAMIC_OVERHEAD_DENOMINATOR,
     MIN_GAS_DYNAMIC_OVERHEAD_NUMERATOR, RELAY_CALL_OVERHEAD, RELAY_CONSTANT_OVERHEAD,
     RELAY_GAS_CHECK_BUFFER, RELAY_MESSAGE_SELECTOR, RELAY_RESERVED_GAS, REMOTE_MESSENGER,
-    TX_BASE_GAS, VERSION,
+    TX_BASE_GAS,
 };
 use anchor_lang::solana_program::keccak;
 use anchor_lang::{prelude::*, solana_program};
@@ -25,7 +25,7 @@ pub struct SendMessage<'info> {
     pub system_program: Program<'info, System>,
 
     // Messenger accounts
-    #[account(mut, seeds = [MESSENGER_SEED, VERSION.to_le_bytes().as_ref()], bump)]
+    #[account(mut, seeds = [MESSENGER_SEED], bump = messenger.bump)]
     pub messenger: Account<'info, Messenger>,
 }
 
@@ -92,7 +92,6 @@ pub struct MessengerPayload {
 /// @param _message     Message to send to the target.
 pub fn relay_message<'info>(
     message: &mut Account<'info, Message>,
-    authority_vault: &AccountInfo<'info>,
     remaining_accounts: &'info [AccountInfo<'info>],
     messenger_payload: MessengerPayload,
     is_called_from_receiver: bool,
@@ -126,12 +125,7 @@ pub fn relay_message<'info>(
     );
 
     message.messenger_caller = messenger_payload.messenger_caller;
-    let success = handle_ixs(
-        remaining_accounts,
-        message,
-        authority_vault,
-        &messenger_payload.message,
-    );
+    let success = handle_ixs(remaining_accounts, message, &messenger_payload.message);
     message.messenger_caller = DEFAULT_MESSENGER_CALLER;
 
     if success == Ok(()) {
@@ -348,21 +342,17 @@ fn hash_message(messenger_payload: &MessengerPayload) -> [u8; 32] {
 fn handle_ixs<'info>(
     remaining_accounts: &'info [AccountInfo<'info>],
     message: &mut Account<'info, Message>,
-    authority_vault: &AccountInfo<'info>,
     message_data: &[u8],
 ) -> Result<()> {
     let ixs_vec = Vec::<Ix>::try_from_slice(message_data)?;
     for ix in &ixs_vec {
         if ix.program_id == standard_bridge::local_bridge_pubkey() {
-            msg!("Executing standard bridge ix: {:?}", ix.program_id);
             standard_bridge::finalize_bridge_tokens(
                 message,
-                authority_vault,
                 remaining_accounts,
                 BridgePayload::try_from_slice(&ix.data)?,
             )?;
         } else {
-            msg!("Executing ix: {:?}", ix.program_id);
             solana_program::program::invoke(&ix.into(), remaining_accounts)?;
         }
     }

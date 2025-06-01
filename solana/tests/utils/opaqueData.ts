@@ -34,10 +34,9 @@ export async function getOpaqueDataFromMessenger(p: {
   const { program, extraData, sender, toAddress, minGasLimit } = p;
 
   const MESSENGER_SEED = programConstant("messengerSeed");
-  const VERSION = new anchor.BN(programConstant("version"));
 
   const [messengerPda] = PublicKey.findProgramAddressSync(
-    [Buffer.from(MESSENGER_SEED), VERSION.toBuffer("le", 1)],
+    [Buffer.from(MESSENGER_SEED)],
     program.programId
   );
 

@@ -28,6 +28,8 @@ describe("post root", () => {
     program.programId
   );
 
+  console.log("rootPda", rootPda.toBase58());
+
   let root = new Uint8Array(new Array(32).fill(0)) as any;
 
   before(async () => {
@@ -46,7 +48,10 @@ describe("post root", () => {
   it("Posts output root", async () => {
     const tx = await program.methods
       .submitRoot(root as unknown as number[], BLOCK_NUMBER)
-      .accounts({ payer: ORACLE.publicKey })
+      .accounts({
+        payer: ORACLE.publicKey,
+        root: rootPda,
+      })
       .signers([ORACLE])
       .rpc();
 

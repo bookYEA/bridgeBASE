@@ -31,14 +31,14 @@ describe("standard bridge", () => {
   const TO = Array.from({ length: 20 }, (_, i) => i);
 
   // Program constants
-  const AUTHORITY_VAULT_SEED = programConstant("authorityVaultSeed");
+  const SOL_VAULT_SEED = programConstant("solVaultSeed");
   const REMOTE_MESSENGER_SEED = programConstant("remoteMessenger");
-  const VERSION = new anchor.BN(programConstant("version"));
   const NATIVE_SOL_PUBKEY = programConstant("nativeSolPubkey");
+  const TOKEN_VAULT_SEED = programConstant("tokenVaultSeed");
 
   // PDAs
-  const [authorityVault] = PublicKey.findProgramAddressSync(
-    [Buffer.from(AUTHORITY_VAULT_SEED), VERSION.toBuffer("le", 1)],
+  const [solVault] = PublicKey.findProgramAddressSync(
+    [Buffer.from(SOL_VAULT_SEED), Buffer.from(REMOTE_TOKEN_ADDRESS)],
     program.programId
   );
 
@@ -92,11 +92,11 @@ describe("standard bridge", () => {
         user.publicKey
       );
 
-      const vaultAccountInfo =
-        await provider.connection.getAccountInfo(authorityVault);
+      const solVaultAccountInfo =
+        await provider.connection.getAccountInfo(solVault);
 
       const userBalanceBefore = userAccountInfo?.lamports ?? 0;
-      const vaultBalanceBefore = vaultAccountInfo?.lamports ?? 0;
+      const vaultBalanceBefore = solVaultAccountInfo?.lamports ?? 0;
 
       await program.methods
         .bridgeSolTo(
@@ -114,7 +114,7 @@ describe("standard bridge", () => {
       );
 
       const vaultAccountInfoAfter =
-        await provider.connection.getAccountInfo(authorityVault);
+        await provider.connection.getAccountInfo(solVault);
 
       const userBalanceAfter = userAccountInfoAfter?.lamports ?? 0;
       const vaultBalanceAfter = vaultAccountInfoAfter?.lamports ?? 0;
@@ -147,12 +147,11 @@ describe("standard bridge", () => {
         mintKeypair
       );
 
-      const TOKEN_VAULT_SEED = programConstant("tokenVaultSeed");
       [vaultTokenAccount] = PublicKey.findProgramAddressSync(
         [
           Buffer.from(TOKEN_VAULT_SEED),
           mint.toBuffer(),
-          VERSION.toBuffer("le", 1),
+          Buffer.from(REMOTE_TOKEN_ADDRESS),
         ],
         program.programId
       );

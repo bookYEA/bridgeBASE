@@ -1,9 +1,9 @@
 use anchor_lang::prelude::*;
 
-use crate::{Messenger, OutputRoot, MESSENGER_SEED, OUTPUT_ROOT_SEED, TRUSTED_ORACLE, VERSION};
+use crate::{Messenger, OutputRoot, MESSENGER_SEED, OUTPUT_ROOT_SEED, TRUSTED_ORACLE};
 
 #[derive(Accounts)]
-#[instruction(root: [u8; 32], block_number: u64)]
+#[instruction(_output_root: [u8; 32], block_number: u64)]
 pub struct PostRoot<'info> {
     #[account(
         init, 
@@ -14,7 +14,7 @@ pub struct PostRoot<'info> {
     )]
     pub root: Account<'info, OutputRoot>,
 
-    #[account(mut, seeds = [MESSENGER_SEED, VERSION.to_le_bytes().as_ref()], bump)]
+    #[account(mut, seeds = [MESSENGER_SEED], bump = messenger.bump)]
     pub messenger: Account<'info, Messenger>,
 
     #[account(mut, address = TRUSTED_ORACLE)]
@@ -23,8 +23,12 @@ pub struct PostRoot<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn submit_root_handler(ctx: Context<PostRoot>, root: [u8; 32], block_number: u64) -> Result<()> {
-    ctx.accounts.root.root = root;
+pub fn submit_root_handler(
+    ctx: Context<PostRoot>,
+    output_root: [u8; 32],
+    block_number: u64,
+) -> Result<()> {
+    ctx.accounts.root.root = output_root;
     ctx.accounts.root.block_number = block_number;
     ctx.accounts.messenger.latest_block_number = block_number;
     Ok(())
