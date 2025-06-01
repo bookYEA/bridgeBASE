@@ -28,8 +28,6 @@ describe("post root", () => {
     program.programId
   );
 
-  console.log("rootPda", rootPda.toBase58());
-
   let root = new Uint8Array(new Array(32).fill(0)) as any;
 
   before(async () => {
