@@ -7,10 +7,10 @@ import {console} from "forge-std/console.sol";
 import {ERC1967Factory} from "solady/utils/ERC1967Factory.sol";
 import {ERC1967FactoryConstants} from "solady/utils/ERC1967FactoryConstants.sol";
 
-import {Bridge} from "../src/Bridge.sol";
 import {CrossChainERC20Factory} from "../src/CrossChainERC20Factory.sol";
 import {CrossChainMessenger} from "../src/CrossChainMessenger.sol";
 import {MessagePasser} from "../src/MessagePasser.sol";
+import {TokenBridge} from "../src/TokenBridge.sol";
 
 contract DeployScript is Script {
     address public constant PROXY_ADMIN = 0x0fe884546476dDd290eC46318785046ef68a0BA9;
@@ -37,13 +37,13 @@ contract DeployScript is Script {
 
         console.log("Deployed MessagePasser at: %s", messagePasser);
         console.log("Deployed CrossChainMessenger at: %s", messenger);
-        console.log("Deployed Bridge at: %s", bridge);
+        console.log("Deployed TokenBridge at: %s", bridge);
         console.log("Deployed CrossChainERC20Factory at: %s", factory);
 
         string memory out = "{";
         out = _record(out, "MessagePasser", messagePasser, false);
         out = _record(out, "CrossChainMessenger", messenger, false);
-        out = _record(out, "Bridge", bridge, false);
+        out = _record(out, "TokenBridge", bridge, false);
         out = _record(out, "CrossChainERC20Factory", factory, true);
         out = string.concat(out, "}");
 
@@ -70,12 +70,12 @@ contract DeployScript is Script {
     }
 
     function _deployBridge(address messenger) private returns (address) {
-        Bridge bridgeImpl = new Bridge();
-        Bridge bridgeProxy = Bridge(
+        TokenBridge bridgeImpl = new TokenBridge();
+        TokenBridge bridgeProxy = TokenBridge(
             ERC1967Factory(ERC1967FactoryConstants.ADDRESS).deployAndCall({
                 implementation: address(bridgeImpl),
                 admin: PROXY_ADMIN,
-                data: abi.encodeCall(Bridge.initialize, (messenger, OTHER_BRIDGE))
+                data: abi.encodeCall(TokenBridge.initialize, (messenger, OTHER_BRIDGE))
             })
         );
 

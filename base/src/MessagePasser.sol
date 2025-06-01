@@ -5,43 +5,43 @@ import {Encoding} from "optimism/packages/contracts-bedrock/src/libraries/Encodi
 
 import {Encoder} from "./libraries/Encoder.sol";
 
-/// @custom:proxied true
-/// @title L2ToL1MessagePasser
-/// @notice The L2ToL1MessagePasser is a dedicated contract where messages that are being sent from
-///         L2 to L1 can be stored. The storage root of this contract is pulled up to the top level
-///         of the L2 output to reduce the cost of proving the existence of sent messages.
+/// @title MessagePasser
+///
+/// @notice The MessagePasser is a dedicated contract for initiating withdrawals to Solana. Messages sent through this
+///         contract contain Solana instructions that will be executed on the Solana network.
 contract MessagePasser {
     //////////////////////////////////////////////////////////////
     ///                       Structs                          ///
     //////////////////////////////////////////////////////////////
 
-    /// @notice Struct representing a Solana account meta.
+    /// @notice Struct representing a Solana account meta, which defines the permissions and role of an account in a
+    ///         Solana transaction.
     ///
-    /// @custom:field pubKey Public key of the account.
-    /// @custom:field isSigner Whether the account is a signer.
-    /// @custom:field isWritable Whether the account is writable.
+    /// @custom:field pubKey     Public key of the Solana account.
+    /// @custom:field isSigner   Whether the account must sign the transaction.
+    /// @custom:field isWritable Whether the account data can be modified during execution.
     struct AccountMeta {
         bytes32 pubKey;
         bool isSigner;
         bool isWritable;
     }
 
-    /// @notice Struct representing a Solana instruction.
+    /// @notice Struct representing a Solana instruction to be executed.
     ///
-    /// @custom:field programId Program ID of the instruction.
-    /// @custom:field accounts Accounts used by the instruction.
-    /// @custom:field data Data of the instruction.
+    /// @custom:field programId The Solana program ID that will process this instruction.
+    /// @custom:field accounts  Array of account metas that define which accounts the instruction will use.
+    /// @custom:field data      The instruction data that will be passed to the Solana program.
     struct Instruction {
         bytes32 programId;
         AccountMeta[] accounts;
         bytes data;
     }
 
-    /// @notice Struct representing a withdrawal transaction.
+    /// @notice Struct representing a complete withdrawal transaction containing Solana instructions.
     ///
-    /// @custom:field nonce Nonce of the withdrawal transaction.
-    /// @custom:field sender Address of the sender of the transaction.
-    /// @custom:field ixs Instructions to execute.
+    /// @custom:field nonce  Unique identifier for this withdrawal transaction.
+    /// @custom:field sender Ethereum address that initiated the withdrawal.
+    /// @custom:field ixs    Array of Solana instructions to be executed as part of this withdrawal.
     struct WithdrawalTransaction {
         uint256 nonce;
         address sender;
@@ -52,54 +52,54 @@ contract MessagePasser {
     ///                       Events                           ///
     //////////////////////////////////////////////////////////////
 
-    /// @notice Emitted any time a withdrawal is initiated.
+    /// @notice Emitted when a withdrawal to Solana is initiated.
     ///
-    /// @param nonce Unique value corresponding to each withdrawal.
-    /// @param sender The L2 account address which initiated the withdrawal.
-    /// @param ixs Instructions to execute.
-    /// @param withdrawalHash The hash of the withdrawal.
+    /// @param nonce          Unique nonce for this withdrawal transaction.
+    /// @param sender         The Ethereum address that initiated the withdrawal.
+    /// @param ixs            Array of Solana instructions to be executed.
+    /// @param withdrawalHash The hash of the complete withdrawal transaction.
     event MessagePassed(uint256 indexed nonce, address indexed sender, Instruction[] ixs, bytes32 withdrawalHash);
 
     //////////////////////////////////////////////////////////////
     ///                       Constants                        ///
     //////////////////////////////////////////////////////////////
 
-    /// @notice The current message version identifier.
+    /// @notice The current message version identifier used for encoding versioned nonces.
     uint16 public constant MESSAGE_VERSION = 1;
 
     //////////////////////////////////////////////////////////////
     ///                       Storage                          ///
     //////////////////////////////////////////////////////////////
 
-    /// @notice Includes the message hashes for all withdrawals
+    /// @notice Tracks whether a withdrawal hash has been processed to prevent replay attacks.
     mapping(bytes32 withdrawalHash => bool sent) public sentMessages;
 
-    /// @notice A unique value hashed with each withdrawal.
+    /// @notice Internal counter for generating unique nonces for each withdrawal. Uses uint240 to leave space for
+    ///         version encoding in the upper bits.
     uint240 internal _msgNonce;
 
     //////////////////////////////////////////////////////////////
     ///                       Public Functions                 ///
     //////////////////////////////////////////////////////////////
 
-    /// @notice Semantic version.
-    ///
-    /// @custom:semver 1.1.2
+    /// @notice Returns the semantic version of this contract.
     function version() external pure returns (string memory) {
         return "1.1.2";
     }
 
-    /// @notice Retrieves the next message nonce. Message version will be added to the upper two
-    ///         bytes of the message nonce. Message version allows us to treat messages as having
-    ///         different structures.
+    /// @notice Retrieves the next message nonce with version encoding. The message version is encoded in the upper two
+    ///         bytes of the nonce, allowing for different message structures in future versions.
     ///
-    /// @return Nonce of the next message to be sent, with added message version.
+    /// @return The next nonce to be used, with the message version encoded in the upper bits.
     function messageNonce() public view returns (uint256) {
         return Encoding.encodeVersionedNonce(_msgNonce, MESSAGE_VERSION);
     }
 
-    /// @notice Sends a message from L2 to L1.
+    /// @notice Initiates a withdrawal to Solana by recording Solana instructions to be executed. This function creates
+    ///         a withdrawal transaction, hashes it for verification, and emits an event that can be monitored by
+    ///         offchain relayers.
     ///
-    /// @param ixs Instructions to execute.
+    /// @param ixs Array of Solana instructions to be executed as part of the withdrawal.
     function initiateWithdrawal(Instruction[] calldata ixs) public payable {
         uint256 nonce = messageNonce();
 
@@ -117,11 +117,12 @@ contract MessagePasser {
     ///                       Internal Functions               ///
     //////////////////////////////////////////////////////////////
 
-    /// @notice Derives the withdrawal hash according to the encoding in the L2 Withdrawer contract
+    /// @notice Computes the hash of a withdrawal transaction for verification and storage. Uses the same encoding
+    ///         format as expected by relayer and verification systems.
     ///
-    /// @param withdrawal Withdrawal transaction to hash.
+    /// @param withdrawal The withdrawal transaction to hash.
     ///
-    /// @return Hashed withdrawal transaction.
+    /// @return The keccak256 hash of the encoded withdrawal transaction.
     function _hashWithdrawal(WithdrawalTransaction memory withdrawal) internal pure returns (bytes32) {
         return keccak256(Encoder.encodeMessage(withdrawal.nonce, withdrawal.sender, withdrawal.ixs));
     }

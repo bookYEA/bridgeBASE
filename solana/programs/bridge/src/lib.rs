@@ -30,7 +30,7 @@ pub mod bridge {
         min_gas_limit: u32,
         extra_data: Vec<u8>,
     ) -> Result<()> {
-        standard_bridge::bridge_sol_to_handler(
+        token_bridge::bridge_sol_to_handler(
             ctx,
             remote_token,
             to,
@@ -48,7 +48,7 @@ pub mod bridge {
         min_gas_limit: u32,
         extra_data: Vec<u8>,
     ) -> Result<()> {
-        standard_bridge::bridge_tokens_to_handler(
+        token_bridge::bridge_tokens_to_handler(
             ctx,
             remote_token,
             to,

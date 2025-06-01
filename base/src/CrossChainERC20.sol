@@ -5,6 +5,8 @@ import {ERC20} from "solady/tokens/ERC20.sol";
 import {Initializable} from "solady/utils/Initializable.sol";
 
 /// @title CrossChainERC20
+///
+/// @notice A cross-chain ERC20 token implementation that can be minted and burned by an authorized bridge contract.
 contract CrossChainERC20 is ERC20 {
     //////////////////////////////////////////////////////////////
     ///                       Events                           ///
@@ -12,29 +14,37 @@ contract CrossChainERC20 is ERC20 {
 
     /// @notice Emitted whenever tokens are minted for an account.
     ///
-    /// @param to Address of the account tokens are being minted for.
-    /// @param amount  Amount of tokens minted.
+    /// @param to     Address of the account tokens are being minted for.
+    /// @param amount Amount of tokens minted.
     event Mint(address indexed to, uint256 amount);
 
     /// @notice Emitted whenever tokens are burned from an account.
     ///
-    /// @param from Address of the account tokens are being burned from.
-    /// @param amount  Amount of tokens burned.
+    /// @param from   Address of the account tokens are being burned from.
+    /// @param amount Amount of tokens burned.
     event Burn(address indexed from, uint256 amount);
 
     //////////////////////////////////////////////////////////////
     ///                       Constants                        ///
     //////////////////////////////////////////////////////////////
 
-    address private immutable _bridge;
-    bytes32 private immutable _remoteToken;
-    uint8 private immutable _decimals;
+    /// @notice The bridge contract address that has minting and burning privileges.
+    address private immutable _BRIDGE;
+
+    /// @notice The address of the corresponding token on the remote chain.
+    bytes32 private immutable _REMOTE_TOKEN;
+
+    /// @notice The number of decimal places for this token.
+    uint8 private immutable _DECIMALS;
 
     //////////////////////////////////////////////////////////////
     ///                       Storage                          ///
     //////////////////////////////////////////////////////////////
 
+    /// @notice The name of the token.
     string private _name;
+
+    /// @notice The symbol of the token.
     string private _symbol;
 
     //////////////////////////////////////////////////////////////
@@ -43,7 +53,7 @@ contract CrossChainERC20 is ERC20 {
 
     /// @notice A modifier that only allows the Bridge to call.
     modifier onlyBridge() {
-        require(msg.sender == _bridge, "CrossChainERC20: onlyBridge");
+        require(msg.sender == _BRIDGE, "CrossChainERC20: onlyBridge");
         _;
     }
 
@@ -51,56 +61,70 @@ contract CrossChainERC20 is ERC20 {
     ///                       Public Functions                 ///
     //////////////////////////////////////////////////////////////
 
-    /// @notice Constructs the OptimismSuperchainERC20 contract.
+    /// @notice Constructs the CrossChainERC20 contract.
     ///
-    /// @param bridge_ Address of the bridge contract.
-    /// @param remoteToken_ Address of the corresponding remote token.
-    /// @param name_ ERC20 name.
-    /// @param symbol_ ERC20 symbol.
-    /// @param decimals_ ERC20 decimals.
+    /// @dev Sets the bridge address, remote token address, and token metadata as immutable values.
+    ///
+    /// @param bridge_      Address of the bridge contract that will have minting and burning privileges.
+    /// @param remoteToken_ Address of the corresponding token on the remote chain.
+    /// @param name_        ERC20 name of the token.
+    /// @param symbol_      ERC20 symbol of the token.
+    /// @param decimals_    ERC20 decimals for the token.
     constructor(address bridge_, bytes32 remoteToken_, string memory name_, string memory symbol_, uint8 decimals_) {
-        _bridge = bridge_;
-        _remoteToken = remoteToken_;
+        _BRIDGE = bridge_;
+        _REMOTE_TOKEN = remoteToken_;
         _name = name_;
         _symbol = symbol_;
-        _decimals = decimals_;
+        _DECIMALS = decimals_;
     }
 
-    /// @notice Semantic version.
+    /// @notice Returns the semantic version of this contract.
     ///
-    /// @custom:semver 1.0.1
+    /// @return The version string.
     function version() external pure returns (string memory) {
         return "1.0.1";
     }
 
-    /// @notice Returns the bridge address.
+    /// @notice Returns the bridge contract address.
+    ///
+    /// @dev This is the only address authorized to mint and burn tokens.
     function bridge() public view returns (address) {
-        return _bridge;
+        return _BRIDGE;
     }
 
     /// @notice Returns the remote token address.
+    ///
+    /// @dev This represents the corresponding token on the remote chain.
     function remoteToken() public view returns (bytes32) {
-        return _remoteToken;
+        return _REMOTE_TOKEN;
     }
 
     /// @notice Returns the name of the token.
+    ///
+    /// @dev Overrides the ERC20 name function.
     function name() public view override returns (string memory) {
         return _name;
     }
 
     /// @notice Returns the symbol of the token.
+    ///
+    /// @dev Overrides the ERC20 symbol function.
     function symbol() public view override returns (string memory) {
         return _symbol;
     }
 
     /// @notice Returns the decimals places of the token.
+    ///
+    /// @dev Overrides the ERC20 decimals function.
     function decimals() public view override returns (uint8) {
-        return _decimals;
+        return _DECIMALS;
     }
 
     /// @notice Allows the Bridge to mint tokens.
     ///
-    /// @param to Address to mint tokens to.
+    /// @dev Only callable by the authorized bridge contract. Emits a Mint event.
+    ///
+    /// @param to     Address to mint tokens to.
     /// @param amount Amount of tokens to mint.
     function mint(address to, uint256 amount) external onlyBridge {
         require(to != address(0), "CrossChainERC20: mint to zero address");
@@ -111,7 +135,9 @@ contract CrossChainERC20 is ERC20 {
 
     /// @notice Allows the Bridge to burn tokens.
     ///
-    /// @param from Address to burn tokens from.
+    /// @dev Only callable by the authorized bridge contract. Emits a Burn event.
+    ///
+    /// @param from   Address to burn tokens from.
     /// @param amount Amount of tokens to burn.
     function burn(address from, uint256 amount) external onlyBridge {
         require(from != address(0), "CrossChainERC20: burn from zero address");
