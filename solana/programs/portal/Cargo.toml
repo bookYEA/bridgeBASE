@@ -1,0 +1,38 @@
+[package]
+name = "portal"
+version = "0.1.0"
+description = "Created with Anchor"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "portal"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build"]
+
+[dependencies]
+anchor-lang = "0.31.0"
+
+alloy-sol-types = "=0.8.13"
+alloy-primitives = "=0.8.13"
+hex-literal = "0.4.1"
+
+[dev-dependencies]
+alloy-sol-types = "=0.8.13"
+alloy-sol-macro-input = "=0.8.13"
+syn-solidity = "=0.8.13"
+
+litesvm = "0.6.1"
+solana-account = "2.2.1"
+solana-instruction = "2.2.1"
+solana-keypair = "2.2.1"
+solana-message = "2.2.1"
+solana-sdk-ids = "2.2.1"
+solana-signer = "2.2.1"
+solana-transaction = "2.2.1"

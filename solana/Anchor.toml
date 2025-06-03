@@ -8,11 +8,14 @@ skip-lint = false
 [programs.localnet]
 bridge = "Fb7KKBmjgKJh1N3aDUxLTj6TR3exH8Xi368bJ3AcDd5T"
 
+portal = "4aRCwRtUjaoNA34AVLUmYVsyPRph2fNcAhXUxwHKUGtn"
+token_bridge = "9nAWUJT7cJVUCSQs7W2H68WuUouz5zHHxk8KJ2PQUCQe"
+
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "Localnet"
+cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

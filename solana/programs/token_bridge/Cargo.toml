@@ -1,0 +1,33 @@
+[package]
+name = "token_bridge"
+version = "0.1.0"
+description = "Created with Anchor"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "token_bridge"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+
+[dependencies]
+portal = { path = "../portal", features = ["cpi"] }
+
+anchor-lang = { version = "0.31.0", features = ["init-if-needed"] }
+anchor-spl = "0.31.0"
+
+hex-literal = "0.4.1"
+
+alloy-sol-types = "=0.8.13"
+alloy-primitives = "=0.8.13"
+
+[dev-dependencies]
+alloy-sol-types = "=0.8.13"
+alloy-sol-macro-input = "=0.8.13"
+syn-solidity = "=0.8.13"
