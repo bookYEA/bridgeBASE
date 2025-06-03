@@ -14,8 +14,8 @@ pub struct SendCall<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
 
-    #[account(mut, address = GAS_FEE_RECEIVER)]
     /// CHECK: This is the hardcoded gas fee receiver account.
+    #[account(mut, address = GAS_FEE_RECEIVER)]
     pub gas_fee_receiver: AccountInfo<'info>,
 
     pub system_program: Program<'info, System>,
@@ -38,9 +38,9 @@ pub fn send_call_handler(
     send_call(
         &ctx.accounts.system_program,
         &ctx.accounts.payer,
-        &ctx.accounts.authority,
         &ctx.accounts.gas_fee_receiver,
         Call {
+            from: ctx.accounts.authority.key(),
             to,
             gas_limit,
             is_creation,
@@ -52,11 +52,11 @@ pub fn send_call_handler(
 pub fn send_call<'info>(
     system_program: &Program<'info, System>,
     payer: &Signer<'info>,
-    authority: &Signer<'info>,
     gas_fee_receiver: &AccountInfo<'info>,
     call: Call,
 ) -> Result<()> {
     let Call {
+        from,
         to,
         gas_limit,
         is_creation,
@@ -80,7 +80,7 @@ pub fn send_call<'info>(
     meter_gas(system_program, payer, gas_fee_receiver, gas_limit)?;
 
     emit!(CallSent {
-        from: authority.key(),
+        from,
         to,
         opaque_data,
     });

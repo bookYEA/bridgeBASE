@@ -22,8 +22,8 @@ pub struct SendMessage<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
 
-    #[account(mut, address = GAS_FEE_RECEIVER)]
     /// CHECK: This is the hardcoded gas fee receiver account.
+    #[account(mut, address = GAS_FEE_RECEIVER)]
     pub gas_fee_receiver: AccountInfo<'info>,
 
     pub system_program: Program<'info, System>,
@@ -47,9 +47,9 @@ pub fn send_message_handler(
     send_call(
         &ctx.accounts.system_program,
         &ctx.accounts.payer,
-        &ctx.accounts.authority,
         &ctx.accounts.gas_fee_receiver,
         Call {
+            from: *ctx.program_id,
             to: REMOTE_MESSENGER_ADDRESS,
             gas_limit: min_gas_limit,
             is_creation: false,
