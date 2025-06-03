@@ -7,11 +7,24 @@ BASE_MAINNET_RPC_URL = https://mainnet.base.org
 BASE_MESSAGE_PASSER_ADDRESS = 0x3B544741299B0454EC88a9249dF1493438229aBf
 MESSAGE_PASSER_DEPLOYMENT_BLOCK_NUMBER = 26247201
 
+#
+# Build Options
+# Typical inputs to the build targets found below.
+#
+TARGET=target
+BIN=./bin/oracle
+LDFLAGS=-ldflags "-X=main.Version=$(VERSION) -X=main.Build=$(BUILD)"
+
 .PHONY: bindings
 bindings:
 	go install github.com/ethereum/go-ethereum/cmd/abigen@v1.14.11
 	cd ../base && forge build
 	abigen --abi ../base/out/MessagePasser.sol/MessagePasser.abi.json --pkg bindings --type MessagePasser --out bindings/message_passer.go
+
+.PHONY: build
+build:
+	@echo "Building the project..."
+	@go build $(LDFLAGS) -o $(BIN) cmd/main.go
 
 .PHONY: run-dev
 run-dev:
