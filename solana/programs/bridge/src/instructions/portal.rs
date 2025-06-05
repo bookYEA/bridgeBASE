@@ -6,19 +6,13 @@ use anchor_lang::prelude::*;
 /// Accounts required for depositing a transaction from Solana to Base.
 #[derive(Accounts)]
 pub struct DepositTransaction<'info> {
-    /// The user account that is initiating the deposit transaction.
-    /// Must be mutable as SOL will be transferred from this account to pay gas fees.
     #[account(mut)]
     pub user: Signer<'info>,
 
-    /// The account that receives gas fees for processing the deposit transaction.
-    /// This is a hardcoded address defined by GAS_FEE_RECEIVER constant.
-    /// Must be mutable as it will receive SOL transfers for gas payments.
-    #[account(mut, address = GAS_FEE_RECEIVER)]
     /// CHECK: This is the hardcoded gas fee receiver account.
+    #[account(mut, address = GAS_FEE_RECEIVER)]
     pub gas_fee_receiver: AccountInfo<'info>,
 
-    /// The Solana system program used for transferring SOL for gas fees.
     pub system_program: Program<'info, System>,
 }
 

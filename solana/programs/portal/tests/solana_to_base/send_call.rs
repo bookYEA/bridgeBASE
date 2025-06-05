@@ -1,20 +1,19 @@
-use anchor_lang::InstructionData;
-use anchor_lang::ToAccountMetas;
+use anchor_lang::{
+    solana_program::native_token::LAMPORTS_PER_SOL, InstructionData, ToAccountMetas,
+};
 use litesvm::LiteSVM;
 use solana_instruction::Instruction;
 use solana_keypair::Keypair;
 use solana_message::Message;
 use solana_signer::Signer;
-
-use portal::{constants::GAS_FEE_RECEIVER, ID as PROGRAM_ID};
 use solana_transaction::Transaction;
 
-const LAMPORTS_PER_SOL: u64 = 1_000_000_000;
+use portal::{constants::GAS_FEE_RECEIVER, ID as PORTAL_PROGRAM_ID};
 
 #[test]
 fn test_send_call_fail_wrong_gas_fee_receiver() {
     let mut svm = LiteSVM::new();
-    svm.add_program_from_file(PROGRAM_ID, "../../target/deploy/portal.so")
+    svm.add_program_from_file(PORTAL_PROGRAM_ID, "../../target/deploy/portal.so")
         .unwrap();
 
     // Create test accounts
@@ -44,7 +43,7 @@ fn test_send_call_fail_wrong_gas_fee_receiver() {
     .to_account_metas(None);
 
     let send_call_ix = Instruction {
-        program_id: PROGRAM_ID,
+        program_id: PORTAL_PROGRAM_ID,
         accounts: send_call_accounts,
         data: portal::instruction::SendCall {
             to,
@@ -72,7 +71,7 @@ fn test_send_call_fail_wrong_gas_fee_receiver() {
 #[test]
 fn test_send_call_fail_creation_with_non_null_target() {
     let mut svm = LiteSVM::new();
-    svm.add_program_from_file(PROGRAM_ID, "../../target/deploy/portal.so")
+    svm.add_program_from_file(PORTAL_PROGRAM_ID, "../../target/deploy/portal.so")
         .unwrap();
 
     // Create test accounts
@@ -99,7 +98,7 @@ fn test_send_call_fail_creation_with_non_null_target() {
     .to_account_metas(None);
 
     let send_call_ix = Instruction {
-        program_id: PROGRAM_ID,
+        program_id: PORTAL_PROGRAM_ID,
         accounts: send_call_accounts,
         data: portal::instruction::SendCall {
             to,
@@ -127,7 +126,7 @@ fn test_send_call_fail_creation_with_non_null_target() {
 #[test]
 fn test_send_call_fail_gas_limit_too_low() {
     let mut svm = LiteSVM::new();
-    svm.add_program_from_file(PROGRAM_ID, "../../target/deploy/portal.so")
+    svm.add_program_from_file(PORTAL_PROGRAM_ID, "../../target/deploy/portal.so")
         .unwrap();
 
     // Create test accounts
@@ -154,7 +153,7 @@ fn test_send_call_fail_gas_limit_too_low() {
     .to_account_metas(None);
 
     let send_call_ix = Instruction {
-        program_id: PROGRAM_ID,
+        program_id: PORTAL_PROGRAM_ID,
         accounts: send_call_accounts,
         data: portal::instruction::SendCall {
             to,
@@ -180,9 +179,9 @@ fn test_send_call_fail_gas_limit_too_low() {
 }
 
 #[test]
-fn test_send_call() {
+fn test_send_call_success() {
     let mut svm = LiteSVM::new();
-    svm.add_program_from_file(PROGRAM_ID, "../../target/deploy/portal.so")
+    svm.add_program_from_file(PORTAL_PROGRAM_ID, "../../target/deploy/portal.so")
         .unwrap();
 
     // Create test accounts
@@ -209,7 +208,7 @@ fn test_send_call() {
     .to_account_metas(None);
 
     let send_call_ix = Instruction {
-        program_id: PROGRAM_ID,
+        program_id: PORTAL_PROGRAM_ID,
         accounts: send_call_accounts,
         data: portal::instruction::SendCall {
             to,

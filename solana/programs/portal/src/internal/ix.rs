@@ -19,30 +19,73 @@ pub struct Ix {
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, InitSpace)]
 pub struct IxAccount {
     /// Public key of the account.
-    pub pubkey: Pubkey,
+    pub pubkey: PubkeyOrPda,
     /// Whether the account is writable.
     pub is_writable: bool,
     /// Whether the account is a signer.
     pub is_signer: bool,
 }
 
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, InitSpace)]
+pub enum PubkeyOrPda {
+    Pubkey(Pubkey),
+    PDA {
+        #[max_len(10, 32)]
+        seeds: Vec<Vec<u8>>,
+        program_id: Pubkey,
+    },
+}
+
 /// Converts a Ix to a Solana Instruction.
-impl From<&Ix> for Instruction {
-    fn from(ix: &Ix) -> Instruction {
+impl From<Ix> for Instruction {
+    fn from(ix: Ix) -> Instruction {
         Instruction {
             program_id: ix.program_id,
-            accounts: ix.accounts.iter().map(Into::into).collect(),
+            accounts: ix.accounts.into_iter().map(Into::into).collect(),
             data: ix.data.clone(),
         }
     }
 }
 
 /// Converts a IxAccount to a Solana AccountMeta.
-impl From<&IxAccount> for AccountMeta {
-    fn from(account: &IxAccount) -> AccountMeta {
+impl From<IxAccount> for AccountMeta {
+    fn from(account: IxAccount) -> AccountMeta {
+        let pubkey = match account.pubkey {
+            PubkeyOrPda::Pubkey(pubkey) => pubkey,
+            PubkeyOrPda::PDA { seeds, program_id } => {
+                let seeds: Vec<&[u8]> = seeds.iter().map(|v| v.as_slice()).collect();
+                let (pubkey, _) = Pubkey::find_program_address(seeds.as_slice(), &program_id);
+                pubkey
+            }
+        };
+
         match account.is_writable {
-            false => AccountMeta::new_readonly(account.pubkey, account.is_signer),
-            true => AccountMeta::new(account.pubkey, account.is_signer),
+            false => AccountMeta::new_readonly(pubkey, account.is_signer),
+            true => AccountMeta::new(pubkey, account.is_signer),
+        }
+    }
+}
+
+/// Converts a Solana Instruction to a Ix.
+/// NOTE: Only used in tests.
+impl From<Instruction> for Ix {
+    fn from(ix: Instruction) -> Ix {
+        Ix {
+            program_id: ix.program_id,
+            accounts: ix.accounts.into_iter().map(Into::into).collect(),
+            data: ix.data.clone(),
+        }
+    }
+}
+
+/// Converts a Solana AccountMeta to a IxAccount.
+/// NOTE: Only used in tests.
+impl From<AccountMeta> for IxAccount {
+    fn from(account: AccountMeta) -> IxAccount {
+        IxAccount {
+            pubkey: PubkeyOrPda::Pubkey(account.pubkey),
+            is_writable: account.is_writable,
+            is_signer: account.is_signer,
         }
     }
 }

@@ -7,11 +7,11 @@ use crate::constants::WRAPPED_TOKEN_SEED;
 #[instruction(remote_token: [u8; 20], remote_decimals: u8)]
 pub struct WrapToken<'info> {
     #[account(mut)]
-    pub signer: Signer<'info>,
+    pub payer: Signer<'info>,
 
     #[account(
         init,
-        payer = signer,
+        payer = payer,
         mint::decimals = remote_decimals,
         mint::authority = mint,
         mint::freeze_authority = mint,

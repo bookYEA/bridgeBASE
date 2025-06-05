@@ -8,15 +8,15 @@ use solana_keypair::Keypair;
 use solana_message::Message;
 use solana_signer::Signer;
 
-use portal::{constants::MESSENGER_SEED, ID as PROGRAM_ID};
+use portal::{constants::MESSENGER_SEED, ID as PORTAL_PROGRAM_ID};
 use solana_transaction::Transaction;
 
 const LAMPORTS_PER_SOL: u64 = 1_000_000_000;
 
 #[test]
-fn test_initialize() {
+fn test_initialize_success() {
     let mut svm = LiteSVM::new();
-    svm.add_program_from_file(PROGRAM_ID, "../../target/deploy/portal.so")
+    svm.add_program_from_file(PORTAL_PROGRAM_ID, "../../target/deploy/portal.so")
         .unwrap();
 
     // Create test accounts
@@ -25,7 +25,7 @@ fn test_initialize() {
     svm.airdrop(&payer_pk, LAMPORTS_PER_SOL).unwrap();
 
     // Find the messenger PDA
-    let (messenger, _) = Pubkey::find_program_address(&[MESSENGER_SEED], &PROGRAM_ID);
+    let (messenger, _) = Pubkey::find_program_address(&[MESSENGER_SEED], &PORTAL_PROGRAM_ID);
 
     // Build the instruction
     let initialize_accounts = portal::accounts::Initialize {
@@ -36,7 +36,7 @@ fn test_initialize() {
     .to_account_metas(None);
 
     let initialize_ix = Instruction {
-        program_id: PROGRAM_ID,
+        program_id: PORTAL_PROGRAM_ID,
         accounts: initialize_accounts,
         data: portal::instruction::Initialize {}.data(),
     };
@@ -53,7 +53,7 @@ fn test_initialize() {
 
     // Assert the expected account data
     let account = svm.get_account(&messenger).unwrap();
-    assert_eq!(account.owner, PROGRAM_ID);
+    assert_eq!(account.owner, PORTAL_PROGRAM_ID);
 
     let messenger_account = Messenger::try_deserialize(&mut &account.data[..]).unwrap();
     assert_eq!(messenger_account.nonce, 0);

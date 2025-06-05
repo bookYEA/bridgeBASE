@@ -25,6 +25,7 @@ pub struct BridgeBackSol<'info> {
     pub sol_vault: AccountInfo<'info>,
 
     /// CHECK: This is the account to send the SOL to.
+    #[account(mut)]
     pub to: AccountInfo<'info>,
 
     pub system_program: Program<'info, System>,

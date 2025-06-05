@@ -13,7 +13,7 @@ use crate::{
 
 #[derive(Accounts)]
 #[instruction(remote_token: [u8; 20], remote_decimals: u8)]
-pub struct BridgeTokenBack<'info> {
+pub struct BridgeBackToken<'info> {
     // Bridge accounts
     #[account(mut)]
     pub from: Signer<'info>,
@@ -43,16 +43,18 @@ pub struct BridgeTokenBack<'info> {
 
     // Portal accounts
     // TODO: use composite accounts once figured out how to make them compile.
+
     /// CHECK: Going to be checked in the cpi.
     pub gas_fee_receiver: AccountInfo<'info>,
+    
     /// CHECK: Going to be checked in the cpi.
     pub messenger: AccountInfo<'info>,
 
     pub system_program: Program<'info, System>,
 }
 
-pub fn bridge_token_back_handler(
-    ctx: Context<BridgeTokenBack>,
+pub fn bridge_back_token_handler(
+    ctx: Context<BridgeBackToken>,
     remote_token: [u8; 20],
     to: [u8; 20],
     amount: u64,
@@ -84,7 +86,7 @@ pub fn bridge_token_back_handler(
     )
 }
 
-fn burn(ctx: &Context<BridgeTokenBack>, amount: u64) -> Result<()> {
+fn burn(ctx: &Context<BridgeBackToken>, amount: u64) -> Result<()> {
     let cpi_ctx = CpiContext::new(
         ctx.accounts.token_program.to_account_info(),
         BurnChecked {

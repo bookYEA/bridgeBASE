@@ -1,46 +1,26 @@
-use anchor_lang::prelude::*;
-use anchor_lang::AccountDeserialize;
-use anchor_lang::InstructionData;
-use anchor_lang::ToAccountMetas;
+use anchor_lang::{
+    prelude::*, solana_program::native_token::LAMPORTS_PER_SOL, AccountDeserialize,
+    InstructionData, ToAccountMetas,
+};
 use litesvm::LiteSVM;
-use solana_account::Account;
 use solana_instruction::Instruction;
 use solana_keypair::Keypair;
 use solana_message::Message;
 use solana_signer::Signer;
+use solana_transaction::Transaction;
 
 use portal::{
     constants::{GAS_FEE_RECEIVER, MESSENGER_SEED},
     state::Messenger,
-    ID as PROGRAM_ID,
+    ID as PORTAL_PROGRAM_ID,
 };
-use solana_transaction::Transaction;
 
-const LAMPORTS_PER_SOL: u64 = 1_000_000_000;
-
-fn mock_messenger(svm: &mut LiteSVM, messenger_pda: &Pubkey, nonce: u64) {
-    let mut messenger_data = Vec::new();
-    Messenger { nonce }
-        .try_serialize(&mut messenger_data)
-        .unwrap();
-
-    svm.set_account(
-        *messenger_pda,
-        Account {
-            lamports: LAMPORTS_PER_SOL, // Rent-exempt amount
-            data: messenger_data,
-            owner: PROGRAM_ID,
-            executable: false,
-            rent_epoch: 0,
-        },
-    )
-    .unwrap();
-}
+use crate::solana_to_base::mock_messenger;
 
 #[test]
 fn test_send_message_fail_uninitialized_messenger() {
     let mut svm = LiteSVM::new();
-    svm.add_program_from_file(PROGRAM_ID, "../../target/deploy/portal.so")
+    svm.add_program_from_file(PORTAL_PROGRAM_ID, "../../target/deploy/portal.so")
         .unwrap();
 
     // Create test accounts
@@ -52,7 +32,7 @@ fn test_send_message_fail_uninitialized_messenger() {
     let authority_pk = authority.pubkey();
 
     // Don't initialize messenger - this should cause failure
-    let (messenger_pda, _) = Pubkey::find_program_address(&[MESSENGER_SEED], &PROGRAM_ID);
+    let (messenger_pda, _) = Pubkey::find_program_address(&[MESSENGER_SEED], &PORTAL_PROGRAM_ID);
 
     // Test parameters
     let target = [1u8; 20];
@@ -70,7 +50,7 @@ fn test_send_message_fail_uninitialized_messenger() {
     .to_account_metas(None);
 
     let send_message_ix = Instruction {
-        program_id: PROGRAM_ID,
+        program_id: PORTAL_PROGRAM_ID,
         accounts: send_message_accounts,
         data: portal::instruction::SendMessage {
             target,
@@ -95,9 +75,9 @@ fn test_send_message_fail_uninitialized_messenger() {
 }
 
 #[test]
-fn test_send_message() {
+fn test_send_message_success() {
     let mut svm = LiteSVM::new();
-    svm.add_program_from_file(PROGRAM_ID, "../../target/deploy/portal.so")
+    svm.add_program_from_file(PORTAL_PROGRAM_ID, "../../target/deploy/portal.so")
         .unwrap();
 
     // Create test accounts
@@ -109,7 +89,7 @@ fn test_send_message() {
     let authority_pk = authority.pubkey();
 
     // Mock the messenger account instead of initializing it
-    let (messenger_pda, _) = Pubkey::find_program_address(&[MESSENGER_SEED], &PROGRAM_ID);
+    let (messenger_pda, _) = Pubkey::find_program_address(&[MESSENGER_SEED], &PORTAL_PROGRAM_ID);
     let initial_nonce = 42u64;
     mock_messenger(&mut svm, &messenger_pda, initial_nonce);
 
@@ -129,7 +109,7 @@ fn test_send_message() {
     .to_account_metas(None);
 
     let send_message_ix = Instruction {
-        program_id: PROGRAM_ID,
+        program_id: PORTAL_PROGRAM_ID,
         accounts: send_message_accounts,
         data: portal::instruction::SendMessage {
             target,

@@ -36,3 +36,5 @@ solana-message = "2.2.1"
 solana-sdk-ids = "2.2.1"
 solana-signer = "2.2.1"
 solana-transaction = "2.2.1"
+
+hex = "0.4.3"

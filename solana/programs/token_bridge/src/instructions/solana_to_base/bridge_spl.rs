@@ -6,8 +6,8 @@ use anchor_spl::token_interface::{self, Mint, TokenAccount, TokenInterface, Tran
 use portal::{cpi as portal_cpi, program::Portal};
 
 use crate::{
-    constants::{BRIDGE_AUTHORITY_SEED, TOKEN_VAULT_SEED, WRAPPED_TOKEN_SEED},
-    internal::cpi_send_message,
+    constants::{BRIDGE_AUTHORITY_SEED, TOKEN_VAULT_SEED},
+    internal::{cpi_send_message, is_wrapped_token},
     solidity::Bridge,
 };
 
@@ -64,16 +64,8 @@ pub fn bridge_spl_handler(
 ) -> Result<()> {
     // Check that the provided mint is not a wrapped token, in which case the `bridge_back_token`
     // instruction should be called instead.
-    let (wrapped_token, _) = Pubkey::find_program_address(
-        &[
-            WRAPPED_TOKEN_SEED,
-            remote_token.as_ref(),
-            ctx.accounts.mint.decimals.to_le_bytes().as_ref(),
-        ],
-        ctx.program_id,
-    );
     require!(
-        wrapped_token != ctx.accounts.mint.key(),
+        !is_wrapped_token(ctx.program_id, &ctx.accounts.mint, &remote_token).0,
         BridgeSplError::MintIsAWrappedToken
     );
 

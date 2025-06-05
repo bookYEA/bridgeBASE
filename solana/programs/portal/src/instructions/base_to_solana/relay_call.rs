@@ -7,6 +7,9 @@ use crate::{constants::PORTAL_AUTHORITY_SEED, internal::Ix, state::RemoteCall};
 
 #[derive(Accounts)]
 pub struct RelayCall<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+
     /// CHECK: This is the portal authority account.
     #[account(seeds = [PORTAL_AUTHORITY_SEED, remote_call.sender.as_ref()], bump)]
     pub portal_authority: AccountInfo<'info>,
@@ -24,30 +27,32 @@ pub fn relay_call_handler<'a, 'info>(
     );
 
     let ixs = Vec::<Ix>::try_from_slice(&ctx.accounts.remote_call.data)?;
-    for ix in &ixs {
+
+    let portal_authority_seeds: &[&[u8]] = &[
+        PORTAL_AUTHORITY_SEED,
+        ctx.accounts.remote_call.sender.as_ref(),
+        &[ctx.bumps.portal_authority],
+    ];
+
+    // Re-add the portal_authority to the remaining accounts
+    let mut remaining_accounts = vec![ctx.accounts.portal_authority.to_account_info()];
+    remaining_accounts.extend_from_slice(ctx.remaining_accounts);
+
+    for ix in ixs {
         let mut ix: Instruction = ix.into();
 
-        // Is is really needed?
-        ix.accounts = ix
-            .accounts
-            .iter()
-            .map(|acc| {
-                let mut acc = acc.clone();
-                if acc.pubkey == ctx.accounts.portal_authority.key() {
-                    acc.is_signer = true;
-                }
-                acc
-            })
-            .collect();
+        let mut accounts = vec![AccountMeta::new_readonly(
+            ctx.accounts.portal_authority.key(),
+            true,
+        )];
+        accounts.extend_from_slice(&ix.accounts);
+
+        ix.accounts = accounts;
 
         solana_program::program::invoke_signed(
             &ix,
-            ctx.remaining_accounts,
-            &[&[
-                PORTAL_AUTHORITY_SEED,
-                ctx.accounts.remote_call.sender.as_ref(),
-                &[ctx.bumps.portal_authority],
-            ]],
+            &remaining_accounts,
+            &[portal_authority_seeds],
         )?;
     }
 

@@ -38,8 +38,8 @@ pub mod token_bridge {
         bridge_spl_handler(ctx, remote_token, to, amount, min_gas_limit, extra_data)
     }
 
-    pub fn bridge_token_back(
-        ctx: Context<BridgeTokenBack>,
+    pub fn bridge_back_token(
+        ctx: Context<BridgeBackToken>,
         remote_token: [u8; 20],
         _remote_decimals: u8, // NOTE: Only used to compute the PDA seed of the Mint.
         to: [u8; 20],
@@ -47,7 +47,7 @@ pub mod token_bridge {
         min_gas_limit: u64,
         extra_data: Vec<u8>,
     ) -> Result<()> {
-        bridge_token_back_handler(ctx, remote_token, to, amount, min_gas_limit, extra_data)
+        bridge_back_token_handler(ctx, remote_token, to, amount, min_gas_limit, extra_data)
     }
 
     // Base to Solana
@@ -74,5 +74,13 @@ pub mod token_bridge {
         amount: u64,
     ) -> Result<()> {
         bridge_back_spl_handler(ctx, remote_token, amount)
+    }
+
+    pub fn bridge_token(
+        ctx: Context<BridgeToken>,
+        remote_token: [u8; 20],
+        amount: u64,
+    ) -> Result<()> {
+        bridge_token_handler(ctx, remote_token, amount)
     }
 }

@@ -50,23 +50,18 @@ struct BridgeCallParams {
 #[derive(Accounts)]
 #[instruction(remote_token: [u8; 20])]
 pub struct BridgeSolTo<'info> {
-    /// The user initiating the bridge transaction
     #[account(mut)]
     pub user: Signer<'info>,
 
-    /// Account that receives gas fees for cross-chain messaging
-    #[account(mut, address = GAS_FEE_RECEIVER)]
     /// CHECK: This is the hardcoded gas fee receiver account.
+    #[account(mut, address = GAS_FEE_RECEIVER)]
     pub gas_fee_receiver: AccountInfo<'info>,
 
-    /// Solana system program for SOL transfers
     pub system_program: Program<'info, System>,
 
-    /// Messenger account for sending cross-chain messages
     #[account(mut, seeds = [MESSENGER_SEED], bump = messenger.bump)]
     pub messenger: Account<'info, Messenger>,
 
-    /// SOL vault PDA that holds native SOL for the specific remote token
     /// CHECK: This is the sol vault account for a specific remote token.
     #[account(mut, seeds = [SOL_VAULT_SEED, remote_token.as_ref()], bump)]
     pub sol_vault: AccountInfo<'info>,
@@ -79,31 +74,24 @@ pub struct BridgeSolTo<'info> {
 #[derive(Accounts)]
 #[instruction(remote_token: [u8; 20])]
 pub struct BridgeTokensTo<'info> {
-    /// The user initiating the bridge transaction
     #[account(mut)]
     pub user: Signer<'info>,
 
-    /// Account that receives gas fees for cross-chain messaging
-    #[account(mut, address = GAS_FEE_RECEIVER)]
     /// CHECK: This is the hardcoded gas fee receiver account.
+    #[account(mut, address = GAS_FEE_RECEIVER)]
     pub gas_fee_receiver: AccountInfo<'info>,
 
-    /// Solana system program for account creation and rent
     pub system_program: Program<'info, System>,
 
-    /// Messenger account for sending cross-chain messages
     #[account(mut, seeds = [MESSENGER_SEED], bump = messenger.bump)]
     pub messenger: Account<'info, Messenger>,
 
-    /// The SPL token mint being bridged
     #[account(mut)]
     pub mint: Account<'info, Mint>,
 
-    /// The user's token account to transfer from
     #[account(mut)]
     pub from_token_account: Account<'info, TokenAccount>,
 
-    /// Token vault PDA that holds tokens for the specific mint and remote token pair
     #[account(
         init_if_needed,
         seeds = [TOKEN_VAULT_SEED, mint.key().as_ref(), remote_token.as_ref()],
@@ -114,7 +102,6 @@ pub struct BridgeTokensTo<'info> {
     )]
     pub token_vault: Account<'info, TokenAccount>,
 
-    /// SPL Token program for token operations
     pub token_program: Program<'info, Token>,
 }
 

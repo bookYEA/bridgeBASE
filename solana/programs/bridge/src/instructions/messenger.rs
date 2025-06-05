@@ -18,20 +18,16 @@ use super::{portal, token_bridge};
 #[derive(Accounts)]
 pub struct SendMessage<'info> {
     // Portal accounts
-    /// The user account that is sending the message and paying for gas fees
     #[account(mut)]
     pub user: Signer<'info>,
 
-    /// The hardcoded account that receives gas fees for cross-chain transactions
-    #[account(mut, address = GAS_FEE_RECEIVER)]
     /// CHECK: This is the hardcoded gas fee receiver account.
+    #[account(mut, address = GAS_FEE_RECEIVER)]
     pub gas_fee_receiver: AccountInfo<'info>,
 
-    /// The Solana system program for handling SOL transfers and account creation
     pub system_program: Program<'info, System>,
 
     // Messenger accounts
-    /// The messenger state account that tracks message nonces and configuration
     #[account(mut, seeds = [MESSENGER_SEED], bump = messenger.bump)]
     pub messenger: Account<'info, Messenger>,
 }
