@@ -20,7 +20,7 @@ pub struct RegisterOutputRoot<'info> {
     #[account(mut, seeds = [MESSENGER_SEED], bump)]
     pub messenger: Account<'info, Messenger>,
 
-    #[account(mut, address = TRUSTED_ORACLE)]
+    #[account(mut, address = TRUSTED_ORACLE @ RegisterOutputRootError::Unauthorized)]
     pub payer: Signer<'info>,
 
     pub system_program: Program<'info, System>,
@@ -33,4 +33,10 @@ pub fn register_output_root_handler(
     ctx.accounts.root.root = output_root;
 
     Ok(())
+}
+
+#[error_code]
+pub enum RegisterOutputRootError {
+    #[msg("Unauthorized")]
+    Unauthorized,
 }

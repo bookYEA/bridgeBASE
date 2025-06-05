@@ -62,8 +62,7 @@ pub fn bridge_spl_handler(
     min_gas_limit: u64,
     extra_data: Vec<u8>,
 ) -> Result<()> {
-    // Check that the provided mint is not a wrapped token, in which case the `bridge_back_token`
-    // instruction should be called instead.
+    // Check that the provided mint is not a wrapped `remote_token`, in which case the `bridge_back_token` instruction should be called instead.
     require!(
         !is_wrapped_token(ctx.program_id, &ctx.accounts.mint, &remote_token).0,
         BridgeSplError::MintIsAWrappedToken

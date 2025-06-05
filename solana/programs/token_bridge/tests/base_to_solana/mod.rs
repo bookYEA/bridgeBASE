@@ -1,6 +1,6 @@
-pub mod bridge_back_sol;
-pub mod bridge_back_spl;
-pub mod bridge_token;
+pub mod finalize_bridge_sol;
+pub mod finalize_bridge_spl;
+pub mod finalize_bridge_token;
 
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::program_option::COption;

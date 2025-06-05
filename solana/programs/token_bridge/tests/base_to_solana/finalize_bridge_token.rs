@@ -18,7 +18,7 @@ use crate::base_to_solana::{
 };
 
 #[test]
-fn test_bridge_token_success() {
+fn test_finalize_bridge_token_success() {
     let mut svm = LiteSVM::new();
     svm.add_program_from_file(
         TOKEN_BRIDGE_PROGRAM_ID,
@@ -51,8 +51,8 @@ fn test_bridge_token_success() {
     // Compute the portal authority PDA
     let portal_authority = portal_authority();
 
-    // Build the TokenBridge's bridge_token instruction
-    let bridge_token_accounts = token_bridge::accounts::BridgeToken {
+    // Build the TokenBridge's finalize_bridge_token instruction
+    let finalize_bridge_token_accounts = token_bridge::accounts::FinalizeBridgeToken {
         portal_authority,
         mint: wrapped_mint,
         to_token_account,
@@ -63,10 +63,11 @@ fn test_bridge_token_success() {
     .skip(1) // Skip portal_authority since relay_call handles it
     .collect::<Vec<_>>();
 
-    let bridge_token_ix = Ix::from(Instruction {
+    let finalize_bridge_token_ix = Ix::from(Instruction {
         program_id: TOKEN_BRIDGE_PROGRAM_ID,
-        accounts: bridge_token_accounts.clone(),
-        data: token_bridge::instruction::BridgeToken {
+        accounts: finalize_bridge_token_accounts.clone(),
+        data: token_bridge::instruction::FinalizeBridgeToken {
+            _expected_mint: wrapped_mint,
             remote_token,
             amount: mint_amount,
         }
@@ -77,7 +78,7 @@ fn test_bridge_token_success() {
     let remote_call = mock_remote_call(
         &mut svm,
         REMOTE_BRIDGE,
-        vec![bridge_token_ix].try_to_vec().unwrap(),
+        vec![finalize_bridge_token_ix].try_to_vec().unwrap(),
         false,
     );
 
@@ -88,8 +89,8 @@ fn test_bridge_token_success() {
     }
     .to_account_metas(None);
 
-    // Add the bridge_token accounts and token program to the relay_call instruction
-    relay_call_accounts.extend_from_slice(&bridge_token_accounts);
+    // Add the finalize_bridge_token accounts and token program to the relay_call instruction
+    relay_call_accounts.extend_from_slice(&finalize_bridge_token_accounts);
     relay_call_accounts.push(AccountMeta::new_readonly(TOKEN_BRIDGE_PROGRAM_ID, false));
 
     let relay_call_ix = Instruction {

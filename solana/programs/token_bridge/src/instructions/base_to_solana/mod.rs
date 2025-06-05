@@ -1,9 +1,9 @@
-pub mod bridge_back_sol;
-pub mod bridge_back_spl;
-pub mod bridge_token;
+pub mod finalize_bridge_sol;
+pub mod finalize_bridge_spl;
+pub mod finalize_bridge_token;
 pub mod wrap_token;
 
-pub use bridge_back_sol::*;
-pub use bridge_back_spl::*;
-pub use bridge_token::*;
+pub use finalize_bridge_sol::*;
+pub use finalize_bridge_spl::*;
+pub use finalize_bridge_token::*;
 pub use wrap_token::*;

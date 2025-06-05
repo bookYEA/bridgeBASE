@@ -75,9 +75,9 @@ contract CrossChainERC20Factory is Initializable {
     ///      Emits CrossChainERC20Created event upon successful deployment.
     ///
     /// @param remoteToken The 32-byte identifier of the corresponding token on the remote chain
-    /// @param name        The human-readable name of the token (e.g., "My Token")
-    /// @param symbol      The symbol of the token (e.g., "MTK")
-    /// @param decimals    The number of decimal places the token uses
+    /// @param name The human-readable name of the token (e.g., "My Token")
+    /// @param symbol The symbol of the token (e.g., "MTK")
+    /// @param decimals The number of decimal places the token uses
     ///
     /// @return crossChainERC20 The address of the newly deployed CrossChainERC20 contract
     function deploy(bytes32 remoteToken, string memory name, string memory symbol, uint8 decimals)

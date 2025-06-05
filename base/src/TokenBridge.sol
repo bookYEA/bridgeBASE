@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {EOA} from "optimism/packages/contracts-bedrock/src/libraries/EOA.sol";
-import {Initializable} from "solady/utils/Initializable.sol";
+import {ERC20} from "solady/tokens/ERC20.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 
+import {Ix, Pubkey, SVMLib} from "./libraries/SVMLib.sol";
+import {SVMTokenBridgeLib} from "./libraries/SVMTokenBridgeLib.sol";
+
 import {CrossChainERC20} from "./CrossChainERC20.sol";
-import {CrossChainMessenger} from "./CrossChainMessenger.sol";
+
 import {MessagePasser} from "./MessagePasser.sol";
-import {Encoder} from "./libraries/Encoder.sol";
+import {Messenger} from "./Messenger.sol";
 
 /// @title TokenBridge
 ///
@@ -16,95 +18,38 @@ import {Encoder} from "./libraries/Encoder.sol";
 /// Solana.
 ///         Supports both native tokens (ETH) and ERC20 tokens, including CrossChainERC20 tokens that can be
 ///         minted/burned on demand. Uses a messenger system to communicate with the corresponding bridge on
-///         the remote chain.
+///         Solana.
 ///
 /// @dev This contract is initializable and designed to work with EOAs only for security purposes.
 ///      It maintains deposit balances for standard tokens and handles minting/burning for CrossChainERC20 tokens.
-contract TokenBridge is Initializable {
-    //////////////////////////////////////////////////////////////
-    ///                       Structs                          ///
-    //////////////////////////////////////////////////////////////
-
-    /// @notice Struct representing a bridge payload that gets encoded and sent to the remote chain.
-    ///
-    /// @dev Note that `localToken` and `remoteToken` seem to be swapped. This is on purpose since this payload is
-    ///      handled in the context of the remote chain.
-    ///
-    /// @custom:field localToken  Address of the ERC20 token on the remote chain.
-    /// @custom:field remoteToken Address/public key of the corresponding token on this chain.
-    /// @custom:field from        Address of the sender on this chain.
-    /// @custom:field to          Address/public key of the receiver on the remote chain.
-    /// @custom:field amount      Amount of the token being bridged (uint64 for compatibility with Solana's token
-    ///                           amounts).
-    /// @custom:field extraData   Additional data to be sent with the transaction for identification and tracking
-    ///                           purposes. The recipient will not be triggered with this data, but it will be emitted
-    ///                           in events.
-    struct BridgePayload {
-        bytes32 localToken;
-        address remoteToken;
-        address from;
-        bytes32 to;
-        uint64 amount;
-        bytes extraData;
-    }
-
+contract TokenBridge {
     //////////////////////////////////////////////////////////////
     ///                       Events                           ///
     //////////////////////////////////////////////////////////////
 
+    /// @notice Emitted when an ERC20 bridge transaction is initiated from this chain to Solana.
+    ///
+    /// @param localToken Address of the ERC20 token on this chain.
+    /// @param remoteToken Pubkey of the remote token on Solana.
+    /// @param from Address of the sender on this chain.
+    /// @param to Pubkey of the intended recipient on Solana.
+    /// @param amount Amount of tokens being bridged (expressed in EVM units).
+    /// @param extraData Additional data sent with the transaction for identification purposes.
+    event TokenBridgeInitiated(
+        address indexed localToken, address indexed from, Pubkey remoteToken, Pubkey to, uint256 amount, bytes extraData
+    );
+
     /// @notice Emitted when a token bridge transaction is finalized on this chain.
     ///
-    /// @param localToken  Address of the ERC20 token on this chain.
-    /// @param remoteToken Address/public key of the corresponding token on the remote chain.
-    /// @param from        Address/public key of the original sender on the remote chain.
-    /// @param to          Address of the recipient on this chain.
-    /// @param amount      Amount of tokens transferred to the recipient.
-    /// @param extraData   Additional data associated with the bridge transaction.
+    /// @param localToken Address of the ERC20 token on this chain.
+    /// @param remoteToken Pubkey of the remote token on Solana.
+    /// @param from Pubkey of the original sender on Solana.
+    /// @param to Address of the recipient on this chain.
+    /// @param amount Amount of tokens transferred to the recipient (expressed in EVM units).
+    /// @param extraData Additional data associated with the bridge transaction.
     event TokenBridgeFinalized(
-        address localToken, bytes32 remoteToken, bytes32 from, address to, uint256 amount, bytes extraData
+        address localToken, Pubkey remoteToken, Pubkey from, address to, uint256 amount, bytes extraData
     );
-
-    /// @notice Emitted when an ERC20 bridge transaction is initiated from this chain to the remote chain.
-    ///
-    /// @param localToken  Address of the ERC20 token on this chain.
-    /// @param remoteToken Address/public key of the corresponding token on the remote chain.
-    /// @param from        Address of the sender on this chain.
-    /// @param to          Address/public key of the intended recipient on the remote chain.
-    /// @param amount      Amount of tokens being bridged.
-    /// @param extraData   Additional data sent with the transaction for identification purposes.
-    event ERC20BridgeInitiated(
-        address indexed localToken,
-        bytes32 indexed remoteToken,
-        address indexed from,
-        bytes32 to,
-        uint256 amount,
-        bytes extraData
-    );
-
-    //////////////////////////////////////////////////////////////
-    ///                       Constants                        ///
-    //////////////////////////////////////////////////////////////
-
-    /// @notice The ERC-7528 standard address representing native ETH in token operations.
-    address public constant ETH_ADDRESS = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
-
-    //////////////////////////////////////////////////////////////
-    ///                       Storage                          ///
-    //////////////////////////////////////////////////////////////
-
-    /// @notice Address of the CrossChainMessenger contract on this chain.
-    ///
-    /// @dev This messenger is responsible for sending cross-chain messages to the remote bridge.
-    address public messenger;
-
-    /// @notice Address/public key of the bridge contract on the remote chain.
-    bytes32 public remoteBridge;
-
-    /// @notice Mapping that stores deposit balances for token pairs between local and remote chains.
-    ///
-    /// @dev For standard ERC20 tokens and ETH, this tracks the total amount deposited and available for withdrawal.
-    ///      CrossChainERC20 tokens bypass this mechanism as they use mint/burn instead.
-    mapping(address localToken => mapping(bytes32 remoteToken => uint256 amount)) public deposits;
 
     //////////////////////////////////////////////////////////////
     ///                       Errors                           ///
@@ -113,30 +58,61 @@ contract TokenBridge is Initializable {
     /// @notice Thrown when the ETH value sent with a transaction doesn't match the expected amount.
     error InvalidMsgValue();
 
+    /// @notice Thrown when the remote token is not the expected token.
+    error IncorrectRemoteToken();
+
+    /// @notice Thrown when the token pair is not correct.
+    error NotRemoteBridge();
+
+    //////////////////////////////////////////////////////////////
+    ///                       Constants                        ///
+    //////////////////////////////////////////////////////////////
+
+    /// @notice The ERC-7528 standard address representing native ETH in token operations.
+    address public constant ETH_ADDRESS = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
+
+    /// @notice The Solana pubkey for the native SOL token ("SoL1111111111111111111111111111111111111111")
+    Pubkey public constant NATIVE_SOL_PUBKEY =
+        Pubkey.wrap(0x0000000000000000000000000000000000000000000000000000000000000000);
+
+    /// @notice Address of the Messenger contract on this chain.
+    address public immutable MESSENGER;
+
+    /// @notice Address of the MessagePasser contract on this chain.
+    address public immutable MESSAGE_PASSER;
+
+    /// @notice Pubkey of the portal on Solana.
+    Pubkey public immutable REMOTE_PORTAL;
+
+    /// @notice Pubkey of the token bridge contract on Solana.
+    Pubkey public immutable REMOTE_TOKEN_BRIDGE;
+
+    /// @notice The maximum number of decimals for a Solana token.
+    uint8 public constant MAX_SOL_DECIMALS = 9;
+
+    //////////////////////////////////////////////////////////////
+    ///                       Storage                          ///
+    //////////////////////////////////////////////////////////////
+
+    /// @notice Mapping that stores deposit balances for token pairs between local and remote chains.
+    ///
+    /// @dev For standard ERC20 tokens and ETH, this tracks the total amount deposited and available for withdrawal.
+    ///      CrossChainERC20 tokens bypass this mechanism as they use mint/burn instead.
+    mapping(address localToken => mapping(Pubkey remoteToken => uint256 amount)) public deposits;
+
     //////////////////////////////////////////////////////////////
     ///                       Modifiers                        ///
     //////////////////////////////////////////////////////////////
 
-    /// @notice Restricts function access to Externally Owned Accounts (EOAs) only.
-    ///
-    /// @dev This modifier prevents smart contract wallets from accidentally depositing tokens,
-    ///      as they may not be able to withdraw them on the remote chain. Note that this is not
-    ///      completely safe against contracts calling code within their constructors, but provides
-    ///      reasonable protection for typical use cases.
-    modifier onlyEOA() {
-        require(EOA.isSenderEOA(), "StandardBridge: function can only be called from an EOA");
-        _;
-    }
-
-    /// @notice Restricts function access to the bridge contract on the remote chain.
+    /// @notice Restricts function access to the bridge contract on Solana.
     ///
     /// @dev Ensures that only legitimate cross-chain messages from the paired bridge can trigger
     ///      finalization functions. Validates both the immediate caller (messenger) and the
     ///      original cross-chain message sender.
     modifier onlyRemoteBridge() {
         require(
-            msg.sender == messenger && CrossChainMessenger(messenger).xChainMsgSender() == remoteBridge,
-            "Bridge: function can only be called from the other bridge"
+            msg.sender == MESSENGER && Pubkey.wrap(Messenger(MESSENGER).xChainMsgSender()) == REMOTE_TOKEN_BRIDGE,
+            NotRemoteBridge()
         );
         _;
     }
@@ -149,78 +125,145 @@ contract TokenBridge is Initializable {
     ///
     /// @dev The constructor disables initializers to prevent the implementation contract from being initialized.
     ///      The actual initialization should be done through the initialize function after deployment.
-    constructor() {
-        _disableInitializers();
+    constructor(address messenger, address messagePasser, Pubkey remotePortal, Pubkey remoteTokenBridge) {
+        MESSENGER = messenger;
+        MESSAGE_PASSER = messagePasser;
+        REMOTE_PORTAL = remotePortal;
+        REMOTE_TOKEN_BRIDGE = remoteTokenBridge;
     }
 
-    /// @notice Initializes the Bridge contract with the messenger and remote bridge addresses.
+    /// @notice Bridges a token to Solana.
     ///
-    /// @dev This function can only be called once due to the initializer modifier. It sets up the
-    ///      cross-chain communication infrastructure required for bridge operations.
-    ///
-    /// @param messenger_    Address of the CrossChainMessenger contract on this chain.
-    /// @param remoteBridge_ Address/public key of the bridge contract on the remote chain.
-    function initialize(address messenger_, bytes32 remoteBridge_) external initializer {
-        messenger = messenger_;
-        remoteBridge = remoteBridge_;
-    }
-
-    /// @notice Bridges ERC20 tokens or ETH from this chain to a specified address on the remote chain.
-    ///
-    /// @dev This function handles the user-facing bridge initiation. For CrossChainERC20 tokens, it burns
-    ///      the tokens on this chain. For standard tokens, it deposits them in the contract. For ETH,
-    ///      it requires the exact amount to be sent as msg.value.
-    ///
-    /// @param localToken  Address of the ERC20 token on this chain (use ETH_ADDRESS for native ETH).
-    /// @param remoteToken Address/public key of the corresponding token on the remote chain.
-    /// @param to          Public key or address of the recipient on the remote chain (32 bytes for Solana
-    /// compatibility).
-    /// @param amount      Amount of tokens to bridge (must be uint64 for remote chain compatibility).
-    /// @param extraData   Additional data to include with the bridge transaction for identification.
-    function bridgeToken(address localToken, bytes32 remoteToken, bytes32 to, uint64 amount, bytes calldata extraData)
-        public
+    /// @param localToken Address of the ERC20 token on this chain (use ETH_ADDRESS for native ETH).
+    /// @param remoteToken Pubkey of the remote token on Solana.
+    /// @param to Pubkey of the intended recipient on Solana.
+    /// @param svmAmount Amount of tokens being bridged (expressed in SVM units).
+    /// @param extraData Additional data sent with the transaction for identification purposes.
+    function bridgeToken(address localToken, Pubkey remoteToken, Pubkey to, uint64 svmAmount, bytes calldata extraData)
+        external
         payable
-        virtual
-        onlyEOA
     {
-        _initiateBridgeERC20(localToken, remoteToken, msg.sender, to, amount, extraData);
+        uint256 evmAmount;
+        Ix memory ix;
+
+        if (localToken == ETH_ADDRESS) {
+            // Case: Bridging native ETH to Solana
+            uint8 clampedDecimals;
+            (evmAmount, clampedDecimals) = _evmAmount({svmAmount: svmAmount, decimals: 18});
+            require(msg.value == evmAmount, InvalidMsgValue());
+
+            deposits[localToken][remoteToken] += evmAmount;
+
+            ix = SVMTokenBridgeLib.finalizeBridgeTokenIx({
+                portal: REMOTE_PORTAL,
+                remoteBridge: REMOTE_TOKEN_BRIDGE,
+                localToken: ETH_ADDRESS,
+                remoteToken: remoteToken,
+                to: to,
+                amount: svmAmount,
+                decimals: clampedDecimals
+            });
+        } else {
+            uint8 clampedDecimals;
+            (evmAmount, clampedDecimals) = _evmAmount({svmAmount: svmAmount, decimals: ERC20(localToken).decimals()});
+
+            try CrossChainERC20(localToken).remoteToken() returns (bytes32 remoteToken_) {
+                // Case: Bridging back native SOL or SPL token to Solana
+                require(Pubkey.wrap(remoteToken_) == remoteToken, IncorrectRemoteToken());
+                CrossChainERC20(localToken).burn({from: msg.sender, amount: evmAmount});
+
+                ix = remoteToken == NATIVE_SOL_PUBKEY
+                    ? SVMTokenBridgeLib.finalizeBridgeSolIx({
+                        portal: REMOTE_PORTAL,
+                        remoteBridge: REMOTE_TOKEN_BRIDGE,
+                        localToken: localToken,
+                        to: to,
+                        amount: svmAmount
+                    })
+                    : SVMTokenBridgeLib.finalizeBridgeSplIx({
+                        portal: REMOTE_PORTAL,
+                        remoteBridge: REMOTE_TOKEN_BRIDGE,
+                        localToken: localToken,
+                        remoteToken: remoteToken,
+                        to: to,
+                        amount: svmAmount
+                    });
+            } catch {
+                // Case: Bridging native ERC20 to Solana
+                SafeTransferLib.safeTransferFrom({
+                    token: localToken,
+                    from: msg.sender,
+                    to: address(this),
+                    amount: evmAmount
+                });
+
+                deposits[localToken][remoteToken] += evmAmount;
+
+                ix = SVMTokenBridgeLib.finalizeBridgeTokenIx({
+                    portal: REMOTE_PORTAL,
+                    remoteBridge: REMOTE_TOKEN_BRIDGE,
+                    localToken: localToken,
+                    remoteToken: remoteToken,
+                    to: to,
+                    amount: svmAmount,
+                    decimals: clampedDecimals
+                });
+            }
+        }
+
+        MessagePasser(MESSENGER).sendRemoteCall(SVMLib.serializeAnchor(ix));
+
+        emit TokenBridgeInitiated({
+            localToken: localToken,
+            from: msg.sender,
+            remoteToken: remoteToken,
+            to: to,
+            amount: evmAmount,
+            extraData: extraData
+        });
     }
 
-    /// @notice Finalizes a token bridge transaction initiated from the remote chain.
+    /// @notice Finalizes a token bridge transaction initiated from Solana.
     ///
-    /// @dev This function can only be called by the remote bridge through the messenger system.
-    ///      For CrossChainERC20 tokens, it mints new tokens. For standard tokens, it withdraws
-    ///      from the deposit pool. Supports both ERC20 tokens and native ETH.
+    /// @dev This function can only be called by the remote bridge through the messenger system. For CrossChainERC20
+    ///      tokens, it mints new tokens. For standard tokens, it withdraws from the deposit pool. Supports both ERC20
+    ///      tokens and native ETH.
     ///
-    /// @param localToken  Address of the ERC20 token on this chain (use ETH_ADDRESS for native ETH).
-    /// @param remoteToken Address/public key of the corresponding token on the remote chain.
-    /// @param from        Address/public key of the original sender on the remote chain.
-    /// @param to          Address of the recipient on this chain.
-    /// @param amount      Amount of tokens to transfer to the recipient.
-    /// @param extraData   Additional data associated with the original bridge transaction.
+    /// @param localToken Address of the ERC20 token on this chain (use ETH_ADDRESS for native ETH).
+    /// @param remoteToken Pubkey of the remote token on Solana.
+    /// @param from Pubkey of the original sender on Solana.
+    /// @param to Address of the recipient on this chain.
+    /// @param svmAmount TODO
+    /// @param extraData Additional data associated with the original bridge transaction.
     function finalizeBridgeToken(
         address localToken,
-        bytes32 remoteToken,
-        bytes32 from,
+        Pubkey remoteToken,
+        Pubkey from,
         address to,
-        uint256 amount,
+        uint64 svmAmount,
         bytes calldata extraData
     ) public onlyRemoteBridge {
-        if (_isCrossChainERC20(localToken)) {
-            CrossChainERC20 localToken_ = CrossChainERC20(localToken);
+        uint256 evmAmount;
+        if (localToken == ETH_ADDRESS) {
+            // Case: Bridging back native ETH to EVM
+            uint8 clampedDecimals;
+            (evmAmount, clampedDecimals) = _evmAmount({svmAmount: svmAmount, decimals: 18});
+            deposits[localToken][remoteToken] -= evmAmount;
 
-            require(
-                _isCorrectTokenPair({localToken: localToken_, remoteToken: remoteToken}),
-                "Bridge: wrong remote token for CrossChain ERC20 local token"
-            );
-
-            localToken_.mint(to, amount);
+            SafeTransferLib.safeTransferETH({to: to, amount: evmAmount});
         } else {
-            deposits[localToken][remoteToken] = deposits[localToken][remoteToken] - amount;
-            if (localToken == ETH_ADDRESS) {
-                SafeTransferLib.safeTransferETH({to: to, amount: amount});
-            } else {
-                SafeTransferLib.safeTransfer({token: localToken, to: to, amount: amount});
+            uint8 clampedDecimals;
+            (evmAmount, clampedDecimals) = _evmAmount({svmAmount: svmAmount, decimals: ERC20(localToken).decimals()});
+
+            try CrossChainERC20(localToken).remoteToken() returns (bytes32 remoteToken_) {
+                // Case: Bridging native SOL or SPL token to EVM
+                require(Pubkey.wrap(remoteToken_) == remoteToken, IncorrectRemoteToken());
+                CrossChainERC20(localToken).mint({to: to, amount: evmAmount});
+            } catch {
+                // Case: Bridging back native ERC20 to EVM
+                deposits[localToken][remoteToken] -= evmAmount;
+
+                SafeTransferLib.safeTransfer({token: localToken, to: to, amount: evmAmount});
             }
         }
 
@@ -229,100 +272,34 @@ contract TokenBridge is Initializable {
             remoteToken: remoteToken,
             from: from,
             to: to,
-            amount: amount,
+            amount: evmAmount,
             extraData: extraData
         });
     }
 
     //////////////////////////////////////////////////////////////
-    ///                       Internal Functions               ///
+    ///                       Private Functions                ///
     //////////////////////////////////////////////////////////////
 
-    /// @notice Internal function that handles the initiation of ERC20 token bridge transactions.
+    /// @notice Converts a Solana amount to an EVM amount.
     ///
-    /// @dev This function performs the actual token handling (burn for CrossChainERC20, deposit for others),
-    ///      emits the bridge initiation event, and sends the cross-chain message to the remote bridge.
-    ///      For ETH transfers, it validates that msg.value matches the amount parameter.
+    /// @param svmAmount Amount of tokens being bridged to Solana.
+    /// @param decimals Number of decimals of the token on EVM.
     ///
-    /// @param localToken  Address of the ERC20 token on this chain.
-    /// @param remoteToken Address/public key of the corresponding token on the remote chain.
-    /// @param from        Address of the sender on this chain.
-    /// @param to          Address/public key of the intended recipient on the remote chain.
-    /// @param amount      Amount of tokens to bridge.
-    /// @param extraData   Additional data to include with the bridge transaction.
-    function _initiateBridgeERC20(
-        address localToken,
-        bytes32 remoteToken,
-        address from,
-        bytes32 to,
-        uint64 amount,
-        bytes memory extraData
-    ) internal {
-        if (_isCrossChainERC20(localToken)) {
-            require(
-                _isCorrectTokenPair(CrossChainERC20(localToken), remoteToken),
-                "StandardBridge: wrong remote token for CrossChain ERC20 local token"
-            );
-
-            CrossChainERC20(localToken).burn(from, amount);
-        } else {
-            deposits[localToken][remoteToken] = deposits[localToken][remoteToken] + amount;
-            if (localToken == ETH_ADDRESS) {
-                if (msg.value != amount) {
-                    revert InvalidMsgValue();
-                }
-            } else {
-                SafeTransferLib.safeTransferFrom({token: localToken, from: from, to: address(this), amount: amount});
-            }
-        }
-
-        emit ERC20BridgeInitiated(localToken, remoteToken, from, to, amount, extraData);
-
-        MessagePasser.Instruction[] memory messageIxs = new MessagePasser.Instruction[](1);
-        messageIxs[0] = MessagePasser.Instruction({
-            programId: remoteBridge,
-            accounts: new MessagePasser.AccountMeta[](0),
-            data: Encoder.encodeBridgePayload(
-                BridgePayload({
-                    localToken: remoteToken,
-                    remoteToken: localToken,
-                    from: from,
-                    to: to,
-                    amount: amount,
-                    extraData: extraData
-                })
-            )
-        });
-
-        CrossChainMessenger(messenger).sendMessage(messageIxs);
-    }
-
-    /// @notice Determines if a given token address implements the CrossChainERC20 interface.
-    ///
-    /// @dev Uses a static call to check if the token has a remoteToken() function that returns 32 bytes.
-    ///      This is not a perfect check but provides reasonable confidence for the intended use case.
-    ///
-    /// @param token Address of the token to check.
-    ///
-    /// @return success True if the token appears to be a CrossChainERC20 token.
-    function _isCrossChainERC20(address token) internal view returns (bool success) {
-        (bool callSuccess, bytes memory data) = token.staticcall(abi.encodeCall(CrossChainERC20.remoteToken, ()));
-        return callSuccess && data.length == 32;
-    }
-
-    /// @notice Validates that a CrossChainERC20 token is correctly paired with the specified remote token.
-    ///
-    /// @dev Checks that the CrossChainERC20's configured remote token matches the provided remote token address.
-    ///
-    /// @param localToken  The CrossChainERC20 token to validate.
-    /// @param remoteToken The expected remote token address/public key.
-    ///
-    /// @return isCorrect True if the tokens are correctly paired.
-    function _isCorrectTokenPair(CrossChainERC20 localToken, bytes32 remoteToken)
+    /// @return evmAmount Amount of tokens in the EVM chain.
+    /// @return clampedDecimals Number of decimals of the token, clamped to MAX_SOL_DECIMALS.
+    function _evmAmount(uint64 svmAmount, uint8 decimals)
         internal
-        view
-        returns (bool isCorrect)
+        pure
+        returns (uint256 evmAmount, uint8 clampedDecimals)
     {
-        return localToken.remoteToken() == remoteToken;
+        clampedDecimals = decimals;
+        evmAmount = svmAmount;
+
+        if (decimals > MAX_SOL_DECIMALS) {
+            clampedDecimals = MAX_SOL_DECIMALS;
+            uint256 scaleFactor = 10 ** (decimals - clampedDecimals);
+            evmAmount = svmAmount * scaleFactor;
+        }
     }
 }

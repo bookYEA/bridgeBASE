@@ -60,27 +60,28 @@ pub mod token_bridge {
         wrap_token_handler(ctx, remote_decimals)
     }
 
-    pub fn bridge_back_sol(
-        ctx: Context<BridgeBackSol>,
+    pub fn finalize_bridge_sol(
+        ctx: Context<FinalizeBridgeSol>,
         remote_token: [u8; 20],
         amount: u64,
     ) -> Result<()> {
-        bridge_back_sol_handler(ctx, remote_token, amount)
+        finalize_bridge_sol_handler(ctx, remote_token, amount)
     }
 
-    pub fn bridge_back_spl(
-        ctx: Context<BridgeBackSpl>,
+    pub fn finalize_bridge_spl(
+        ctx: Context<FinalizeBridgeSpl>,
         remote_token: [u8; 20],
         amount: u64,
     ) -> Result<()> {
-        bridge_back_spl_handler(ctx, remote_token, amount)
+        finalize_bridge_spl_handler(ctx, remote_token, amount)
     }
 
-    pub fn bridge_token(
-        ctx: Context<BridgeToken>,
+    pub fn finalize_bridge_token(
+        ctx: Context<FinalizeBridgeToken>,
+        _expected_mint: Pubkey, // NOTE: Only used to assert the mint PDA pubkey.
         remote_token: [u8; 20],
         amount: u64,
     ) -> Result<()> {
-        bridge_token_handler(ctx, remote_token, amount)
+        finalize_bridge_token_handler(ctx, remote_token, amount)
     }
 }

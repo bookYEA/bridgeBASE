@@ -15,7 +15,7 @@ pub struct SendCall<'info> {
     pub authority: Signer<'info>,
 
     /// CHECK: This is the hardcoded gas fee receiver account.
-    #[account(mut, address = GAS_FEE_RECEIVER)]
+    #[account(mut, address = GAS_FEE_RECEIVER @ SendCallError::IncorrectGasFeeReceiver)]
     pub gas_fee_receiver: AccountInfo<'info>,
 
     pub system_program: Program<'info, System>,
@@ -63,10 +63,10 @@ pub fn send_call<'info>(
         data,
     } = call;
 
-    require!(!is_creation || to == [0; 20], PortalError::BadTarget);
+    require!(!is_creation || to == [0; 20], SendCallError::BadTarget);
     require!(
         gas_limit >= minimum_gas_limit(&data),
-        PortalError::GasLimitTooLow
+        SendCallError::GasLimitTooLow
     );
 
     let opaque_data = {
@@ -119,7 +119,9 @@ fn gas_base_fee() -> u64 {
 }
 
 #[error_code]
-pub enum PortalError {
+pub enum SendCallError {
+    #[msg("Incorrect gas fee receiver")]
+    IncorrectGasFeeReceiver,
     #[msg("Bad target")]
     BadTarget,
     #[msg("Gas limit too low")]

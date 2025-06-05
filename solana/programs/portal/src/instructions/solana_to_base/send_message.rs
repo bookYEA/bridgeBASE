@@ -4,7 +4,7 @@ use anchor_lang::prelude::*;
 
 use crate::{
     constants::{GAS_FEE_RECEIVER, MESSENGER_SEED, REMOTE_MESSENGER_ADDRESS},
-    instructions::{send_call, Call},
+    instructions::{send_call, Call, SendCallError},
     solidity::CrossChainMessenger::{self},
     state::Messenger,
 };
@@ -23,7 +23,7 @@ pub struct SendMessage<'info> {
     pub authority: Signer<'info>,
 
     /// CHECK: This is the hardcoded gas fee receiver account.
-    #[account(mut, address = GAS_FEE_RECEIVER)]
+    #[account(mut, address = GAS_FEE_RECEIVER @ SendCallError::IncorrectGasFeeReceiver)]
     pub gas_fee_receiver: AccountInfo<'info>,
 
     pub system_program: Program<'info, System>,

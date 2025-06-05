@@ -9,7 +9,7 @@ use crate::constants::{REMOTE_BRIDGE, SOL_VAULT_SEED};
 
 #[derive(Accounts)]
 #[instruction(remote_token: [u8; 20])]
-pub struct BridgeBackSol<'info> {
+pub struct FinalizeBridgeSol<'info> {
     /// CHECK: This is the Portal authority account.
     ///        It ensures that the call is triggered by the Portal program from an expected
     ///        remote sender (REMOTE_BRIDGE here).
@@ -31,8 +31,8 @@ pub struct BridgeBackSol<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn bridge_back_sol_handler(
-    ctx: Context<BridgeBackSol>,
+pub fn finalize_bridge_sol_handler(
+    ctx: Context<FinalizeBridgeSol>,
     remote_token: [u8; 20],
     amount: u64,
 ) -> Result<()> {

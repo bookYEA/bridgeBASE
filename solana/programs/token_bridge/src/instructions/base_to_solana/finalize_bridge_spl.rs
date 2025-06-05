@@ -7,7 +7,7 @@ use crate::constants::{REMOTE_BRIDGE, TOKEN_VAULT_SEED};
 
 #[derive(Accounts)]
 #[instruction(remote_token: [u8; 20])]
-pub struct BridgeBackSpl<'info> {
+pub struct FinalizeBridgeSpl<'info> {
     /// CHECK: This is the Portal authority account.
     ///        It ensures that the call is triggered by the Portal program from an expected
     ///        remote sender (REMOTE_BRIDGE here).
@@ -34,15 +34,15 @@ pub struct BridgeBackSpl<'info> {
     pub token_program: Interface<'info, TokenInterface>,
 }
 
-pub fn bridge_back_spl_handler(
-    ctx: Context<BridgeBackSpl>,
+pub fn finalize_bridge_spl_handler(
+    ctx: Context<FinalizeBridgeSpl>,
     remote_token: [u8; 20],
     amount: u64,
 ) -> Result<()> {
     unlock_spl(&ctx, remote_token, amount)
 }
 
-fn unlock_spl(ctx: &Context<BridgeBackSpl>, remote_token: [u8; 20], amount: u64) -> Result<()> {
+fn unlock_spl(ctx: &Context<FinalizeBridgeSpl>, remote_token: [u8; 20], amount: u64) -> Result<()> {
     let mint_key = ctx.accounts.mint.key();
     let seeds: &[&[&[u8]]] = &[&[
         TOKEN_VAULT_SEED,
