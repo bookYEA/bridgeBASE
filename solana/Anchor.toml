@@ -2,8 +2,9 @@
 anchor_version = "0.31.0"
 
 [features]
-resolution = true
+resolution = false
 skip-lint = false
+# seeds = false
 
 [programs.localnet]
 bridge = "Fb7KKBmjgKJh1N3aDUxLTj6TR3exH8Xi368bJ3AcDd5T"

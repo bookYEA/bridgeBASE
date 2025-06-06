@@ -39,10 +39,6 @@ pub fn finalize_bridge_spl_handler(
     remote_token: [u8; 20],
     amount: u64,
 ) -> Result<()> {
-    unlock_spl(&ctx, remote_token, amount)
-}
-
-fn unlock_spl(ctx: &Context<FinalizeBridgeSpl>, remote_token: [u8; 20], amount: u64) -> Result<()> {
     let mint_key = ctx.accounts.mint.key();
     let seeds: &[&[&[u8]]] = &[&[
         TOKEN_VAULT_SEED,

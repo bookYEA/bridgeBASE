@@ -22,3 +22,6 @@ pub const TOKEN_VAULT_SEED: &[u8] = b"token_vault";
 
 #[constant]
 pub const WRAPPED_TOKEN_SEED: &[u8] = b"wrapped_token";
+
+#[constant]
+pub const REMOTE_TOKEN_METADATA_KEY: &str = "remote_token";

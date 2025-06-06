@@ -10,6 +10,7 @@ use solana_signer::Signer;
 use portal::{internal::Ix, ID as PORTAL_PROGRAM_ID};
 use solana_transaction::Transaction;
 use token_bridge::constants::REMOTE_BRIDGE;
+use token_bridge::instructions::PartialTokenMetadata;
 use token_bridge::ID as TOKEN_BRIDGE_PROGRAM_ID;
 
 use crate::base_to_solana::mock_remote_call;
@@ -29,7 +30,11 @@ fn test_finalize_bridge_token_success() {
         .unwrap();
 
     // Test parameters
-    let remote_token = [0x42u8; 20]; // Sample remote token address
+    let partial_token_metadata = PartialTokenMetadata {
+        remote_token: [0x42u8; 20],
+        name: "Sample Token".to_string(),
+        symbol: "STK".to_string(),
+    };
     let decimals = 6u8; // USDC-like decimals
     let mint_amount = 1000 * 10_u64.pow(decimals as u32); // 1000 tokens to mint
 
@@ -42,7 +47,7 @@ fn test_finalize_bridge_token_success() {
     let recipient_pk = recipient.pubkey();
 
     // Create wrapped mint for the remote token
-    let wrapped_mint = mock_wrapped_mint(&mut svm, remote_token, decimals);
+    let wrapped_mint = mock_wrapped_mint(&mut svm, decimals, partial_token_metadata);
 
     // Create destination token account (starts with 0 tokens)
     let to_token_account = Keypair::new().pubkey();
@@ -67,8 +72,6 @@ fn test_finalize_bridge_token_success() {
         program_id: TOKEN_BRIDGE_PROGRAM_ID,
         accounts: finalize_bridge_token_accounts.clone(),
         data: token_bridge::instruction::FinalizeBridgeToken {
-            _expected_mint: wrapped_mint,
-            remote_token,
             amount: mint_amount,
         }
         .data(),

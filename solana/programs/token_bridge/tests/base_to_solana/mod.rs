@@ -1,10 +1,20 @@
 pub mod finalize_bridge_sol;
 pub mod finalize_bridge_spl;
 pub mod finalize_bridge_token;
+pub mod wrap_token;
 
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::program_option::COption;
-use anchor_spl::token::spl_token::state::{Account as TokenAccount, AccountState, Mint};
+use anchor_spl::{
+    token_2022::spl_token_2022::{
+        extension::{
+            metadata_pointer::MetadataPointer, BaseStateWithExtensionsMut, ExtensionType,
+            StateWithExtensionsMut,
+        },
+        state::{Account as TokenAccount, AccountState, Mint},
+    },
+    token_interface::spl_token_metadata_interface::state::TokenMetadata,
+};
 use litesvm::LiteSVM;
 use portal::{constants::PORTAL_AUTHORITY_SEED, state::RemoteCall};
 use solana_account::Account;
@@ -15,10 +25,11 @@ use solana_signer::Signer;
 use portal::ID as PORTAL_PROGRAM_ID;
 use token_bridge::{
     constants::{REMOTE_BRIDGE, SOL_VAULT_SEED, TOKEN_VAULT_SEED, WRAPPED_TOKEN_SEED},
+    instructions::PartialTokenMetadata,
     ID as TOKEN_BRIDGE_PROGRAM_ID,
 };
 
-pub const SPL_TOKEN_PROGRAM_ID: Pubkey = anchor_spl::token::ID;
+pub const SPL_TOKEN_PROGRAM_ID: Pubkey = anchor_spl::token_2022::ID;
 
 fn portal_authority() -> Pubkey {
     let (portal_authority, _) = Pubkey::find_program_address(
@@ -77,22 +88,75 @@ fn mock_sol_vault(svm: &mut LiteSVM, remote_token: [u8; 20], lamports: u64) -> P
     sol_vault
 }
 
-fn mock_wrapped_mint(svm: &mut LiteSVM, remote_token: [u8; 20], decimals: u8) -> Pubkey {
+fn mock_wrapped_mint(
+    svm: &mut LiteSVM,
+    decimals: u8,
+    partial_token_metadata: PartialTokenMetadata,
+) -> Pubkey {
     let (wrapped_mint, _) = Pubkey::find_program_address(
         &[
             WRAPPED_TOKEN_SEED,
-            remote_token.as_ref(),
             decimals.to_le_bytes().as_ref(),
+            partial_token_metadata.hash().as_ref(),
         ],
         &TOKEN_BRIDGE_PROGRAM_ID,
     );
 
-    mock_mint(svm, wrapped_mint, decimals);
+    let token_metadata = TokenMetadata::from(&partial_token_metadata);
+
+    let mut account_size =
+        ExtensionType::try_calculate_account_len::<Mint>(&[ExtensionType::MetadataPointer])
+            .unwrap();
+
+    account_size += token_metadata.tlv_size_of().unwrap();
+
+    // Full buffer for the mint account
+    let mut mint_data = vec![0u8; account_size];
+
+    let mut mint_with_extension =
+        StateWithExtensionsMut::<Mint>::unpack_uninitialized(&mut mint_data[..]).unwrap();
+
+    // Initialize the metadata pointer extension
+    let metadata_pointer = mint_with_extension
+        .init_extension::<MetadataPointer>(false)
+        .unwrap();
+
+    metadata_pointer.authority = Some(wrapped_mint).try_into().unwrap();
+    metadata_pointer.metadata_address = Some(wrapped_mint).try_into().unwrap();
+
+    // Initialize the token metadata extension
+    mint_with_extension
+        .init_variable_len_extension(&token_metadata, false)
+        .unwrap();
+
+    // Initialize the mint account
+    mint_with_extension.base = Mint {
+        mint_authority: COption::Some(wrapped_mint),
+        supply: 1_000_000 * 10_u64.pow(decimals as u32),
+        decimals,
+        is_initialized: true,
+        freeze_authority: COption::None,
+    };
+    mint_with_extension.pack_base();
+    mint_with_extension.init_account_type().unwrap();
+
+    svm.set_account(
+        wrapped_mint,
+        Account {
+            lamports: 0,
+            data: mint_data,
+            owner: SPL_TOKEN_PROGRAM_ID,
+            executable: false,
+            rent_epoch: 0,
+        },
+    )
+    .unwrap();
+
     wrapped_mint
 }
 
 fn mock_mint(svm: &mut LiteSVM, mint: Pubkey, decimals: u8) {
-    let mut mint_data = vec![0u8; 82]; // Mint account size
+    let mut mint_data = vec![0u8; Mint::LEN];
     Mint {
         mint_authority: COption::Some(mint),
         supply: 1_000_000 * 10_u64.pow(decimals as u32),

@@ -54,10 +54,10 @@ pub mod token_bridge {
 
     pub fn wrap_token(
         ctx: Context<WrapToken>,
-        _remote_token: [u8; 20], // NOTE: Only used to compute the PDA seed of the Mint.
-        remote_decimals: u8,     // NOTE: Only used to compute the PDA seed of the Mint.
+        decimals: u8,
+        partial_token_metadata: PartialTokenMetadata,
     ) -> Result<()> {
-        wrap_token_handler(ctx, remote_decimals)
+        wrap_token_handler(ctx, decimals, partial_token_metadata)
     }
 
     pub fn finalize_bridge_sol(
@@ -76,12 +76,7 @@ pub mod token_bridge {
         finalize_bridge_spl_handler(ctx, remote_token, amount)
     }
 
-    pub fn finalize_bridge_token(
-        ctx: Context<FinalizeBridgeToken>,
-        _expected_mint: Pubkey, // NOTE: Only used to assert the mint PDA pubkey.
-        remote_token: [u8; 20],
-        amount: u64,
-    ) -> Result<()> {
-        finalize_bridge_token_handler(ctx, remote_token, amount)
+    pub fn finalize_bridge_token(ctx: Context<FinalizeBridgeToken>, amount: u64) -> Result<()> {
+        finalize_bridge_token_handler(ctx, amount)
     }
 }
