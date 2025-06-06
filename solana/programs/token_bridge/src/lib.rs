@@ -40,14 +40,12 @@ pub mod token_bridge {
 
     pub fn bridge_back_token(
         ctx: Context<BridgeBackToken>,
-        remote_token: [u8; 20],
-        _remote_decimals: u8, // NOTE: Only used to compute the PDA seed of the Mint.
         to: [u8; 20],
         amount: u64,
         min_gas_limit: u64,
         extra_data: Vec<u8>,
     ) -> Result<()> {
-        bridge_back_token_handler(ctx, remote_token, to, amount, min_gas_limit, extra_data)
+        bridge_back_token_handler(ctx, to, amount, min_gas_limit, extra_data)
     }
 
     // Base to Solana

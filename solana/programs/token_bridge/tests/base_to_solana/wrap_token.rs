@@ -1,7 +1,9 @@
 use anchor_lang::{prelude::*, solana_program::native_token::LAMPORTS_PER_SOL, InstructionData};
 use anchor_spl::{
     token_2022::spl_token_2022::{
-        extension::{BaseStateWithExtensions, StateWithExtensions},
+        extension::{
+            metadata_pointer::MetadataPointer, BaseStateWithExtensions, StateWithExtensions,
+        },
         state::Mint,
     },
     token_interface::spl_token_metadata_interface::state::TokenMetadata,
@@ -94,6 +96,16 @@ fn test_wrap_token_success() {
     assert_eq!(mint.freeze_authority, Some(expected_mint).into());
     assert!(mint.is_initialized);
     assert_eq!(mint.supply, 0);
+
+    // Verify metadata pointer extension
+    let metadata_pointer = mint_with_extension
+        .get_extension::<MetadataPointer>()
+        .unwrap();
+    assert_eq!(metadata_pointer.authority, None.try_into().unwrap());
+    assert_eq!(
+        metadata_pointer.metadata_address,
+        Some(expected_mint).try_into().unwrap()
+    );
 
     // Verify token metadata
     let token_metadata = mint_with_extension

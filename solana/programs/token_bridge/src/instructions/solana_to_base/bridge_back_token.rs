@@ -1,12 +1,13 @@
 use alloy_primitives::{FixedBytes, U256};
 use alloy_sol_types::SolCall;
 use anchor_lang::prelude::*;
-use anchor_spl::{token_interface::{self, BurnChecked, Mint, TokenAccount, TokenInterface}};
+use anchor_spl::token_interface::{self, BurnChecked, Mint, Token2022, TokenAccount};
 
 use portal::{cpi as portal_cpi, program::Portal};
 
 use crate::{
     constants::{BRIDGE_AUTHORITY_SEED, WRAPPED_TOKEN_SEED},
+    instructions::PartialTokenMetadata,
     internal::cpi_send_message,
     solidity::Bridge,
 };
@@ -25,28 +26,28 @@ pub struct BridgeBackToken<'info> {
 
     #[account(
         mut,
-        seeds = [
-            WRAPPED_TOKEN_SEED, 
-            remote_token.as_ref(),
-            remote_decimals.to_le_bytes().as_ref()
-        ],
-        bump
+        // NOTE: We check that the PDA derivation is correct in the handler to optimize the CPI.
+        // seeds = [
+        //     WRAPPED_TOKEN_SEED,
+        //     mint.decimals.to_le_bytes().as_ref(),
+        //     PartialTokenMetadata::try_from(&mint.to_account_info())?.hash().as_ref()
+        // ],
+        // bump,
     )]
     pub mint: InterfaceAccount<'info, Mint>,
 
     #[account(mut)]
     pub from_token_account: InterfaceAccount<'info, TokenAccount>,
 
-    pub token_program: Interface<'info, TokenInterface>,
-    
+    pub token_program: Program<'info, Token2022>,
+
     pub portal: Program<'info, Portal>,
 
     // Portal accounts
     // TODO: use composite accounts once figured out how to make them compile.
-
     /// CHECK: Going to be checked in the cpi.
     pub gas_fee_receiver: AccountInfo<'info>,
-    
+
     /// CHECK: Going to be checked in the cpi.
     pub messenger: AccountInfo<'info>,
 
@@ -55,12 +56,29 @@ pub struct BridgeBackToken<'info> {
 
 pub fn bridge_back_token_handler(
     ctx: Context<BridgeBackToken>,
-    remote_token: [u8; 20],
     to: [u8; 20],
     amount: u64,
     min_gas_limit: u64,
     extra_data: Vec<u8>,
 ) -> Result<()> {
+    let partial_token_metadata =
+        PartialTokenMetadata::try_from(&ctx.accounts.mint.to_account_info())?;
+
+    let decimals_bytes = ctx.accounts.mint.decimals.to_le_bytes();
+    let metadata_hash = partial_token_metadata.hash();
+    let seeds: &[&[u8]] = &[
+        WRAPPED_TOKEN_SEED,
+        decimals_bytes.as_ref(),
+        metadata_hash.as_ref(),
+    ];
+
+    let (expected_mint, _) = Pubkey::find_program_address(seeds, ctx.program_id);
+    require_keys_eq!(
+        ctx.accounts.mint.to_account_info().key(),
+        expected_mint,
+        BridgeBackTokenError::IncorrectMintAccount
+    );
+
     burn(&ctx, amount)?;
 
     cpi_send_message(
@@ -74,7 +92,7 @@ pub fn bridge_back_token_handler(
         },
         ctx.bumps.bridge_authority,
         Bridge::finalizeBridgeTokenCall {
-            localToken: remote_token.into(), // NOTE: Intentional flip the token so that when executing on Base it's correct.
+            localToken: partial_token_metadata.remote_token.into(), // NOTE: Intentional flip the token so that when executing on Base it's correct.
             remoteToken: FixedBytes::from(ctx.accounts.mint.key().to_bytes()), // NOTE: Intentional flip the token so that when executing on Base it's correct.
             from: FixedBytes::from(ctx.accounts.from.key().to_bytes()),
             to: to.into(),
@@ -96,4 +114,10 @@ fn burn(ctx: &Context<BridgeBackToken>, amount: u64) -> Result<()> {
         },
     );
     token_interface::burn_checked(cpi_ctx, amount, ctx.accounts.mint.decimals)
+}
+
+#[error_code]
+pub enum BridgeBackTokenError {
+    #[msg("Incorrect mint account")]
+    IncorrectMintAccount,
 }
