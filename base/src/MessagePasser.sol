@@ -6,6 +6,10 @@ pragma solidity 0.8.28;
 /// @notice The MessagePasser is a dedicated contract for initiating withdrawals to Solana. Messages sent through this
 ///         contract contain Solana instructions that will be executed on the Solana network.
 contract MessagePasser {
+    //////////////////////////////////////////////////////////////
+    ///                       Structs                          ///
+    //////////////////////////////////////////////////////////////
+
     /// @notice Struct representing a remote call to a Solana program.
     ///
     /// @custom:field nonce Unique identifier for this remote call.

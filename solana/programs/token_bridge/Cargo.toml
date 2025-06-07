@@ -44,3 +44,4 @@ solana-transaction = "2.2.1"
 solana-program-pack = "2.2.1"
 
 hex = "0.4.3"
+hex-literal = "0.4.1"

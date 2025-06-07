@@ -76,7 +76,7 @@ library SVMLib {
     /// @param isSigner Whether the account should be a signer
     /// @return IxAccount with the specified parameters
     function createPubkeyAccount(Pubkey pubkey, bool isWritable, bool isSigner)
-        external
+        internal
         pure
         returns (IxAccount memory)
     {
@@ -94,12 +94,11 @@ library SVMLib {
     /// @param isSigner Whether the account should be a signer
     /// @return IxAccount with the specified PDA parameters
     function createPdaAccount(Pda memory pda, bool isWritable, bool isSigner)
-        external
+        internal
         pure
         returns (IxAccount memory)
     {
-        bytes memory data;
-        data = abi.encodePacked(data, _getLeLength(pda.seeds.length));
+        bytes memory data = abi.encodePacked(_getLeLength(pda.seeds.length));
         for (uint256 i; i < pda.seeds.length; i++) {
             data = abi.encodePacked(data, _serializeBytes(pda.seeds[i]));
         }
@@ -113,11 +112,26 @@ library SVMLib {
         });
     }
 
-    /// @notice Serializes a complete Solana instruction to Borsh-compatible bytes.
+    /// @notice Serializes a list of Solana instructions to Borsh-compatible bytes.
+    ///
+    /// @param ixs The list of instructions to serialize
+    ///
+    /// @return Serialized instruction bytes ready for Solana deserialization
+    function serializeAnchorIxs(Ix[] memory ixs) internal pure returns (bytes memory) {
+        bytes memory result = abi.encodePacked(_getLeLength(ixs.length));
+        for (uint256 i; i < ixs.length; i++) {
+            result = abi.encodePacked(result, serializeAnchorIx(ixs[i]));
+        }
+
+        return result;
+    }
+
+    /// @notice Serializes a Solana instruction to Borsh-compatible bytes.
     ///
     /// @param ix The instruction to serialize
+    ///
     /// @return Serialized instruction bytes ready for Solana deserialization
-    function serializeAnchor(Ix memory ix) external pure returns (bytes memory) {
+    function serializeAnchorIx(Ix memory ix) internal pure returns (bytes memory) {
         bytes memory result = abi.encodePacked(ix.programId);
 
         // Serialize accounts array
@@ -131,10 +145,15 @@ library SVMLib {
         }
 
         // Serialize instruction data
-        result = abi.encodePacked(result, sha256(abi.encodePacked("gobal:", ix.name)));
-        result = abi.encodePacked(result, ix.data);
+        bytes32 ixDiscriminator = sha256(abi.encodePacked("global:", ix.name));
+        bytes memory ixData = abi.encodePacked(bytes8(ixDiscriminator), ix.data);
+        result = abi.encodePacked(result, _serializeBytes(ixData));
 
         return result;
+    }
+
+    function toLittleEndian(uint256 value) internal pure returns (uint64) {
+        return uint64(value.reverseBytes() >> 192);
     }
 
     //////////////////////////////////////////////////////////////

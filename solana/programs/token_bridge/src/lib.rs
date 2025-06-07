@@ -74,7 +74,11 @@ pub mod token_bridge {
         finalize_bridge_spl_handler(ctx, remote_token, amount)
     }
 
-    pub fn finalize_bridge_token(ctx: Context<FinalizeBridgeToken>, amount: u64) -> Result<()> {
-        finalize_bridge_token_handler(ctx, amount)
+    pub fn finalize_bridge_token(
+        ctx: Context<FinalizeBridgeToken>,
+        remote_token: [u8; 20],
+        amount: u64,
+    ) -> Result<()> {
+        finalize_bridge_token_handler(ctx, remote_token, amount)
     }
 }

@@ -3,8 +3,8 @@ pub mod finalize_bridge_spl;
 pub mod finalize_bridge_token;
 pub mod wrap_token;
 
-use anchor_lang::prelude::*;
 use anchor_lang::solana_program::program_option::COption;
+use anchor_lang::{prelude::*, solana_program::native_token::LAMPORTS_PER_SOL};
 use anchor_spl::{
     token_2022::spl_token_2022::{
         extension::{
@@ -91,7 +91,7 @@ fn mock_sol_vault(svm: &mut LiteSVM, remote_token: [u8; 20], lamports: u64) -> P
 fn mock_wrapped_mint(
     svm: &mut LiteSVM,
     decimals: u8,
-    partial_token_metadata: PartialTokenMetadata,
+    partial_token_metadata: &PartialTokenMetadata,
 ) -> Pubkey {
     let (wrapped_mint, _) = Pubkey::find_program_address(
         &[
@@ -102,7 +102,7 @@ fn mock_wrapped_mint(
         &TOKEN_BRIDGE_PROGRAM_ID,
     );
 
-    let token_metadata = TokenMetadata::from(&partial_token_metadata);
+    let token_metadata = TokenMetadata::from(partial_token_metadata);
 
     let mut account_size =
         ExtensionType::try_calculate_account_len::<Mint>(&[ExtensionType::MetadataPointer])
@@ -132,7 +132,7 @@ fn mock_wrapped_mint(
     // Initialize the mint account
     mint_with_extension.base = Mint {
         mint_authority: COption::Some(wrapped_mint),
-        supply: 1_000_000 * 10_u64.pow(decimals as u32),
+        supply: 0,
         decimals,
         is_initialized: true,
         freeze_authority: COption::None,
@@ -143,7 +143,7 @@ fn mock_wrapped_mint(
     svm.set_account(
         wrapped_mint,
         Account {
-            lamports: 0,
+            lamports: 100 * LAMPORTS_PER_SOL,
             data: mint_data,
             owner: SPL_TOKEN_PROGRAM_ID,
             executable: false,
@@ -159,7 +159,7 @@ fn mock_mint(svm: &mut LiteSVM, mint: Pubkey, decimals: u8) {
     let mut mint_data = vec![0u8; Mint::LEN];
     Mint {
         mint_authority: COption::Some(mint),
-        supply: 1_000_000 * 10_u64.pow(decimals as u32),
+        supply: 0,
         decimals,
         is_initialized: true,
         freeze_authority: COption::None,
@@ -169,7 +169,7 @@ fn mock_mint(svm: &mut LiteSVM, mint: Pubkey, decimals: u8) {
     svm.set_account(
         mint,
         Account {
-            lamports: 0,
+            lamports: 100 * LAMPORTS_PER_SOL,
             data: mint_data,
             owner: SPL_TOKEN_PROGRAM_ID,
             executable: false,
@@ -218,7 +218,7 @@ fn mock_token_account(
     svm.set_account(
         token_account,
         Account {
-            lamports: 0,
+            lamports: 100 * LAMPORTS_PER_SOL,
             data: token_account_data,
             owner: SPL_TOKEN_PROGRAM_ID,
             executable: false,

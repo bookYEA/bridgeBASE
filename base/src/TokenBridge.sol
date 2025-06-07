@@ -36,7 +36,12 @@ contract TokenBridge {
     /// @param amount Amount of tokens being bridged (expressed in EVM units).
     /// @param extraData Additional data sent with the transaction for identification purposes.
     event TokenBridgeInitiated(
-        address indexed localToken, address indexed from, Pubkey remoteToken, Pubkey to, uint256 amount, bytes extraData
+        address indexed localToken,
+        Pubkey indexed remoteToken,
+        address indexed from,
+        Pubkey to,
+        uint256 amount,
+        bytes extraData
     );
 
     /// @notice Emitted when a token bridge transaction is finalized on this chain.
@@ -81,9 +86,6 @@ contract TokenBridge {
     /// @notice Address of the MessagePasser contract on this chain.
     address public immutable MESSAGE_PASSER;
 
-    /// @notice Pubkey of the portal on Solana.
-    Pubkey public immutable REMOTE_PORTAL;
-
     /// @notice Pubkey of the token bridge contract on Solana.
     Pubkey public immutable REMOTE_TOKEN_BRIDGE;
 
@@ -121,51 +123,53 @@ contract TokenBridge {
     ///                       Public Functions                 ///
     //////////////////////////////////////////////////////////////
 
-    /// @notice Constructs the Bridge contract in an uninitialized state.
+    /// @notice Constructs the Bridge contract.
     ///
-    /// @dev The constructor disables initializers to prevent the implementation contract from being initialized.
-    ///      The actual initialization should be done through the initialize function after deployment.
-    constructor(address messenger, address messagePasser, Pubkey remotePortal, Pubkey remoteTokenBridge) {
+    /// @param messenger Address of the Messenger contract on this chain.
+    /// @param messagePasser Address of the MessagePasser contract on this chain.
+    /// @param remoteTokenBridge Pubkey of the token bridge contract on Solana.
+    constructor(address messenger, address messagePasser, Pubkey remoteTokenBridge) {
         MESSENGER = messenger;
         MESSAGE_PASSER = messagePasser;
-        REMOTE_PORTAL = remotePortal;
         REMOTE_TOKEN_BRIDGE = remoteTokenBridge;
     }
 
     /// @notice Bridges a token to Solana.
     ///
-    /// @param localToken Address of the ERC20 token on this chain (use ETH_ADDRESS for native ETH).
+    /// @param localToken Address of the ERC20 token on this chain.
     /// @param remoteToken Pubkey of the remote token on Solana.
     /// @param to Pubkey of the intended recipient on Solana.
-    /// @param svmAmount Amount of tokens being bridged (expressed in SVM units).
+    /// @param remoteAmount Amount of tokens being bridged (expressed in Solana units).
     /// @param extraData Additional data sent with the transaction for identification purposes.
-    function bridgeToken(address localToken, Pubkey remoteToken, Pubkey to, uint64 svmAmount, bytes calldata extraData)
-        external
-        payable
-    {
+    function bridgeToken(
+        address localToken,
+        Pubkey remoteToken,
+        Pubkey to,
+        uint64 remoteAmount,
+        bytes calldata extraData
+    ) external payable {
         uint256 evmAmount;
         Ix memory ix;
 
         if (localToken == ETH_ADDRESS) {
             // Case: Bridging native ETH to Solana
-            uint8 clampedDecimals;
-            (evmAmount, clampedDecimals) = _evmAmount({svmAmount: svmAmount, decimals: 18});
+            uint8 remoteDecimals;
+            (evmAmount, remoteDecimals) = _localAmount({remoteAmount: remoteAmount, localDecimals: 18});
             require(msg.value == evmAmount, InvalidMsgValue());
 
             deposits[localToken][remoteToken] += evmAmount;
 
             ix = SVMTokenBridgeLib.finalizeBridgeTokenIx({
-                portal: REMOTE_PORTAL,
                 remoteBridge: REMOTE_TOKEN_BRIDGE,
-                localToken: ETH_ADDRESS,
+                localToken: localToken,
                 remoteToken: remoteToken,
                 to: to,
-                amount: svmAmount,
-                decimals: clampedDecimals
+                remoteAmount: remoteAmount
             });
         } else {
-            uint8 clampedDecimals;
-            (evmAmount, clampedDecimals) = _evmAmount({svmAmount: svmAmount, decimals: ERC20(localToken).decimals()});
+            uint8 remoteDecimals;
+            (evmAmount, remoteDecimals) =
+                _localAmount({remoteAmount: remoteAmount, localDecimals: ERC20(localToken).decimals()});
 
             try CrossChainERC20(localToken).remoteToken() returns (bytes32 remoteToken_) {
                 // Case: Bridging back native SOL or SPL token to Solana
@@ -174,19 +178,17 @@ contract TokenBridge {
 
                 ix = remoteToken == NATIVE_SOL_PUBKEY
                     ? SVMTokenBridgeLib.finalizeBridgeSolIx({
-                        portal: REMOTE_PORTAL,
                         remoteBridge: REMOTE_TOKEN_BRIDGE,
                         localToken: localToken,
                         to: to,
-                        amount: svmAmount
+                        remoteAmount: remoteAmount
                     })
                     : SVMTokenBridgeLib.finalizeBridgeSplIx({
-                        portal: REMOTE_PORTAL,
                         remoteBridge: REMOTE_TOKEN_BRIDGE,
                         localToken: localToken,
                         remoteToken: remoteToken,
                         to: to,
-                        amount: svmAmount
+                        remoteAmount: remoteAmount
                     });
             } catch {
                 // Case: Bridging native ERC20 to Solana
@@ -200,23 +202,23 @@ contract TokenBridge {
                 deposits[localToken][remoteToken] += evmAmount;
 
                 ix = SVMTokenBridgeLib.finalizeBridgeTokenIx({
-                    portal: REMOTE_PORTAL,
                     remoteBridge: REMOTE_TOKEN_BRIDGE,
                     localToken: localToken,
                     remoteToken: remoteToken,
                     to: to,
-                    amount: svmAmount,
-                    decimals: clampedDecimals
+                    remoteAmount: remoteAmount
                 });
             }
         }
 
-        MessagePasser(MESSENGER).sendRemoteCall(SVMLib.serializeAnchor(ix));
+        Ix[] memory ixs = new Ix[](1);
+        ixs[0] = ix;
+        MessagePasser(MESSENGER).sendRemoteCall(SVMLib.serializeAnchorIxs(ixs));
 
         emit TokenBridgeInitiated({
             localToken: localToken,
-            from: msg.sender,
             remoteToken: remoteToken,
+            from: msg.sender,
             to: to,
             amount: evmAmount,
             extraData: extraData
@@ -226,34 +228,35 @@ contract TokenBridge {
     /// @notice Finalizes a token bridge transaction initiated from Solana.
     ///
     /// @dev This function can only be called by the remote bridge through the messenger system. For CrossChainERC20
-    ///      tokens, it mints new tokens. For standard tokens, it withdraws from the deposit pool. Supports both ERC20
-    ///      tokens and native ETH.
+    ///      tokens, it mints new tokens. For standard tokens, it withdraws from the deposit pool. Supports both
+    ///      ERC20 tokens and native ETH.
     ///
     /// @param localToken Address of the ERC20 token on this chain (use ETH_ADDRESS for native ETH).
     /// @param remoteToken Pubkey of the remote token on Solana.
     /// @param from Pubkey of the original sender on Solana.
     /// @param to Address of the recipient on this chain.
-    /// @param svmAmount TODO
+    /// @param remoteAmount Amount of tokens being bridged from Solana (expressed in Solana units).
     /// @param extraData Additional data associated with the original bridge transaction.
     function finalizeBridgeToken(
         address localToken,
         Pubkey remoteToken,
         Pubkey from,
         address to,
-        uint64 svmAmount,
+        uint64 remoteAmount,
         bytes calldata extraData
     ) public onlyRemoteBridge {
         uint256 evmAmount;
         if (localToken == ETH_ADDRESS) {
             // Case: Bridging back native ETH to EVM
-            uint8 clampedDecimals;
-            (evmAmount, clampedDecimals) = _evmAmount({svmAmount: svmAmount, decimals: 18});
+            uint8 remoteDecimals;
+            (evmAmount, remoteDecimals) = _localAmount({remoteAmount: remoteAmount, localDecimals: 18});
             deposits[localToken][remoteToken] -= evmAmount;
 
             SafeTransferLib.safeTransferETH({to: to, amount: evmAmount});
         } else {
-            uint8 clampedDecimals;
-            (evmAmount, clampedDecimals) = _evmAmount({svmAmount: svmAmount, decimals: ERC20(localToken).decimals()});
+            uint8 remoteDecimals;
+            (evmAmount, remoteDecimals) =
+                _localAmount({remoteAmount: remoteAmount, localDecimals: ERC20(localToken).decimals()});
 
             try CrossChainERC20(localToken).remoteToken() returns (bytes32 remoteToken_) {
                 // Case: Bridging native SOL or SPL token to EVM
@@ -262,7 +265,6 @@ contract TokenBridge {
             } catch {
                 // Case: Bridging back native ERC20 to EVM
                 deposits[localToken][remoteToken] -= evmAmount;
-
                 SafeTransferLib.safeTransfer({token: localToken, to: to, amount: evmAmount});
             }
         }
@@ -281,25 +283,25 @@ contract TokenBridge {
     ///                       Private Functions                ///
     //////////////////////////////////////////////////////////////
 
-    /// @notice Converts a Solana amount to an EVM amount.
+    /// @notice Converts a remote amount to a local amount.
     ///
-    /// @param svmAmount Amount of tokens being bridged to Solana.
-    /// @param decimals Number of decimals of the token on EVM.
+    /// @param remoteAmount Amount of tokens being bridged to/from Solana.
+    /// @param localDecimals Number of decimals on this chain.
     ///
-    /// @return evmAmount Amount of tokens in the EVM chain.
-    /// @return clampedDecimals Number of decimals of the token, clamped to MAX_SOL_DECIMALS.
-    function _evmAmount(uint64 svmAmount, uint8 decimals)
+    /// @return localAmount Amount of tokens in the EVM chain.
+    /// @return remoteDecimals Number of decimals to be used on Solana.
+    function _localAmount(uint64 remoteAmount, uint8 localDecimals)
         internal
         pure
-        returns (uint256 evmAmount, uint8 clampedDecimals)
+        returns (uint256 localAmount, uint8 remoteDecimals)
     {
-        clampedDecimals = decimals;
-        evmAmount = svmAmount;
+        remoteDecimals = localDecimals;
+        localAmount = remoteAmount;
 
-        if (decimals > MAX_SOL_DECIMALS) {
-            clampedDecimals = MAX_SOL_DECIMALS;
-            uint256 scaleFactor = 10 ** (decimals - clampedDecimals);
-            evmAmount = svmAmount * scaleFactor;
+        if (localDecimals > MAX_SOL_DECIMALS) {
+            remoteDecimals = MAX_SOL_DECIMALS;
+            uint256 scaleFactor = 10 ** (localDecimals - remoteDecimals);
+            localAmount = remoteAmount * scaleFactor;
         }
     }
 }

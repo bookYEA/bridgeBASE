@@ -2,8 +2,8 @@ use anchor_lang::prelude::*;
 use anchor_lang::solana_program::keccak;
 use anchor_spl::{
     token_2022::spl_token_2022::{
-        extension::{BaseStateWithExtensions, StateWithExtensions},
-        state::Mint,
+        extension::{BaseStateWithExtensions, PodStateWithExtensions},
+        pod::PodMint,
     },
     token_interface::spl_token_metadata_interface::state::TokenMetadata,
 };
@@ -89,7 +89,7 @@ impl PartialTokenMetadata {
 
 pub fn mint_info_to_token_metadata(mint: &AccountInfo<'_>) -> Result<TokenMetadata> {
     let mint_data = mint.data.borrow();
-    let mint_with_extension = StateWithExtensions::<Mint>::unpack(&mint_data)?;
+    let mint_with_extension = PodStateWithExtensions::<PodMint>::unpack(&mint_data)?;
     let token_metadata = mint_with_extension.get_variable_len_extension::<TokenMetadata>()?;
     Ok(token_metadata)
 }
