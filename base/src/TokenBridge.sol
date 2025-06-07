@@ -148,16 +148,16 @@ contract TokenBridge {
         uint64 remoteAmount,
         bytes calldata extraData
     ) external payable {
-        uint256 evmAmount;
+        uint256 localAmount;
         Ix memory ix;
 
         if (localToken == ETH_ADDRESS) {
             // Case: Bridging native ETH to Solana
             uint8 remoteDecimals;
-            (evmAmount, remoteDecimals) = _localAmount({remoteAmount: remoteAmount, localDecimals: 18});
-            require(msg.value == evmAmount, InvalidMsgValue());
+            (localAmount, remoteDecimals) = _localAmount({remoteAmount: remoteAmount, localDecimals: 18});
+            require(msg.value == localAmount, InvalidMsgValue());
 
-            deposits[localToken][remoteToken] += evmAmount;
+            deposits[localToken][remoteToken] += localAmount;
 
             ix = SVMTokenBridgeLib.finalizeBridgeTokenIx({
                 remoteBridge: REMOTE_TOKEN_BRIDGE,
@@ -168,13 +168,13 @@ contract TokenBridge {
             });
         } else {
             uint8 remoteDecimals;
-            (evmAmount, remoteDecimals) =
+            (localAmount, remoteDecimals) =
                 _localAmount({remoteAmount: remoteAmount, localDecimals: ERC20(localToken).decimals()});
 
             try CrossChainERC20(localToken).remoteToken() returns (bytes32 remoteToken_) {
                 // Case: Bridging back native SOL or SPL token to Solana
                 require(Pubkey.wrap(remoteToken_) == remoteToken, IncorrectRemoteToken());
-                CrossChainERC20(localToken).burn({from: msg.sender, amount: evmAmount});
+                CrossChainERC20(localToken).burn({from: msg.sender, amount: localAmount});
 
                 ix = remoteToken == NATIVE_SOL_PUBKEY
                     ? SVMTokenBridgeLib.finalizeBridgeSolIx({
@@ -196,10 +196,10 @@ contract TokenBridge {
                     token: localToken,
                     from: msg.sender,
                     to: address(this),
-                    amount: evmAmount
+                    amount: localAmount
                 });
 
-                deposits[localToken][remoteToken] += evmAmount;
+                deposits[localToken][remoteToken] += localAmount;
 
                 ix = SVMTokenBridgeLib.finalizeBridgeTokenIx({
                     remoteBridge: REMOTE_TOKEN_BRIDGE,
@@ -220,7 +220,7 @@ contract TokenBridge {
             remoteToken: remoteToken,
             from: msg.sender,
             to: to,
-            amount: evmAmount,
+            amount: localAmount,
             extraData: extraData
         });
     }
@@ -245,27 +245,27 @@ contract TokenBridge {
         uint64 remoteAmount,
         bytes calldata extraData
     ) public onlyRemoteBridge {
-        uint256 evmAmount;
+        uint256 localAmount;
         if (localToken == ETH_ADDRESS) {
             // Case: Bridging back native ETH to EVM
             uint8 remoteDecimals;
-            (evmAmount, remoteDecimals) = _localAmount({remoteAmount: remoteAmount, localDecimals: 18});
-            deposits[localToken][remoteToken] -= evmAmount;
+            (localAmount, remoteDecimals) = _localAmount({remoteAmount: remoteAmount, localDecimals: 18});
+            deposits[localToken][remoteToken] -= localAmount;
 
-            SafeTransferLib.safeTransferETH({to: to, amount: evmAmount});
+            SafeTransferLib.safeTransferETH({to: to, amount: localAmount});
         } else {
             uint8 remoteDecimals;
-            (evmAmount, remoteDecimals) =
+            (localAmount, remoteDecimals) =
                 _localAmount({remoteAmount: remoteAmount, localDecimals: ERC20(localToken).decimals()});
 
             try CrossChainERC20(localToken).remoteToken() returns (bytes32 remoteToken_) {
                 // Case: Bridging native SOL or SPL token to EVM
                 require(Pubkey.wrap(remoteToken_) == remoteToken, IncorrectRemoteToken());
-                CrossChainERC20(localToken).mint({to: to, amount: evmAmount});
+                CrossChainERC20(localToken).mint({to: to, amount: localAmount});
             } catch {
                 // Case: Bridging back native ERC20 to EVM
-                deposits[localToken][remoteToken] -= evmAmount;
-                SafeTransferLib.safeTransfer({token: localToken, to: to, amount: evmAmount});
+                deposits[localToken][remoteToken] -= localAmount;
+                SafeTransferLib.safeTransfer({token: localToken, to: to, amount: localAmount});
             }
         }
 
@@ -274,7 +274,7 @@ contract TokenBridge {
             remoteToken: remoteToken,
             from: from,
             to: to,
-            amount: evmAmount,
+            amount: localAmount,
             extraData: extraData
         });
     }
