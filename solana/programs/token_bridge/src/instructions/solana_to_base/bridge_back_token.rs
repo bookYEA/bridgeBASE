@@ -6,10 +6,8 @@ use anchor_spl::token_interface::{self, BurnChecked, Mint, Token2022, TokenAccou
 use portal::{cpi as portal_cpi, program::Portal};
 
 use crate::{
-    constants::{BRIDGE_AUTHORITY_SEED, WRAPPED_TOKEN_SEED},
-    instructions::PartialTokenMetadata,
-    internal::cpi_send_message,
-    solidity::Bridge,
+    constants::BRIDGE_AUTHORITY_SEED, instructions::PartialTokenMetadata,
+    internal::cpi_send_message, solidity::Bridge,
 };
 
 #[derive(Accounts)]
@@ -24,16 +22,7 @@ pub struct BridgeBackToken<'info> {
     #[account(mut, seeds = [BRIDGE_AUTHORITY_SEED], bump)]
     pub bridge_authority: AccountInfo<'info>,
 
-    #[account(
-        mut,
-        // NOTE: We check that the PDA derivation is correct in the handler to optimize the CPI.
-        // seeds = [
-        //     WRAPPED_TOKEN_SEED,
-        //     mint.decimals.to_le_bytes().as_ref(),
-        //     PartialTokenMetadata::try_from(&mint.to_account_info())?.hash().as_ref()
-        // ],
-        // bump,
-    )]
+    #[account(mut)]
     pub mint: InterfaceAccount<'info, Mint>,
 
     #[account(mut)]
@@ -63,21 +52,6 @@ pub fn bridge_back_token_handler(
 ) -> Result<()> {
     let partial_token_metadata =
         PartialTokenMetadata::try_from(&ctx.accounts.mint.to_account_info())?;
-
-    let decimals_bytes = ctx.accounts.mint.decimals.to_le_bytes();
-    let metadata_hash = partial_token_metadata.hash();
-    let seeds: &[&[u8]] = &[
-        WRAPPED_TOKEN_SEED,
-        decimals_bytes.as_ref(),
-        metadata_hash.as_ref(),
-    ];
-
-    let (expected_mint, _) = Pubkey::find_program_address(seeds, ctx.program_id);
-    require_keys_eq!(
-        ctx.accounts.mint.to_account_info().key(),
-        expected_mint,
-        BridgeBackTokenError::IncorrectMintAccount
-    );
 
     burn(&ctx, amount)?;
 

@@ -865,15 +865,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bridge"
-version = "0.1.0"
-dependencies = [
- "anchor-lang",
- "anchor-spl",
- "hex-literal",
-]
-
-[[package]]
 name = "brotli"
 version = "8.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
