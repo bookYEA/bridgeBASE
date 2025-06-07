@@ -19,7 +19,7 @@ pub struct Ix {
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, InitSpace)]
 pub struct IxAccount {
     /// Public key of the account.
-    pub pubkey: PubkeyOrPda,
+    pub pubkey_or_pda: PubkeyOrPda,
     /// Whether the account is writable.
     pub is_writable: bool,
     /// Whether the account is a signer.
@@ -50,7 +50,7 @@ impl From<Ix> for Instruction {
 /// Converts a IxAccount to a Solana AccountMeta.
 impl From<IxAccount> for AccountMeta {
     fn from(account: IxAccount) -> AccountMeta {
-        let pubkey = match account.pubkey {
+        let pubkey = match account.pubkey_or_pda {
             PubkeyOrPda::Pubkey(pubkey) => pubkey,
             PubkeyOrPda::PDA { seeds, program_id } => {
                 let seeds: Vec<&[u8]> = seeds.iter().map(|v| v.as_slice()).collect();
@@ -83,7 +83,7 @@ impl From<Instruction> for Ix {
 impl From<AccountMeta> for IxAccount {
     fn from(account: AccountMeta) -> IxAccount {
         IxAccount {
-            pubkey: PubkeyOrPda::Pubkey(account.pubkey),
+            pubkey_or_pda: PubkeyOrPda::Pubkey(account.pubkey),
             is_writable: account.is_writable,
             is_signer: account.is_signer,
         }

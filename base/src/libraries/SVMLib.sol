@@ -36,26 +36,15 @@ struct PubkeyOrPda {
     bytes variantData;
 }
 
-/// @notice Account metadata for Solana instruction
-///
-/// @param pubkey The account's public key or PDA
-/// @param isWritable Whether the account is writable
-/// @param isSigner Whether the account is a signer
-struct IxAccount {
-    PubkeyOrPda pubkey;
-    bool isWritable;
-    bool isSigner;
-}
-
 /// @notice Solana instruction structure
 ///
 /// @param programId The program to execute
-/// @param accounts Array of accounts required by the instruction
+/// @param serializedAccounts Array of serialized accounts required by the instruction
 /// @param data Instruction data payload
 struct Ix {
     Pubkey programId;
     string name;
-    IxAccount[] accounts;
+    bytes[] serializedAccounts;
     bytes data;
 }
 
@@ -69,59 +58,44 @@ library SVMLib {
     ///                       Internal Functions               ///
     //////////////////////////////////////////////////////////////
 
-    /// @notice Creates an account with a direct pubkey.
+    /// @notice Serializes an account with a direct pubkey.
     ///
     /// @param pubkey The public key of the account
     /// @param isWritable Whether the account should be writable
     /// @param isSigner Whether the account should be a signer
-    /// @return IxAccount with the specified parameters
-    function createPubkeyAccount(Pubkey pubkey, bool isWritable, bool isSigner)
+    ///
+    /// @return The serialized account
+    function serializePubkeyAccount(Pubkey pubkey, bool isWritable, bool isSigner)
         internal
         pure
-        returns (IxAccount memory)
+        returns (bytes memory)
     {
-        return IxAccount({
-            pubkey: PubkeyOrPda({variant: PubkeyOrPdaVariant.Pubkey, variantData: abi.encodePacked(pubkey)}),
-            isWritable: isWritable,
-            isSigner: isSigner
-        });
+        uint8 variant = uint8(PubkeyOrPdaVariant.Pubkey);
+        bytes memory variantData = abi.encodePacked(pubkey);
+        bytes memory result =
+            abi.encodePacked(variant, variantData, isWritable ? uint8(1) : uint8(0), isSigner ? uint8(1) : uint8(0));
+
+        return result;
     }
 
-    /// @notice Creates an account with a Program Derived Address.
+    /// @notice Serializes an account with a Program Derived Address.
     ///
     /// @param pda The PDA specification
     /// @param isWritable Whether the account should be writable
     /// @param isSigner Whether the account should be a signer
-    /// @return IxAccount with the specified PDA parameters
-    function createPdaAccount(Pda memory pda, bool isWritable, bool isSigner)
-        internal
-        pure
-        returns (IxAccount memory)
-    {
-        bytes memory data = abi.encodePacked(_getLeLength(pda.seeds.length));
+    ///
+    /// @return The serialized account
+    function serializePdaAccount(Pda memory pda, bool isWritable, bool isSigner) internal pure returns (bytes memory) {
+        uint8 variant = uint8(PubkeyOrPdaVariant.PDA);
+
+        bytes memory variantData = abi.encodePacked(toU32LittleEndian(pda.seeds.length));
         for (uint256 i; i < pda.seeds.length; i++) {
-            data = abi.encodePacked(data, _serializeBytes(pda.seeds[i]));
+            variantData = abi.encodePacked(variantData, _serializeBytes(pda.seeds[i]));
         }
+        variantData = abi.encodePacked(variantData, pda.programId);
 
-        data = abi.encodePacked(data, pda.programId);
-
-        return IxAccount({
-            pubkey: PubkeyOrPda({variant: PubkeyOrPdaVariant.PDA, variantData: data}),
-            isWritable: isWritable,
-            isSigner: isSigner
-        });
-    }
-
-    /// @notice Serializes a list of Solana instructions to Borsh-compatible bytes.
-    ///
-    /// @param ixs The list of instructions to serialize
-    ///
-    /// @return Serialized instruction bytes ready for Solana deserialization
-    function serializeAnchorIxs(Ix[] memory ixs) internal pure returns (bytes memory) {
-        bytes memory result = abi.encodePacked(_getLeLength(ixs.length));
-        for (uint256 i; i < ixs.length; i++) {
-            result = abi.encodePacked(result, serializeAnchorIx(ixs[i]));
-        }
+        bytes memory result =
+            abi.encodePacked(variant, variantData, isWritable ? uint8(1) : uint8(0), isSigner ? uint8(1) : uint8(0));
 
         return result;
     }
@@ -135,13 +109,9 @@ library SVMLib {
         bytes memory result = abi.encodePacked(ix.programId);
 
         // Serialize accounts array
-        result = abi.encodePacked(result, _getLeLength(ix.accounts.length));
-        for (uint256 i = 0; i < ix.accounts.length; i++) {
-            result = abi.encodePacked(result, uint8(ix.accounts[i].pubkey.variant));
-            result = abi.encodePacked(result, ix.accounts[i].pubkey.variantData);
-            // Serialize account flags
-            result = abi.encodePacked(result, ix.accounts[i].isWritable ? uint8(1) : uint8(0));
-            result = abi.encodePacked(result, ix.accounts[i].isSigner ? uint8(1) : uint8(0));
+        result = abi.encodePacked(result, toU32LittleEndian(ix.serializedAccounts.length));
+        for (uint256 i = 0; i < ix.serializedAccounts.length; i++) {
+            result = abi.encodePacked(result, ix.serializedAccounts[i]);
         }
 
         // Serialize instruction data
@@ -152,7 +122,35 @@ library SVMLib {
         return result;
     }
 
-    function toLittleEndian(uint256 value) internal pure returns (uint64) {
+    /// @notice Serializes a list of Solana instructions to Borsh-compatible bytes.
+    ///
+    /// @param ixs The list of instructions to serialize
+    ///
+    /// @return Serialized instruction bytes ready for Solana deserialization
+    function serializeAnchorIxs(Ix[] memory ixs) internal pure returns (bytes memory) {
+        bytes memory result = abi.encodePacked(toU32LittleEndian(ixs.length));
+        for (uint256 i; i < ixs.length; i++) {
+            result = abi.encodePacked(result, serializeAnchorIx(ixs[i]));
+        }
+
+        return result;
+    }
+
+    /// @notice Converts a value to a uint32 in little-endian format
+    ///
+    /// @param value The input value to convert
+    ///
+    /// @return The little-endian encoded uint32 value
+    function toU32LittleEndian(uint256 value) internal pure returns (uint32) {
+        return uint32(value.reverseBytes() >> 224);
+    }
+
+    /// @notice Converts a value to a uint64 in little-endian format
+    ///
+    /// @param value The input value to convert
+    ///
+    /// @return The little-endian encoded uint64 value
+    function toU64LittleEndian(uint256 value) internal pure returns (uint64) {
         return uint64(value.reverseBytes() >> 192);
     }
 
@@ -162,14 +160,6 @@ library SVMLib {
 
     /// @dev Serializes bytes with length prefix
     function _serializeBytes(bytes memory data) private pure returns (bytes memory) {
-        return abi.encodePacked(_getLeLength(data.length), data);
-    }
-
-    /// @notice Converts a length value to little-endian 32-bit format
-    ///
-    /// @param inp The input length as uint256
-    /// @return Little-endian encoded length as uint32
-    function _getLeLength(uint256 inp) private pure returns (uint32) {
-        return uint32(inp.reverseBytes() >> 224);
+        return abi.encodePacked(toU32LittleEndian(data.length), data);
     }
 }
