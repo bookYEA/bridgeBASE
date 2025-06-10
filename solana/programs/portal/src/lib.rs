@@ -7,6 +7,9 @@ pub mod internal;
 pub mod solidity;
 pub mod state;
 
+#[cfg(test)]
+pub mod test_utils;
+
 use instructions::*;
 
 declare_id!("4aRCwRtUjaoNA34AVLUmYVsyPRph2fNcAhXUxwHKUGtn");

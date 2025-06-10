@@ -1,8 +1,4 @@
-pub mod finalize_bridge_sol;
-pub mod finalize_bridge_spl;
-pub mod finalize_bridge_token;
-pub mod wrap_token;
-
+#[cfg(test)]
 use anchor_lang::solana_program::program_option::COption;
 use anchor_lang::{prelude::*, solana_program::native_token::LAMPORTS_PER_SOL};
 use anchor_spl::{
@@ -22,16 +18,16 @@ use solana_keypair::Keypair;
 use solana_program_pack::Pack;
 use solana_signer::Signer;
 
-use portal::ID as PORTAL_PROGRAM_ID;
-use token_bridge::{
+use crate::{
     constants::{REMOTE_BRIDGE, SOL_VAULT_SEED, TOKEN_VAULT_SEED, WRAPPED_TOKEN_SEED},
     instructions::PartialTokenMetadata,
     ID as TOKEN_BRIDGE_PROGRAM_ID,
 };
+use portal::ID as PORTAL_PROGRAM_ID;
 
 pub const SPL_TOKEN_PROGRAM_ID: Pubkey = anchor_spl::token_2022::ID;
 
-fn portal_authority() -> Pubkey {
+pub fn portal_authority() -> Pubkey {
     let (portal_authority, _) = Pubkey::find_program_address(
         &[PORTAL_AUTHORITY_SEED, REMOTE_BRIDGE.as_ref()],
         &PORTAL_PROGRAM_ID,
@@ -40,7 +36,12 @@ fn portal_authority() -> Pubkey {
     portal_authority
 }
 
-fn mock_remote_call(svm: &mut LiteSVM, sender: [u8; 20], data: Vec<u8>, executed: bool) -> Pubkey {
+pub fn mock_remote_call(
+    svm: &mut LiteSVM,
+    sender: [u8; 20],
+    data: Vec<u8>,
+    executed: bool,
+) -> Pubkey {
     let remote_call = Keypair::new().pubkey();
 
     let mut remote_call_data = Vec::new();
@@ -67,7 +68,7 @@ fn mock_remote_call(svm: &mut LiteSVM, sender: [u8; 20], data: Vec<u8>, executed
     remote_call
 }
 
-fn mock_sol_vault(svm: &mut LiteSVM, remote_token: [u8; 20], lamports: u64) -> Pubkey {
+pub fn mock_sol_vault(svm: &mut LiteSVM, remote_token: [u8; 20], lamports: u64) -> Pubkey {
     let (sol_vault, _) = Pubkey::find_program_address(
         &[SOL_VAULT_SEED, remote_token.as_ref()],
         &TOKEN_BRIDGE_PROGRAM_ID,
@@ -88,7 +89,7 @@ fn mock_sol_vault(svm: &mut LiteSVM, remote_token: [u8; 20], lamports: u64) -> P
     sol_vault
 }
 
-fn mock_wrapped_mint(
+pub fn mock_wrapped_mint(
     svm: &mut LiteSVM,
     decimals: u8,
     partial_token_metadata: &PartialTokenMetadata,
@@ -155,7 +156,7 @@ fn mock_wrapped_mint(
     wrapped_mint
 }
 
-fn mock_mint(svm: &mut LiteSVM, mint: Pubkey, decimals: u8) {
+pub fn mock_mint(svm: &mut LiteSVM, mint: Pubkey, decimals: u8) {
     let mut mint_data = vec![0u8; Mint::LEN];
     Mint {
         mint_authority: COption::Some(mint),
@@ -179,7 +180,7 @@ fn mock_mint(svm: &mut LiteSVM, mint: Pubkey, decimals: u8) {
     .unwrap();
 }
 
-fn mock_token_vault(
+pub fn mock_token_vault(
     svm: &mut LiteSVM,
     mint: Pubkey,
     remote_token: [u8; 20],
@@ -194,7 +195,7 @@ fn mock_token_vault(
     token_vault
 }
 
-fn mock_token_account(
+pub fn mock_token_account(
     svm: &mut LiteSVM,
     token_account: Pubkey,
     mint: Pubkey,
