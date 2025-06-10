@@ -11,11 +11,13 @@ pub mod state;
 pub mod test_utils;
 
 use instructions::*;
+use internal::Proof;
 
 declare_id!("4aRCwRtUjaoNA34AVLUmYVsyPRph2fNcAhXUxwHKUGtn");
 
 #[program]
 pub mod portal {
+
     use super::*;
 
     // Portal instructions
@@ -44,12 +46,12 @@ pub mod portal {
 
     pub fn prove_call(
         ctx: Context<ProveCall>,
-        call_hash: [u8; 32],
         nonce: [u8; 32],
         sender: [u8; 20],
         data: Vec<u8>,
+        proof: Proof,
     ) -> Result<()> {
-        prove_call_handler(ctx, call_hash, nonce, sender, data)
+        prove_call_handler(ctx, nonce, sender, data, proof)
     }
 
     pub fn relay_call<'a, 'info>(

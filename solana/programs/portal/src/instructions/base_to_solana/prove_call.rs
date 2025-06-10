@@ -2,6 +2,7 @@ use anchor_lang::{prelude::*, solana_program::keccak};
 
 use crate::{
     constants::REMOTE_CALL_SEED,
+    internal::{merkle_utils, Proof},
     state::{OutputRoot, RemoteCall},
 };
 
@@ -15,8 +16,9 @@ pub struct ProveCall<'info> {
         init,
         payer = payer,
         space = 8 + RemoteCall::INIT_SPACE,
-        seeds = [REMOTE_CALL_SEED, &call_hash],
-        bump
+        // NOTE: We check that the PDA derivation is correct in the handler to optimize the CPI.
+        // seeds = [REMOTE_CALL_SEED, &call_hash],
+        // bump
     )]
     pub remote_call: Account<'info, RemoteCall>,
 
@@ -27,18 +29,24 @@ pub struct ProveCall<'info> {
 
 pub fn prove_call_handler(
     ctx: Context<ProveCall>,
-    call_hash: [u8; 32],
     nonce: [u8; 32],
     sender: [u8; 20],
     data: Vec<u8>,
+    proof: Proof,
 ) -> Result<()> {
+    // Hash the call
+    let call_hash = hash_call(&nonce, &sender, &data);
+
+    // Verify the PDA derivation is correct
+    let (remote_call_pda, _) =
+        Pubkey::find_program_address(&[REMOTE_CALL_SEED, &call_hash], ctx.program_id);
     require!(
-        hash_call(&nonce, &sender, &data) == call_hash,
-        ProveCallError::InvalidCallHash
+        remote_call_pda == ctx.accounts.remote_call.key(),
+        ProveCallError::InvalidPda
     );
 
-    // TODO: MMR proof verification
-    require!(true, ProveCallError::InvalidProof);
+    // Verify the merkle proof to ensure the transaction exists on the source chain
+    merkle_utils::verify_mmr_proof(&ctx.accounts.output_root.root, &call_hash, &proof)?;
 
     ctx.accounts.remote_call.executed = false;
     ctx.accounts.remote_call.sender = sender;
@@ -58,8 +66,8 @@ fn hash_call(nonce: &[u8; 32], sender: &[u8; 20], data: &[u8]) -> [u8; 32] {
 
 #[error_code]
 pub enum ProveCallError {
-    #[msg("Invalid call hash")]
-    InvalidCallHash,
+    #[msg("Invalid PDA derivation")]
+    InvalidPda,
     #[msg("Invalid proof")]
     InvalidProof,
 }
