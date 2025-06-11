@@ -1,4 +1,3 @@
-#[cfg(test)]
 use anchor_lang::{prelude::*, solana_program::native_token::LAMPORTS_PER_SOL};
 use litesvm::LiteSVM;
 use solana_account::Account;
