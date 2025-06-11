@@ -213,7 +213,7 @@ contract TokenBridge {
 
         Ix[] memory ixs = new Ix[](1);
         ixs[0] = ix;
-        MessagePasser(MESSENGER).sendRemoteCall(SVMLib.serializeAnchorIxs(ixs));
+        MessagePasser(MESSAGE_PASSER).sendRemoteCall(SVMLib.serializeAnchorIxs(ixs));
 
         emit TokenBridgeInitiated({
             localToken: localToken,
