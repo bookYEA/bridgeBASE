@@ -35,7 +35,6 @@ pub struct BridgeSol<'info> {
     #[account(seeds = [BRIDGE_AUTHORITY_SEED], bump)]
     pub bridge_authority: AccountInfo<'info>,
 
-    // TODO: use composite accounts once figured out how to make them compile.
     /// CHECK: Checked by the Portal program that we CPI into.
     #[account(mut)]
     pub gas_fee_receiver: AccountInfo<'info>,
