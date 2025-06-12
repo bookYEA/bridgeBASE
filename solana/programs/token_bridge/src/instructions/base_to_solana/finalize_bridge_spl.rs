@@ -62,7 +62,9 @@ pub fn finalize_bridge_spl_handler(
 
 #[cfg(test)]
 mod tests {
-    use anchor_lang::{prelude::*, InstructionData};
+    use super::*;
+
+    use anchor_lang::InstructionData;
     use anchor_spl::token::spl_token::state::Account as TokenAccount;
     use litesvm::LiteSVM;
     use solana_instruction::Instruction;
@@ -75,7 +77,6 @@ mod tests {
     use solana_transaction::Transaction;
 
     use crate::{
-        constants::REMOTE_BRIDGE,
         test_utils::{
             mock_mint, mock_remote_call, mock_token_account, mock_token_vault, portal_authority,
             SPL_TOKEN_PROGRAM_ID,

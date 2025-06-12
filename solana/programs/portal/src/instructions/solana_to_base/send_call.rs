@@ -129,10 +129,9 @@ pub enum SendCallError {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
 
-    use anchor_lang::{
-        solana_program::native_token::LAMPORTS_PER_SOL, InstructionData, ToAccountMetas,
-    };
+    use anchor_lang::{solana_program::native_token::LAMPORTS_PER_SOL, InstructionData};
     use litesvm::LiteSVM;
     use solana_instruction::Instruction;
     use solana_keypair::Keypair;
@@ -140,7 +139,7 @@ mod tests {
     use solana_signer::Signer;
     use solana_transaction::Transaction;
 
-    use crate::{constants::GAS_FEE_RECEIVER, ID as PORTAL_PROGRAM_ID};
+    use crate::ID as PORTAL_PROGRAM_ID;
 
     #[test]
     fn test_send_call_fail_wrong_gas_fee_receiver() {

@@ -5,6 +5,8 @@ use portal::{cpi as portal_cpi, program::Portal};
 
 use crate::constants::{BRIDGE_AUTHORITY_SEED, REMOTE_BRIDGE, WRAPPED_TOKEN_SEED};
 
+pub mod metadata;
+
 pub fn cpi_send_message<'info>(
     portal: &Program<'info, Portal>,
     accounts: portal_cpi::accounts::SendMessage<'info>,

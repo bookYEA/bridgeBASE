@@ -21,3 +21,6 @@ pub const WRAPPED_TOKEN_SEED: &[u8] = b"wrapped_token";
 
 #[constant]
 pub const REMOTE_TOKEN_METADATA_KEY: &str = "remote_token";
+
+#[constant]
+pub const SCALER_EXPONENT_METADATA_KEY: &str = "scaler_exponent";

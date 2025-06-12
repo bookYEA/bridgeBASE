@@ -42,10 +42,8 @@ pub enum RegisterOutputRootError {
 mod tests {
     use super::*;
 
-    use anchor_lang::{
-        solana_program::native_token::LAMPORTS_PER_SOL, AccountDeserialize, InstructionData,
-        ToAccountMetas,
-    };
+    use anchor_lang::{solana_program::native_token::LAMPORTS_PER_SOL, InstructionData};
+
     use litesvm::LiteSVM;
     use solana_instruction::Instruction;
     use solana_keypair::Keypair;
@@ -53,11 +51,7 @@ mod tests {
     use solana_signer::Signer;
     use solana_transaction::Transaction;
 
-    use crate::{
-        constants::{OUTPUT_ROOT_SEED, TRUSTED_ORACLE_KEYPAIR_BASE58},
-        state::OutputRoot,
-        ID as PORTAL_PROGRAM_ID,
-    };
+    use crate::{constants::TRUSTED_ORACLE_KEYPAIR_BASE58, ID as PORTAL_PROGRAM_ID};
 
     #[test]
     fn test_register_output_root_fail_unauthorized() {

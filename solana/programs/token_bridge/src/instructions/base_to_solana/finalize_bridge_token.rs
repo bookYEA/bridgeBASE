@@ -5,7 +5,7 @@ use portal::constants::PORTAL_AUTHORITY_SEED;
 
 use crate::{
     constants::{REMOTE_BRIDGE, WRAPPED_TOKEN_SEED},
-    instructions::PartialTokenMetadata,
+    internal::metadata::PartialTokenMetadata,
 };
 
 #[derive(Accounts)]
@@ -41,7 +41,9 @@ pub fn finalize_bridge_token_handler(ctx: Context<FinalizeBridgeToken>, amount: 
         decimals_bytes.as_ref(),
         metadata_hash.as_ref(),
     ];
+
     let (_, mint_bump) = Pubkey::find_program_address(seeds, ctx.program_id);
+
     let seeds: &[&[&[u8]]] = &[&[
         WRAPPED_TOKEN_SEED,
         decimals_bytes.as_ref(),
@@ -63,9 +65,9 @@ pub fn finalize_bridge_token_handler(ctx: Context<FinalizeBridgeToken>, amount: 
 
 #[cfg(test)]
 mod tests {
-    use anchor_lang::{
-        prelude::*, solana_program::native_token::LAMPORTS_PER_SOL, InstructionData,
-    };
+    use super::*;
+
+    use anchor_lang::{solana_program::native_token::LAMPORTS_PER_SOL, InstructionData};
     use anchor_spl::token::spl_token::state::Account as TokenAccount;
     use litesvm::LiteSVM;
     use solana_instruction::Instruction;
@@ -73,13 +75,11 @@ mod tests {
     use solana_message::Message;
     use solana_program_pack::Pack;
     use solana_signer::Signer;
-
-    use portal::{internal::Ix, ID as PORTAL_PROGRAM_ID};
     use solana_transaction::Transaction;
 
+    use portal::{internal::Ix, ID as PORTAL_PROGRAM_ID};
+
     use crate::{
-        constants::REMOTE_BRIDGE,
-        instructions::PartialTokenMetadata,
         test_utils::{
             mock_remote_call, mock_token_account, mock_wrapped_mint, portal_authority,
             SPL_TOKEN_PROGRAM_ID,
@@ -103,6 +103,7 @@ mod tests {
             remote_token: [0x42u8; 20],
             name: "Sample Token".to_string(),
             symbol: "STK".to_string(),
+            scaler_exponent: 9u8,
         };
         let decimals = 6u8; // USDC-like decimals
         let mint_amount = 1000 * 10_u64.pow(decimals as u32); // 1000 tokens to mint
@@ -178,8 +179,9 @@ mod tests {
             svm.latest_blockhash(),
         );
 
-        svm.send_transaction(tx)
-            .expect("Transaction should succeed");
+        let res = svm.send_transaction(tx);
+        println!("res: {:?}", res);
+        res.unwrap();
 
         // Verify that tokens were minted to the recipient
         let to_token_account_after = svm.get_account(&to_token_account).unwrap();

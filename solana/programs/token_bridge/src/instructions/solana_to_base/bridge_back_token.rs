@@ -6,8 +6,9 @@ use anchor_spl::token_interface::{self, BurnChecked, Mint, Token2022, TokenAccou
 use portal::{cpi as portal_cpi, program::Portal};
 
 use crate::{
-    constants::BRIDGE_AUTHORITY_SEED, instructions::PartialTokenMetadata,
-    internal::cpi_send_message, solidity::Bridge,
+    constants::BRIDGE_AUTHORITY_SEED,
+    internal::{cpi_send_message, metadata::PartialTokenMetadata},
+    solidity::Bridge,
 };
 
 #[derive(Accounts)]

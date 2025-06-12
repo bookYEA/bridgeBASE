@@ -25,7 +25,7 @@ use crate::{
     constants::{
         BRIDGE_AUTHORITY_SEED, REMOTE_BRIDGE, SOL_VAULT_SEED, TOKEN_VAULT_SEED, WRAPPED_TOKEN_SEED,
     },
-    instructions::PartialTokenMetadata,
+    internal::metadata::PartialTokenMetadata,
     ID as TOKEN_BRIDGE_PROGRAM_ID,
 };
 use portal::ID as PORTAL_PROGRAM_ID;

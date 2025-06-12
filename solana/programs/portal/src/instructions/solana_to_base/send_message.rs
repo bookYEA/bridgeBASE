@@ -63,10 +63,9 @@ pub fn send_message_handler(
 
 #[cfg(test)]
 mod tests {
-    use anchor_lang::{
-        prelude::*, solana_program::native_token::LAMPORTS_PER_SOL, AccountDeserialize,
-        InstructionData, ToAccountMetas,
-    };
+    use super::*;
+
+    use anchor_lang::{solana_program::native_token::LAMPORTS_PER_SOL, InstructionData};
     use litesvm::LiteSVM;
     use solana_instruction::Instruction;
     use solana_keypair::Keypair;
@@ -74,12 +73,7 @@ mod tests {
     use solana_signer::Signer;
     use solana_transaction::Transaction;
 
-    use crate::{
-        constants::{GAS_FEE_RECEIVER, MESSENGER_SEED},
-        state::Messenger,
-        test_utils::mock_messenger,
-        ID as PORTAL_PROGRAM_ID,
-    };
+    use crate::{test_utils::mock_messenger, ID as PORTAL_PROGRAM_ID};
 
     #[test]
     fn test_send_message_fail_uninitialized_messenger() {

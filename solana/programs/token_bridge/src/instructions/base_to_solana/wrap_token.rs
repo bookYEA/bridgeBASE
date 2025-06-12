@@ -13,8 +13,7 @@ use anchor_spl::token_interface::{
 use portal::{cpi as portal_cpi, program::Portal};
 
 use crate::constants::{BRIDGE_AUTHORITY_SEED, REMOTE_TOKEN_METADATA_KEY, WRAPPED_TOKEN_SEED};
-use crate::instructions::PartialTokenMetadata;
-use crate::internal::cpi_send_message;
+use crate::internal::{cpi_send_message, metadata::PartialTokenMetadata};
 use crate::solidity::Bridge;
 
 #[derive(Accounts)]
@@ -66,7 +65,6 @@ pub fn wrap_token_handler(
     ctx: Context<WrapToken>,
     decimals: u8,
     partial_token_metadata: PartialTokenMetadata,
-    scaler_exponent: u8,
     min_gas_limit: u64,
 ) -> Result<()> {
     initialize_metadata(&ctx, decimals, &partial_token_metadata)?;
@@ -74,7 +72,7 @@ pub fn wrap_token_handler(
     register_remote_token(
         &ctx,
         &partial_token_metadata.remote_token,
-        scaler_exponent,
+        partial_token_metadata.scaler_exponent,
         min_gas_limit,
     )?;
 
@@ -188,9 +186,9 @@ pub enum WrapTokenError {
 
 #[cfg(test)]
 mod tests {
-    use anchor_lang::{
-        prelude::*, solana_program::native_token::LAMPORTS_PER_SOL, InstructionData,
-    };
+    use super::*;
+
+    use anchor_lang::{solana_program::native_token::LAMPORTS_PER_SOL, InstructionData};
     use anchor_spl::{
         token_2022::spl_token_2022::{
             extension::{
@@ -208,8 +206,6 @@ mod tests {
     use solana_transaction::Transaction;
 
     use crate::{
-        constants::{REMOTE_TOKEN_METADATA_KEY, WRAPPED_TOKEN_SEED},
-        instructions::PartialTokenMetadata,
         test_utils::{bridge_authority, mock_messenger, SPL_TOKEN_PROGRAM_ID},
         ID as TOKEN_BRIDGE_PROGRAM_ID,
     };
@@ -232,9 +228,9 @@ mod tests {
             remote_token: [0x42u8; 20],
             name: "Wrapped USDC".to_string(),
             symbol: "WUSDC".to_string(),
+            scaler_exponent: 9u8,
         };
         let decimals = 6u8; // USDC-like decimals
-        let scaler_exponent = 9u8;
         let min_gas_limit = 100_000u64;
 
         // Create payer
@@ -271,7 +267,6 @@ mod tests {
             data: crate::instruction::WrapToken {
                 decimals,
                 partial_token_metadata: partial_token_metadata.clone(),
-                scaler_exponent,
                 min_gas_limit,
             }
             .data(),

@@ -11,10 +11,13 @@ pub mod test_utils;
 
 use instructions::*;
 
+use crate::internal::metadata::PartialTokenMetadata;
+
 declare_id!("3R8PyojdmUTwB6FAkzjwRZsfAzucA9E1nK4ydNARvT8b");
 
 #[program]
 pub mod token_bridge {
+
     use super::*;
 
     // Solana to Base
@@ -57,16 +60,9 @@ pub mod token_bridge {
         ctx: Context<WrapToken>,
         decimals: u8,
         partial_token_metadata: PartialTokenMetadata,
-        scaler_exponent: u8,
         min_gas_limit: u64,
     ) -> Result<()> {
-        wrap_token_handler(
-            ctx,
-            decimals,
-            partial_token_metadata,
-            scaler_exponent,
-            min_gas_limit,
-        )
+        wrap_token_handler(ctx, decimals, partial_token_metadata, min_gas_limit)
     }
 
     pub fn finalize_bridge_sol(

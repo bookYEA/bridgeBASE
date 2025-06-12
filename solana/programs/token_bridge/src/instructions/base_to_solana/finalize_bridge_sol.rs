@@ -55,9 +55,9 @@ pub fn finalize_bridge_sol_handler(
 
 #[cfg(test)]
 mod tests {
-    use anchor_lang::{
-        prelude::*, solana_program::native_token::LAMPORTS_PER_SOL, InstructionData, ToAccountMetas,
-    };
+    use super::*;
+
+    use anchor_lang::{solana_program::native_token::LAMPORTS_PER_SOL, InstructionData};
     use litesvm::LiteSVM;
     use portal::internal::Ix;
     use solana_instruction::Instruction;
@@ -67,7 +67,6 @@ mod tests {
     use solana_transaction::Transaction;
 
     use crate::{
-        constants::REMOTE_BRIDGE,
         test_utils::{mock_remote_call, mock_sol_vault, portal_authority},
         ID as TOKEN_BRIDGE_PROGRAM_ID,
     };

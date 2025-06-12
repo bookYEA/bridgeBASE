@@ -21,10 +21,9 @@ pub struct Initialize<'info> {
 
 #[cfg(test)]
 mod tests {
-    use anchor_lang::{
-        prelude::*, solana_program::native_token::LAMPORTS_PER_SOL, AccountDeserialize,
-        InstructionData, ToAccountMetas,
-    };
+    use super::*;
+
+    use anchor_lang::{solana_program::native_token::LAMPORTS_PER_SOL, InstructionData};
     use litesvm::LiteSVM;
     use solana_instruction::Instruction;
     use solana_keypair::Keypair;
@@ -32,7 +31,7 @@ mod tests {
     use solana_signer::Signer;
     use solana_transaction::Transaction;
 
-    use crate::{constants::MESSENGER_SEED, state::Messenger, ID as PORTAL_PROGRAM_ID};
+    use crate::ID as PORTAL_PROGRAM_ID;
 
     #[test]
     fn test_initialize_success() {
