@@ -18,11 +18,6 @@ pub struct BridgeSpl<'info> {
     #[account(mut)]
     pub from: Signer<'info>,
 
-    /// CHECK: This is the Bridge authority account.
-    ///        It is used as the authority when CPIing to the Portal program.
-    #[account(mut, seeds = [BRIDGE_AUTHORITY_SEED], bump)]
-    pub bridge_authority: AccountInfo<'info>,
-
     #[account(mut)]
     pub mint: InterfaceAccount<'info, Mint>,
 
@@ -43,13 +38,20 @@ pub struct BridgeSpl<'info> {
 
     pub portal: Program<'info, Portal>,
 
-    // Portal accounts
-    // TODO: use composite accounts once figured out how to make them compile.
-    /// CHECK: Going to be checked in the cpi.
-    pub gas_fee_receiver: AccountInfo<'info>,
-
-    /// CHECK: Going to be checked in the cpi.
+    // Portal remaining accounts
+    /// CHECK: Checked by the Portal program that we CPI into.
+    #[account(mut)]
     pub messenger: AccountInfo<'info>,
+
+    /// CHECK: This is the Bridge authority account.
+    ///        It is used as the authority when CPIing to the Portal program.
+    #[account(seeds = [BRIDGE_AUTHORITY_SEED], bump)]
+    pub bridge_authority: AccountInfo<'info>,
+
+    // TODO: use composite accounts once figured out how to make them compile.
+    /// CHECK: Checked by the Portal program that we CPI into.
+    #[account(mut)]
+    pub gas_fee_receiver: AccountInfo<'info>,
 
     pub system_program: Program<'info, System>,
 }

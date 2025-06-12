@@ -7,7 +7,6 @@ use crate::{
 };
 
 #[derive(Accounts)]
-#[instruction(call_hash: [u8; 32])]
 pub struct ProveCall<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
@@ -16,7 +15,7 @@ pub struct ProveCall<'info> {
         init,
         payer = payer,
         space = 8 + RemoteCall::INIT_SPACE,
-        // NOTE: We check that the PDA derivation is correct in the handler to optimize the CPI.
+        // // NOTE: We check that the PDA derivation is correct in the handler to optimize the CPI.
         // seeds = [REMOTE_CALL_SEED, &call_hash],
         // bump
     )]

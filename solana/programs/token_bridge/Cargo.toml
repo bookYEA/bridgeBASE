@@ -18,7 +18,7 @@ idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 test-env = []
 
 [dependencies]
-portal = { path = "../portal", features = ["cpi"] }
+portal = { path = "../portal", features = ["cpi", "test-env"] }
 
 anchor-lang = { version = "=0.31.0", features = ["init-if-needed"] }
 anchor-spl = "=0.31.0"
@@ -28,6 +28,8 @@ hex-literal = "0.4.1"
 
 alloy-sol-types = "=0.8.13"
 alloy-primitives = "=0.8.13"
+solana-instruction = "2.2.1"
+
 
 [dev-dependencies]
 alloy-sol-types = "=0.8.13"

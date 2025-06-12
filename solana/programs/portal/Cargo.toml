@@ -19,9 +19,9 @@ test-env = []
 
 [dependencies]
 anchor-lang = "0.31.0"
-
 alloy-sol-types = "=0.8.13"
 alloy-primitives = "=0.8.13"
+
 hex-literal = "0.4.1"
 
 [dev-dependencies]

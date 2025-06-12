@@ -1,3 +1,5 @@
+use alloy_primitives::FixedBytes;
+use alloy_sol_types::SolCall;
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::rent::{
     DEFAULT_EXEMPTION_THRESHOLD, DEFAULT_LAMPORTS_PER_BYTE_YEAR,
@@ -8,9 +10,12 @@ use anchor_spl::token_interface::{
     token_metadata_initialize, token_metadata_update_field, Mint, Token2022,
     TokenMetadataInitialize, TokenMetadataUpdateField,
 };
+use portal::{cpi as portal_cpi, program::Portal};
 
-use crate::constants::{REMOTE_TOKEN_METADATA_KEY, WRAPPED_TOKEN_SEED};
+use crate::constants::{BRIDGE_AUTHORITY_SEED, REMOTE_TOKEN_METADATA_KEY, WRAPPED_TOKEN_SEED};
 use crate::instructions::PartialTokenMetadata;
+use crate::internal::cpi_send_message;
+use crate::solidity::Bridge;
 
 #[derive(Accounts)]
 #[instruction(decimals: u8, metadata: PartialTokenMetadata)]
@@ -21,6 +26,7 @@ pub struct WrapToken<'info> {
     #[account(
         init,
         payer = payer,
+        // NOTE: Suboptimal to compute the seeds here but it allows to use `init`.
         seeds = [
             WRAPPED_TOKEN_SEED,
             decimals.to_le_bytes().as_ref(),
@@ -30,12 +36,29 @@ pub struct WrapToken<'info> {
         mint::decimals = decimals,
         mint::authority = mint,
         mint::freeze_authority = mint,
-        // extensions::metadata_pointer::authority = mint,
+        extensions::metadata_pointer::authority = mint,
         extensions::metadata_pointer::metadata_address = mint,
     )]
     pub mint: InterfaceAccount<'info, Mint>,
 
     pub token_program: Program<'info, Token2022>,
+
+    pub portal: Program<'info, Portal>,
+
+    // Portal remaining accounts
+    /// CHECK: Checked by the Portal program that we CPI into.
+    #[account(mut)]
+    pub messenger: AccountInfo<'info>,
+
+    /// CHECK: This is the Bridge authority account.
+    ///        It is used as the `authority` account when CPIing to the Portal program.
+    #[account(seeds = [BRIDGE_AUTHORITY_SEED], bump)]
+    pub bridge_authority: AccountInfo<'info>,
+
+    /// CHECK: Checked by the Portal program that we CPI into.
+    #[account(mut)]
+    pub gas_fee_receiver: AccountInfo<'info>,
+
     pub system_program: Program<'info, System>,
 }
 
@@ -43,10 +66,27 @@ pub fn wrap_token_handler(
     ctx: Context<WrapToken>,
     decimals: u8,
     partial_token_metadata: PartialTokenMetadata,
+    scaler_exponent: u8,
+    min_gas_limit: u64,
 ) -> Result<()> {
-    require!(decimals <= 9, WrapTokenError::InvalidDecimals);
+    initialize_metadata(&ctx, decimals, &partial_token_metadata)?;
 
-    let token_metadata = TokenMetadata::from(&partial_token_metadata);
+    register_remote_token(
+        &ctx,
+        &partial_token_metadata.remote_token,
+        scaler_exponent,
+        min_gas_limit,
+    )?;
+
+    Ok(())
+}
+
+fn initialize_metadata(
+    ctx: &Context<WrapToken>,
+    decimals: u8,
+    partial_token_metadata: &PartialTokenMetadata,
+) -> Result<()> {
+    let token_metadata = TokenMetadata::from(partial_token_metadata);
 
     // FIXME: Computation is most likely unaccurate
     // Calculate lamports required for the additional metadata
@@ -54,7 +94,7 @@ pub fn wrap_token_handler(
     let lamports =
         data_len as u64 * DEFAULT_LAMPORTS_PER_BYTE_YEAR * DEFAULT_EXEMPTION_THRESHOLD as u64;
 
-    // Transfer additional lamports to mint account
+    // Transfer additional lamports to mint account (because we're increasing its size to store the metadata)
     transfer(
         CpiContext::new(
             ctx.accounts.system_program.to_account_info(),
@@ -71,14 +111,14 @@ pub fn wrap_token_handler(
 
     let seeds = &[
         WRAPPED_TOKEN_SEED,
-        decimals_bytes.as_ref(),
-        metadata_hash.as_ref(),
+        &decimals_bytes,
+        &metadata_hash,
         &[ctx.bumps.mint],
     ];
 
-    // Initialize token metadata
+    // Initialize token metadata (name, symbol, etc.)
     token_metadata_initialize(
-        CpiContext::new(
+        CpiContext::new_with_signer(
             ctx.accounts.token_program.to_account_info(),
             TokenMetadataInitialize {
                 program_id: ctx.accounts.token_program.to_account_info(),
@@ -87,24 +127,24 @@ pub fn wrap_token_handler(
                 mint_authority: ctx.accounts.mint.to_account_info(),
                 update_authority: ctx.accounts.mint.to_account_info(),
             },
-        )
-        .with_signer(&[seeds]),
+            &[seeds],
+        ),
         token_metadata.name,
         token_metadata.symbol,
         Default::default(),
     )?;
 
-    // Set the remote token metadata key
+    // Set the remote token metadata key (remote token address)
     token_metadata_update_field(
-        CpiContext::new(
+        CpiContext::new_with_signer(
             ctx.accounts.token_program.to_account_info(),
             TokenMetadataUpdateField {
                 program_id: ctx.accounts.token_program.to_account_info(),
                 metadata: ctx.accounts.mint.to_account_info(),
                 update_authority: ctx.accounts.mint.to_account_info(),
             },
-        )
-        .with_signer(&[seeds]),
+            &[seeds],
+        ),
         Field::Key(REMOTE_TOKEN_METADATA_KEY.to_string()),
         hex::encode(partial_token_metadata.remote_token),
     )?;
@@ -112,10 +152,38 @@ pub fn wrap_token_handler(
     Ok(())
 }
 
+fn register_remote_token(
+    ctx: &Context<WrapToken>,
+    remote_token: &[u8; 20],
+    scaler_exponent: u8,
+    min_gas_limit: u64,
+) -> Result<()> {
+    cpi_send_message(
+        &ctx.accounts.portal,
+        portal_cpi::accounts::SendMessage {
+            payer: ctx.accounts.payer.to_account_info(),
+            authority: ctx.accounts.bridge_authority.to_account_info(),
+            gas_fee_receiver: ctx.accounts.gas_fee_receiver.to_account_info(),
+            system_program: ctx.accounts.system_program.to_account_info(),
+            messenger: ctx.accounts.messenger.to_account_info(),
+        },
+        ctx.bumps.bridge_authority,
+        Bridge::registerRemoteTokenCall {
+            localToken: remote_token.into(), // NOTE: Intentionally flip the tokens so that when executing on Base it's correct.
+            remoteToken: FixedBytes::from(ctx.accounts.mint.key().to_bytes()), // NOTE: Intentionally flip the tokens so that when executing on Base it's correct.
+            scalerExponent: scaler_exponent,
+        }
+        .abi_encode(),
+        min_gas_limit,
+    )?;
+
+    Ok(())
+}
+
 #[error_code]
 pub enum WrapTokenError {
-    #[msg("Invalid decimals")]
-    InvalidDecimals,
+    #[msg("Incorrect mint account")]
+    IncorrectMintAccount,
 }
 
 #[cfg(test)]
@@ -142,9 +210,11 @@ mod tests {
     use crate::{
         constants::{REMOTE_TOKEN_METADATA_KEY, WRAPPED_TOKEN_SEED},
         instructions::PartialTokenMetadata,
-        test_utils::SPL_TOKEN_PROGRAM_ID,
+        test_utils::{bridge_authority, mock_messenger, SPL_TOKEN_PROGRAM_ID},
         ID as TOKEN_BRIDGE_PROGRAM_ID,
     };
+
+    use portal::{constants::GAS_FEE_RECEIVER, ID as PORTAL_PROGRAM_ID};
 
     #[test]
     fn test_wrap_token_success() {
@@ -154,6 +224,8 @@ mod tests {
             "../../target/deploy/token_bridge.so",
         )
         .unwrap();
+        svm.add_program_from_file(PORTAL_PROGRAM_ID, "../../target/deploy/portal.so")
+            .unwrap();
 
         // Test parameters
         let partial_token_metadata = PartialTokenMetadata {
@@ -162,13 +234,15 @@ mod tests {
             symbol: "WUSDC".to_string(),
         };
         let decimals = 6u8; // USDC-like decimals
+        let scaler_exponent = 9u8;
+        let min_gas_limit = 100_000u64;
 
         // Create payer
         let payer = Keypair::new();
         svm.airdrop(&payer.pubkey(), LAMPORTS_PER_SOL).unwrap();
 
         // Derive the expected wrapped mint PDA
-        let (expected_mint, _) = Pubkey::find_program_address(
+        let (wrapped_mint, _) = Pubkey::find_program_address(
             &[
                 WRAPPED_TOKEN_SEED,
                 decimals.to_le_bytes().as_ref(),
@@ -177,11 +251,17 @@ mod tests {
             &TOKEN_BRIDGE_PROGRAM_ID,
         );
 
+        let messenger_pda = mock_messenger(&mut svm, 0);
+
         // Build the wrap_token instruction
         let wrap_token_accounts = crate::accounts::WrapToken {
             payer: payer.pubkey(),
-            mint: expected_mint,
+            mint: wrapped_mint,
             token_program: SPL_TOKEN_PROGRAM_ID,
+            bridge_authority: bridge_authority(),
+            portal: PORTAL_PROGRAM_ID,
+            gas_fee_receiver: GAS_FEE_RECEIVER,
+            messenger: messenger_pda,
             system_program: solana_sdk_ids::system_program::ID,
         };
 
@@ -191,6 +271,8 @@ mod tests {
             data: crate::instruction::WrapToken {
                 decimals,
                 partial_token_metadata: partial_token_metadata.clone(),
+                scaler_exponent,
+                min_gas_limit,
             }
             .data(),
         };
@@ -202,11 +284,12 @@ mod tests {
             svm.latest_blockhash(),
         );
 
-        svm.send_transaction(tx)
+        let _ = svm
+            .send_transaction(tx)
             .expect("Transaction should succeed");
 
         // Verify that the mint was created correctly
-        let mint_account = svm.get_account(&expected_mint).unwrap();
+        let mint_account = svm.get_account(&wrapped_mint).unwrap();
         assert_eq!(mint_account.owner, SPL_TOKEN_PROGRAM_ID);
 
         // Deserialize and verify mint properties
@@ -215,8 +298,8 @@ mod tests {
         let mint = mint_with_extension.base;
 
         assert_eq!(mint.decimals, decimals);
-        assert_eq!(mint.mint_authority, Some(expected_mint).into());
-        assert_eq!(mint.freeze_authority, Some(expected_mint).into());
+        assert_eq!(mint.mint_authority, Some(wrapped_mint).into());
+        assert_eq!(mint.freeze_authority, Some(wrapped_mint).into());
         assert!(mint.is_initialized);
         assert_eq!(mint.supply, 0);
 
@@ -224,10 +307,13 @@ mod tests {
         let metadata_pointer = mint_with_extension
             .get_extension::<MetadataPointer>()
             .unwrap();
-        assert_eq!(metadata_pointer.authority, None.try_into().unwrap());
+        assert_eq!(
+            metadata_pointer.authority,
+            Some(wrapped_mint).try_into().unwrap()
+        );
         assert_eq!(
             metadata_pointer.metadata_address,
-            Some(expected_mint).try_into().unwrap()
+            Some(wrapped_mint).try_into().unwrap()
         );
 
         // Verify token metadata
@@ -241,5 +327,8 @@ mod tests {
         let (key, value) = &token_metadata.additional_metadata[0];
         assert_eq!(key, REMOTE_TOKEN_METADATA_KEY);
         assert_eq!(value, &hex::encode(partial_token_metadata.remote_token));
+
+        // TODO: Verify that a message was sent to register the created SPL to the remote bridge on Base with
+        //       the correct scaler exponent.
     }
 }

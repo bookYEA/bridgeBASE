@@ -11,15 +11,14 @@ use crate::{
 
 #[derive(Accounts)]
 pub struct SendMessage<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+
     // Messenger accounts
     #[account(mut, seeds = [MESSENGER_SEED], bump)]
     pub messenger: Account<'info, Messenger>,
 
-    // Portal accounts
-    #[account(mut)]
-    pub payer: Signer<'info>,
-
-    #[account(mut)]
+    // Portal remaining accounts
     pub authority: Signer<'info>,
 
     /// CHECK: This is the hardcoded gas fee receiver account.
@@ -155,10 +154,8 @@ mod tests {
         let authority_pk = authority.pubkey();
 
         // Mock the messenger account instead of initializing it
-        let (messenger_pda, _) =
-            Pubkey::find_program_address(&[MESSENGER_SEED], &PORTAL_PROGRAM_ID);
         let initial_nonce = 42u64;
-        mock_messenger(&mut svm, &messenger_pda, initial_nonce);
+        let messenger_pda = mock_messenger(&mut svm, initial_nonce);
 
         // Test parameters
         let target = [0x42u8; 20]; // Sample target address

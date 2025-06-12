@@ -69,6 +69,9 @@ contract TokenBridge {
     /// @notice Thrown when the token pair is not correct.
     error NotRemoteBridge();
 
+    /// @notice Thrown when the token pair is not registered.
+    error WrappedSplRouteNotRegistered();
+
     //////////////////////////////////////////////////////////////
     ///                       Constants                        ///
     //////////////////////////////////////////////////////////////
@@ -101,6 +104,11 @@ contract TokenBridge {
     /// @dev For standard ERC20 tokens and ETH, this tracks the total amount deposited and available for withdrawal.
     ///      CrossChainERC20 tokens bypass this mechanism as they use mint/burn instead.
     mapping(address localToken => mapping(Pubkey remoteToken => uint256 amount)) public deposits;
+
+    /// @notice Mapping that stores the scaler exponent for token pairs between local and remote chains.
+    ///
+    /// @dev Can only be set by the remote bridge when an SPL token is deployed from the Solana factory.
+    mapping(address localToken => mapping(Pubkey remoteToken => uint256 scaler)) public scalerExponents;
 
     //////////////////////////////////////////////////////////////
     ///                       Modifiers                        ///
@@ -153,8 +161,10 @@ contract TokenBridge {
 
         if (localToken == ETH_ADDRESS) {
             // Case: Bridging native ETH to Solana
-            uint8 remoteDecimals;
-            (localAmount, remoteDecimals) = _localAmount({remoteAmount: remoteAmount, localDecimals: 18});
+            uint256 scaler = scalerExponents[localToken][remoteToken];
+            require(scaler != 0, WrappedSplRouteNotRegistered());
+
+            localAmount = remoteAmount * scaler;
             require(msg.value == localAmount, InvalidMsgValue());
 
             deposits[localToken][remoteToken] += localAmount;
@@ -167,13 +177,11 @@ contract TokenBridge {
                 remoteAmount: remoteAmount
             });
         } else {
-            uint8 remoteDecimals;
-            (localAmount, remoteDecimals) =
-                _localAmount({remoteAmount: remoteAmount, localDecimals: ERC20(localToken).decimals()});
-
             try CrossChainERC20(localToken).remoteToken() returns (bytes32 remoteToken_) {
                 // Case: Bridging back native SOL or SPL token to Solana
                 require(Pubkey.wrap(remoteToken_) == remoteToken, IncorrectRemoteToken());
+
+                localAmount = remoteAmount;
                 CrossChainERC20(localToken).burn({from: msg.sender, amount: localAmount});
 
                 ix = remoteToken == NATIVE_SOL_PUBKEY
@@ -192,6 +200,11 @@ contract TokenBridge {
                     });
             } catch {
                 // Case: Bridging native ERC20 to Solana
+                uint256 scaler = scalerExponents[localToken][remoteToken];
+                require(scaler != 0, WrappedSplRouteNotRegistered());
+
+                localAmount = remoteAmount * scaler;
+
                 SafeTransferLib.safeTransferFrom({
                     token: localToken,
                     from: msg.sender,
@@ -244,27 +257,27 @@ contract TokenBridge {
         address to,
         uint64 remoteAmount,
         bytes calldata extraData
-    ) public onlyRemoteBridge {
+    ) external onlyRemoteBridge {
         uint256 localAmount;
         if (localToken == ETH_ADDRESS) {
             // Case: Bridging back native ETH to EVM
-            uint8 remoteDecimals;
-            (localAmount, remoteDecimals) = _localAmount({remoteAmount: remoteAmount, localDecimals: 18});
+            uint256 scaler = scalerExponents[localToken][remoteToken];
+            localAmount = remoteAmount * scaler;
             deposits[localToken][remoteToken] -= localAmount;
 
             SafeTransferLib.safeTransferETH({to: to, amount: localAmount});
         } else {
-            uint8 remoteDecimals;
-            (localAmount, remoteDecimals) =
-                _localAmount({remoteAmount: remoteAmount, localDecimals: ERC20(localToken).decimals()});
-
             try CrossChainERC20(localToken).remoteToken() returns (bytes32 remoteToken_) {
                 // Case: Bridging native SOL or SPL token to EVM
                 require(Pubkey.wrap(remoteToken_) == remoteToken, IncorrectRemoteToken());
+                localAmount = remoteAmount;
                 CrossChainERC20(localToken).mint({to: to, amount: localAmount});
             } catch {
                 // Case: Bridging back native ERC20 to EVM
+                uint256 scaler = scalerExponents[localToken][remoteToken];
+                localAmount = remoteAmount * scaler;
                 deposits[localToken][remoteToken] -= localAmount;
+
                 SafeTransferLib.safeTransfer({token: localToken, to: to, amount: localAmount});
             }
         }
@@ -277,6 +290,18 @@ contract TokenBridge {
             amount: localAmount,
             extraData: extraData
         });
+    }
+
+    /// @notice Registers a remote token that was deployed from the Solana factory.
+    ///
+    /// @param localToken Address of the ERC20 token on this chain.
+    /// @param remoteToken Pubkey of the remote token on Solana.
+    /// @param scalerExponent Exponent to be used to convert local to remote amounts.
+    function registerRemoteToken(address localToken, Pubkey remoteToken, uint8 scalerExponent)
+        external
+        onlyRemoteBridge
+    {
+        scalerExponents[localToken][remoteToken] = 10 ** scalerExponent;
     }
 
     //////////////////////////////////////////////////////////////

@@ -11,7 +11,6 @@ pub struct SendCall<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
 
-    #[account(mut)]
     pub authority: Signer<'info>,
 
     /// CHECK: This is the hardcoded gas fee receiver account.

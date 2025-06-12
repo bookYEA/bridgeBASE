@@ -1,6 +1,8 @@
 use alloy_sol_types::sol;
 
 sol! {
+    type Pubkey is bytes32;
+
     #[derive(Debug, PartialEq, Eq)]
     contract Bridge {
         /// @notice Finalizes a token bridge on this chain. Can only be triggered by the Bridge contract on the remote
@@ -21,5 +23,13 @@ sol! {
             uint256 amount,
             bytes calldata extraData
         ) public;
+
+        /// @notice Registers a remote token with the bridge.
+        ///
+        /// @param localToken Address of the ERC20 token on this chain.
+        /// @param remoteToken Pubkey of the remote token on Solana.
+        /// @param scalerExponent Exponent to be used to convert local to remote amounts.
+        function registerRemoteToken(address localToken, Pubkey remoteToken, uint8 scalerExponent)
+            external;
     }
 }

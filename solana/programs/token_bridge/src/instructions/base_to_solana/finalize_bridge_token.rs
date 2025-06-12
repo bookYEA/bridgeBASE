@@ -29,18 +29,9 @@ pub struct FinalizeBridgeToken<'info> {
     pub token_program: Program<'info, Token2022>,
 }
 
-pub fn finalize_bridge_token_handler(
-    ctx: Context<FinalizeBridgeToken>,
-    remote_token: [u8; 20],
-    amount: u64,
-) -> Result<()> {
+pub fn finalize_bridge_token_handler(ctx: Context<FinalizeBridgeToken>, amount: u64) -> Result<()> {
     let partial_token_metadata =
         PartialTokenMetadata::try_from(&ctx.accounts.mint.to_account_info())?;
-
-    require!(
-        partial_token_metadata.remote_token == remote_token,
-        FinalizeBridgeTokenError::IncorrectMintAccount,
-    );
 
     let decimals_bytes = ctx.accounts.mint.decimals.to_le_bytes();
     let metadata_hash = partial_token_metadata.hash();
@@ -68,12 +59,6 @@ pub fn finalize_bridge_token_handler(
         seeds,
     );
     token_interface::mint_to_checked(cpi_ctx, amount, ctx.accounts.mint.decimals)
-}
-
-#[error_code]
-pub enum FinalizeBridgeTokenError {
-    #[msg("Incorrect mint account")]
-    IncorrectMintAccount,
 }
 
 #[cfg(test)]
@@ -156,7 +141,6 @@ mod tests {
             program_id: TOKEN_BRIDGE_PROGRAM_ID,
             accounts: finalize_bridge_token_accounts.clone(),
             data: crate::instruction::FinalizeBridgeToken {
-                remote_token: partial_token_metadata.remote_token,
                 amount: mint_amount,
             }
             .data(),

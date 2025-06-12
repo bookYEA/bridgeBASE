@@ -57,8 +57,16 @@ pub mod token_bridge {
         ctx: Context<WrapToken>,
         decimals: u8,
         partial_token_metadata: PartialTokenMetadata,
+        scaler_exponent: u8,
+        min_gas_limit: u64,
     ) -> Result<()> {
-        wrap_token_handler(ctx, decimals, partial_token_metadata)
+        wrap_token_handler(
+            ctx,
+            decimals,
+            partial_token_metadata,
+            scaler_exponent,
+            min_gas_limit,
+        )
     }
 
     pub fn finalize_bridge_sol(
@@ -77,11 +85,7 @@ pub mod token_bridge {
         finalize_bridge_spl_handler(ctx, remote_token, amount)
     }
 
-    pub fn finalize_bridge_token(
-        ctx: Context<FinalizeBridgeToken>,
-        remote_token: [u8; 20],
-        amount: u64,
-    ) -> Result<()> {
-        finalize_bridge_token_handler(ctx, remote_token, amount)
+    pub fn finalize_bridge_token(ctx: Context<FinalizeBridgeToken>, amount: u64) -> Result<()> {
+        finalize_bridge_token_handler(ctx, amount)
     }
 }

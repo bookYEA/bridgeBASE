@@ -1,8 +1,8 @@
 use anchor_lang::prelude::*;
 
 use crate::{
-    constants::{MESSENGER_SEED, OUTPUT_ROOT_SEED, TRUSTED_ORACLE},
-    state::{Messenger, OutputRoot},
+    constants::{OUTPUT_ROOT_SEED, TRUSTED_ORACLE},
+    state::OutputRoot,
 };
 
 #[derive(Accounts)]
@@ -19,9 +19,6 @@ pub struct RegisterOutputRoot<'info> {
         bump
     )]
     pub root: Account<'info, OutputRoot>,
-
-    #[account(mut, seeds = [MESSENGER_SEED], bump)]
-    pub messenger: Account<'info, Messenger>,
 
     pub system_program: Program<'info, System>,
 }
@@ -57,9 +54,8 @@ mod tests {
     use solana_transaction::Transaction;
 
     use crate::{
-        constants::{MESSENGER_SEED, OUTPUT_ROOT_SEED, TRUSTED_ORACLE_KEYPAIR_BASE58},
+        constants::{OUTPUT_ROOT_SEED, TRUSTED_ORACLE_KEYPAIR_BASE58},
         state::OutputRoot,
-        test_utils::mock_messenger,
         ID as PORTAL_PROGRAM_ID,
     };
 
@@ -83,17 +79,11 @@ mod tests {
             &[OUTPUT_ROOT_SEED, &block_number.to_le_bytes()],
             &PORTAL_PROGRAM_ID,
         );
-        let (messenger_pda, _) =
-            Pubkey::find_program_address(&[MESSENGER_SEED], &PORTAL_PROGRAM_ID);
-
-        // Mock the messenger account
-        mock_messenger(&mut svm, &messenger_pda, 0);
 
         // Build the instruction with wrong payer
         let register_output_root_accounts = crate::accounts::RegisterOutputRoot {
             payer: wrong_payer_pk, // This should fail because it's not TRUSTED_ORACLE
             root: output_root_pda,
-            messenger: messenger_pda,
             system_program: solana_sdk_ids::system_program::ID,
         }
         .to_account_metas(None);
@@ -157,17 +147,11 @@ mod tests {
             &[OUTPUT_ROOT_SEED, &block_number.to_le_bytes()],
             &PORTAL_PROGRAM_ID,
         );
-        let (messenger_pda, _) =
-            Pubkey::find_program_address(&[MESSENGER_SEED], &PORTAL_PROGRAM_ID);
-
-        // Mock the messenger account
-        mock_messenger(&mut svm, &messenger_pda, 0);
 
         // Build the instruction
         let register_output_root_accounts = crate::accounts::RegisterOutputRoot {
             payer: trusted_oracle_pubkey,
             root: output_root_pda,
-            messenger: messenger_pda,
             system_program: solana_sdk_ids::system_program::ID,
         }
         .to_account_metas(None);

@@ -12,14 +12,19 @@ use anchor_spl::{
     token_interface::spl_token_metadata_interface::state::TokenMetadata,
 };
 use litesvm::LiteSVM;
-use portal::{constants::PORTAL_AUTHORITY_SEED, state::RemoteCall};
+use portal::{
+    constants::{MESSENGER_SEED, PORTAL_AUTHORITY_SEED},
+    state::{Messenger, RemoteCall},
+};
 use solana_account::Account;
 use solana_keypair::Keypair;
 use solana_program_pack::Pack;
 use solana_signer::Signer;
 
 use crate::{
-    constants::{REMOTE_BRIDGE, SOL_VAULT_SEED, TOKEN_VAULT_SEED, WRAPPED_TOKEN_SEED},
+    constants::{
+        BRIDGE_AUTHORITY_SEED, REMOTE_BRIDGE, SOL_VAULT_SEED, TOKEN_VAULT_SEED, WRAPPED_TOKEN_SEED,
+    },
     instructions::PartialTokenMetadata,
     ID as TOKEN_BRIDGE_PROGRAM_ID,
 };
@@ -34,6 +39,35 @@ pub fn portal_authority() -> Pubkey {
     );
 
     portal_authority
+}
+
+pub fn mock_messenger(svm: &mut LiteSVM, nonce: u64) -> Pubkey {
+    let (messenger_pda, _) = Pubkey::find_program_address(&[MESSENGER_SEED], &PORTAL_PROGRAM_ID);
+
+    let mut messenger_data = Vec::new();
+    Messenger { nonce }
+        .try_serialize(&mut messenger_data)
+        .unwrap();
+
+    svm.set_account(
+        messenger_pda,
+        Account {
+            lamports: LAMPORTS_PER_SOL, // Rent-exempt amount
+            data: messenger_data,
+            owner: PORTAL_PROGRAM_ID,
+            executable: false,
+            rent_epoch: 0,
+        },
+    )
+    .unwrap();
+
+    messenger_pda
+}
+
+pub fn bridge_authority() -> Pubkey {
+    let (bridge_authority, _) =
+        Pubkey::find_program_address(&[BRIDGE_AUTHORITY_SEED], &TOKEN_BRIDGE_PROGRAM_ID);
+    bridge_authority
 }
 
 pub fn mock_remote_call(
