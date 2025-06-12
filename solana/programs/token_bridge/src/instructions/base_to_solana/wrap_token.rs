@@ -12,7 +12,10 @@ use anchor_spl::token_interface::{
 };
 use portal::{cpi as portal_cpi, program::Portal};
 
-use crate::constants::{BRIDGE_AUTHORITY_SEED, REMOTE_TOKEN_METADATA_KEY, WRAPPED_TOKEN_SEED};
+use crate::constants::{
+    BRIDGE_AUTHORITY_SEED, REMOTE_TOKEN_METADATA_KEY, SCALER_EXPONENT_METADATA_KEY,
+    WRAPPED_TOKEN_SEED,
+};
 use crate::internal::{cpi_send_message, metadata::PartialTokenMetadata};
 use crate::solidity::Bridge;
 
@@ -145,6 +148,21 @@ fn initialize_metadata(
         ),
         Field::Key(REMOTE_TOKEN_METADATA_KEY.to_string()),
         hex::encode(partial_token_metadata.remote_token),
+    )?;
+
+    // Set the scaler exponent metadata key
+    token_metadata_update_field(
+        CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            TokenMetadataUpdateField {
+                program_id: ctx.accounts.token_program.to_account_info(),
+                metadata: ctx.accounts.mint.to_account_info(),
+                update_authority: ctx.accounts.mint.to_account_info(),
+            },
+            &[seeds],
+        ),
+        Field::Key(SCALER_EXPONENT_METADATA_KEY.to_string()),
+        partial_token_metadata.scaler_exponent.to_string(),
     )?;
 
     Ok(())
@@ -318,10 +336,14 @@ mod tests {
         assert_eq!(token_metadata.name, partial_token_metadata.name);
         assert_eq!(token_metadata.symbol, partial_token_metadata.symbol);
 
-        assert_eq!(token_metadata.additional_metadata.len(), 1);
+        assert_eq!(token_metadata.additional_metadata.len(), 2);
         let (key, value) = &token_metadata.additional_metadata[0];
         assert_eq!(key, REMOTE_TOKEN_METADATA_KEY);
         assert_eq!(value, &hex::encode(partial_token_metadata.remote_token));
+
+        let (key, value) = &token_metadata.additional_metadata[1];
+        assert_eq!(key, SCALER_EXPONENT_METADATA_KEY);
+        assert_eq!(value, &partial_token_metadata.scaler_exponent.to_string());
 
         // TODO: Verify that a message was sent to register the created SPL to the remote bridge on Base with
         //       the correct scaler exponent.
