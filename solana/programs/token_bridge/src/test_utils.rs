@@ -30,8 +30,6 @@ use crate::{
 };
 use portal::ID as PORTAL_PROGRAM_ID;
 
-pub const SPL_TOKEN_PROGRAM_ID: Pubkey = anchor_spl::token_2022::ID;
-
 pub fn portal_authority() -> Pubkey {
     let (portal_authority, _) = Pubkey::find_program_address(
         &[PORTAL_AUTHORITY_SEED, REMOTE_BRIDGE.as_ref()],
@@ -143,7 +141,11 @@ pub fn mock_wrapped_mint(
         ExtensionType::try_calculate_account_len::<Mint>(&[ExtensionType::MetadataPointer])
             .unwrap();
 
+    println!("account_size: {:?}", account_size);
+
     account_size += token_metadata.tlv_size_of().unwrap();
+
+    println!("account_size: {:?}", account_size);
 
     // Full buffer for the mint account
     let mut mint_data = vec![0u8; account_size];
@@ -180,7 +182,7 @@ pub fn mock_wrapped_mint(
         Account {
             lamports: 100 * LAMPORTS_PER_SOL,
             data: mint_data,
-            owner: SPL_TOKEN_PROGRAM_ID,
+            owner: anchor_spl::token_2022::ID,
             executable: false,
             rent_epoch: 0,
         },
@@ -190,7 +192,7 @@ pub fn mock_wrapped_mint(
     wrapped_mint
 }
 
-pub fn mock_mint(svm: &mut LiteSVM, mint: Pubkey, decimals: u8) {
+pub fn mock_mint(svm: &mut LiteSVM, mint: Pubkey, decimals: u8, token_program_id: Pubkey) {
     let mut mint_data = vec![0u8; Mint::LEN];
     Mint {
         mint_authority: COption::Some(mint),
@@ -206,7 +208,7 @@ pub fn mock_mint(svm: &mut LiteSVM, mint: Pubkey, decimals: u8) {
         Account {
             lamports: 100 * LAMPORTS_PER_SOL,
             data: mint_data,
-            owner: SPL_TOKEN_PROGRAM_ID,
+            owner: token_program_id,
             executable: false,
             rent_epoch: 0,
         },
@@ -219,13 +221,21 @@ pub fn mock_token_vault(
     mint: Pubkey,
     remote_token: [u8; 20],
     amount: u64,
+    token_program_id: Pubkey,
 ) -> Pubkey {
     let (token_vault, _) = Pubkey::find_program_address(
         &[TOKEN_VAULT_SEED, mint.as_ref(), remote_token.as_ref()],
         &TOKEN_BRIDGE_PROGRAM_ID,
     );
 
-    mock_token_account(svm, token_vault, mint, token_vault, amount);
+    mock_token_account(
+        svm,
+        token_vault,
+        mint,
+        token_vault,
+        amount,
+        token_program_id,
+    );
     token_vault
 }
 
@@ -235,6 +245,7 @@ pub fn mock_token_account(
     mint: Pubkey,
     owner: Pubkey,
     amount: u64,
+    token_program_id: Pubkey,
 ) {
     // Create token account data (SPL Token Account layout)
     let mut token_account_data = vec![0u8; 165]; // Token account size
@@ -255,7 +266,7 @@ pub fn mock_token_account(
         Account {
             lamports: 100 * LAMPORTS_PER_SOL,
             data: token_account_data,
-            owner: SPL_TOKEN_PROGRAM_ID,
+            owner: token_program_id,
             executable: false,
             rent_epoch: 0,
         },

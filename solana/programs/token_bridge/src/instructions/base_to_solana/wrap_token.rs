@@ -224,7 +224,7 @@ mod tests {
     use solana_transaction::Transaction;
 
     use crate::{
-        test_utils::{bridge_authority, mock_messenger, SPL_TOKEN_PROGRAM_ID},
+        test_utils::{bridge_authority, mock_messenger},
         ID as TOKEN_BRIDGE_PROGRAM_ID,
     };
 
@@ -240,6 +240,12 @@ mod tests {
         .unwrap();
         svm.add_program_from_file(PORTAL_PROGRAM_ID, "../../target/deploy/portal.so")
             .unwrap();
+
+        println!(
+            "token_2022: {:?}",
+            hex::encode(anchor_spl::token_2022::ID.to_bytes())
+        );
+        println!("token: {:?}", hex::encode(anchor_spl::token::ID.to_bytes()));
 
         // Test parameters
         let partial_token_metadata = PartialTokenMetadata {
@@ -271,7 +277,7 @@ mod tests {
         let wrap_token_accounts = crate::accounts::WrapToken {
             payer: payer.pubkey(),
             mint: wrapped_mint,
-            token_program: SPL_TOKEN_PROGRAM_ID,
+            token_program: anchor_spl::token_2022::ID,
             bridge_authority: bridge_authority(),
             portal: PORTAL_PROGRAM_ID,
             gas_fee_receiver: GAS_FEE_RECEIVER,
@@ -303,7 +309,7 @@ mod tests {
 
         // Verify that the mint was created correctly
         let mint_account = svm.get_account(&wrapped_mint).unwrap();
-        assert_eq!(mint_account.owner, SPL_TOKEN_PROGRAM_ID);
+        assert_eq!(mint_account.owner, anchor_spl::token_2022::ID);
 
         // Deserialize and verify mint properties
         let mint_data = mint_account.data;

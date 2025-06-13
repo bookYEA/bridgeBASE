@@ -80,10 +80,7 @@ mod tests {
     use portal::{internal::Ix, ID as PORTAL_PROGRAM_ID};
 
     use crate::{
-        test_utils::{
-            mock_remote_call, mock_token_account, mock_wrapped_mint, portal_authority,
-            SPL_TOKEN_PROGRAM_ID,
-        },
+        test_utils::{mock_remote_call, mock_token_account, mock_wrapped_mint, portal_authority},
         ID as TOKEN_BRIDGE_PROGRAM_ID,
     };
 
@@ -121,7 +118,14 @@ mod tests {
 
         // Create destination token account (starts with 0 tokens)
         let to_token_account = Keypair::new().pubkey();
-        mock_token_account(&mut svm, to_token_account, wrapped_mint, recipient_pk, 0);
+        mock_token_account(
+            &mut svm,
+            to_token_account,
+            wrapped_mint,
+            recipient_pk,
+            0,
+            anchor_spl::token_2022::ID,
+        );
 
         // Compute the portal authority PDA
         let portal_authority = portal_authority();
@@ -131,7 +135,7 @@ mod tests {
             portal_authority,
             mint: wrapped_mint,
             to_token_account,
-            token_program: SPL_TOKEN_PROGRAM_ID,
+            token_program: anchor_spl::token_2022::ID,
         }
         .to_account_metas(None)
         .into_iter()

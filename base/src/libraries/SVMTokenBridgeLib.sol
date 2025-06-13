@@ -8,7 +8,11 @@ library SVMTokenBridgeLib {
     ///                       Constants                        ///
     //////////////////////////////////////////////////////////////
 
-    /// @notice The TokenProgram 2022 ID on Solana.
+    /// @notice The TokenProgram ID on Solana (TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA).
+    Pubkey private constant _TOKEN_PROGRAM_ID =
+        Pubkey.wrap(0x06ddf6e1d765a193d9cbe146ceeb79ac1cb485ed5f5b37913a8cf5857eff00a9);
+
+    /// @notice The TokenProgram 2022 ID on Solana (TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb).
     Pubkey private constant _TOKEN_PROGRAM_2022_ID =
         Pubkey.wrap(0x06ddf6e1ee758fde18425dbce46ccddab61afc4d83b90d27febdf928d8a18bfc);
 
@@ -99,7 +103,9 @@ library SVMTokenBridgeLib {
             _tokenVaultIxAccount({remoteBridge: remoteBridge, localToken: localToken, remoteToken: remoteToken}); // token_vault
         serializedAccounts[2] = SVMLib.serializePubkeyAccount({pubkey: to, isWritable: true, isSigner: false}); // to_token_account
         serializedAccounts[3] =
-            SVMLib.serializePubkeyAccount({pubkey: _TOKEN_PROGRAM_2022_ID, isWritable: false, isSigner: false}); // token_program
+            SVMLib.serializePubkeyAccount({pubkey: _TOKEN_PROGRAM_ID, isWritable: false, isSigner: false}); // token_program
+        serializedAccounts[4] =
+            SVMLib.serializePubkeyAccount({pubkey: _TOKEN_PROGRAM_2022_ID, isWritable: false, isSigner: false}); // token_program_2022
 
         return Ix({
             programId: remoteBridge,

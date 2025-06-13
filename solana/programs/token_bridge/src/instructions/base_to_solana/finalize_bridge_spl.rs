@@ -1,5 +1,9 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token_interface::{self, Mint, TokenAccount, TokenInterface, TransferChecked};
+use anchor_spl::{
+    token::Token,
+    token_2022::Token2022,
+    token_interface::{self, Mint, TokenAccount, TransferChecked},
+};
 
 use portal::constants::PORTAL_AUTHORITY_SEED;
 
@@ -31,7 +35,8 @@ pub struct FinalizeBridgeSpl<'info> {
     #[account(mut)]
     pub to_token_account: InterfaceAccount<'info, TokenAccount>,
 
-    pub token_program: Interface<'info, TokenInterface>,
+    pub token_program: Program<'info, Token>,
+    pub token_program_2022: Program<'info, Token2022>,
 }
 
 pub fn finalize_bridge_spl_handler(
@@ -47,8 +52,15 @@ pub fn finalize_bridge_spl_handler(
         &[ctx.bumps.token_vault],
     ]];
 
+    let token_program_info = if ctx.accounts.mint.to_account_info().owner == &anchor_spl::token::ID
+    {
+        ctx.accounts.token_program.to_account_info()
+    } else {
+        ctx.accounts.token_program_2022.to_account_info()
+    };
+
     let cpi_ctx = CpiContext::new_with_signer(
-        ctx.accounts.token_program.to_account_info(),
+        token_program_info,
         TransferChecked {
             mint: ctx.accounts.mint.to_account_info(),
             from: ctx.accounts.token_vault.to_account_info(),
@@ -64,7 +76,7 @@ pub fn finalize_bridge_spl_handler(
 mod tests {
     use super::*;
 
-    use anchor_lang::InstructionData;
+    use anchor_lang::{solana_program::native_token::LAMPORTS_PER_SOL, InstructionData};
     use anchor_spl::token::spl_token::state::Account as TokenAccount;
     use litesvm::LiteSVM;
     use solana_instruction::Instruction;
@@ -79,15 +91,21 @@ mod tests {
     use crate::{
         test_utils::{
             mock_mint, mock_remote_call, mock_token_account, mock_token_vault, portal_authority,
-            SPL_TOKEN_PROGRAM_ID,
         },
         ID as TOKEN_BRIDGE_PROGRAM_ID,
     };
 
-    const LAMPORTS_PER_SOL: u64 = 1_000_000_000;
+    #[test]
+    fn test_finalize_bridge_spl_success_token() {
+        test_finalize_bridge_spl_success_token_impl(anchor_spl::token::ID);
+    }
 
     #[test]
-    fn test_finalize_bridge_spl_success() {
+    fn test_finalize_bridge_spl_success_token_2022() {
+        test_finalize_bridge_spl_success_token_impl(anchor_spl::token_2022::ID);
+    }
+
+    fn test_finalize_bridge_spl_success_token_impl(token_program_id: Pubkey) {
         let mut svm = LiteSVM::new();
         svm.add_program_from_file(
             TOKEN_BRIDGE_PROGRAM_ID,
@@ -113,14 +131,27 @@ mod tests {
 
         // Create mint
         let mint = Keypair::new().pubkey();
-        mock_mint(&mut svm, mint, decimals);
+        mock_mint(&mut svm, mint, decimals, token_program_id);
 
         // Create token vault with funds
-        let token_vault = mock_token_vault(&mut svm, mint, remote_token, vault_initial_balance);
+        let token_vault = mock_token_vault(
+            &mut svm,
+            mint,
+            remote_token,
+            vault_initial_balance,
+            token_program_id,
+        );
 
         // Create destination token account
         let to_token_account = Keypair::new().pubkey();
-        mock_token_account(&mut svm, to_token_account, mint, recipient_pk, 0);
+        mock_token_account(
+            &mut svm,
+            to_token_account,
+            mint,
+            recipient_pk,
+            0,
+            token_program_id,
+        );
 
         // Compute the portal authority PDA
         let portal_authority = portal_authority();
@@ -131,7 +162,8 @@ mod tests {
             mint,
             token_vault,
             to_token_account,
-            token_program: SPL_TOKEN_PROGRAM_ID,
+            token_program: anchor_spl::token::ID,
+            token_program_2022: anchor_spl::token_2022::ID,
         }
         .to_account_metas(None)
         .into_iter()
