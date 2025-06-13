@@ -37,8 +37,8 @@ pub struct WrapToken<'info> {
         bump,
         mint::decimals = decimals,
         mint::authority = mint,
-        mint::freeze_authority = mint,
-        extensions::metadata_pointer::authority = mint,
+        // mint::freeze_authority = mint,
+        // extensions::metadata_pointer::authority = mint,
         extensions::metadata_pointer::metadata_address = mint,
     )]
     pub mint: InterfaceAccount<'info, Mint>,
@@ -318,7 +318,7 @@ mod tests {
 
         assert_eq!(mint.decimals, decimals);
         assert_eq!(mint.mint_authority, Some(wrapped_mint).into());
-        assert_eq!(mint.freeze_authority, Some(wrapped_mint).into());
+        assert_eq!(mint.freeze_authority, None.into());
         assert!(mint.is_initialized);
         assert_eq!(mint.supply, 0);
 
@@ -326,10 +326,7 @@ mod tests {
         let metadata_pointer = mint_with_extension
             .get_extension::<MetadataPointer>()
             .unwrap();
-        assert_eq!(
-            metadata_pointer.authority,
-            Some(wrapped_mint).try_into().unwrap()
-        );
+        assert_eq!(metadata_pointer.authority, None.try_into().unwrap());
         assert_eq!(
             metadata_pointer.metadata_address,
             Some(wrapped_mint).try_into().unwrap()
