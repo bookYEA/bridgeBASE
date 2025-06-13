@@ -2,7 +2,6 @@
 pragma solidity 0.8.28;
 
 import {ERC20} from "solady/tokens/ERC20.sol";
-import {Initializable} from "solady/utils/Initializable.sol";
 
 /// @title CrossChainERC20
 ///
@@ -23,6 +22,19 @@ contract CrossChainERC20 is ERC20 {
     /// @param from   Address of the account tokens are being burned from.
     /// @param amount Amount of tokens burned.
     event Burn(address indexed from, uint256 amount);
+
+    //////////////////////////////////////////////////////////////
+    ///                       Errors                           ///
+    //////////////////////////////////////////////////////////////
+
+    /// @notice Thrown when the sender is not the bridge.
+    error SenderIsNotBridge();
+
+    /// @notice Thrown when the minting to the zero address is attempted.
+    error MintToZeroAddress();
+
+    /// @notice Thrown when the burning from the zero address is attempted.
+    error BurnFromZeroAddress();
 
     //////////////////////////////////////////////////////////////
     ///                       Constants                        ///
@@ -53,7 +65,7 @@ contract CrossChainERC20 is ERC20 {
 
     /// @notice A modifier that only allows the Bridge to call.
     modifier onlyBridge() {
-        require(msg.sender == _BRIDGE, "CrossChainERC20: onlyBridge");
+        require(msg.sender == _BRIDGE, SenderIsNotBridge());
         _;
     }
 
@@ -76,13 +88,6 @@ contract CrossChainERC20 is ERC20 {
         _name = name_;
         _symbol = symbol_;
         _DECIMALS = decimals_;
-    }
-
-    /// @notice Returns the semantic version of this contract.
-    ///
-    /// @return The version string.
-    function version() external pure returns (string memory) {
-        return "1.0.1";
     }
 
     /// @notice Returns the bridge contract address.
@@ -127,7 +132,7 @@ contract CrossChainERC20 is ERC20 {
     /// @param to     Address to mint tokens to.
     /// @param amount Amount of tokens to mint.
     function mint(address to, uint256 amount) external onlyBridge {
-        require(to != address(0), "CrossChainERC20: mint to zero address");
+        require(to != address(0), MintToZeroAddress());
 
         _mint(to, amount);
         emit Mint(to, amount);
@@ -140,7 +145,7 @@ contract CrossChainERC20 is ERC20 {
     /// @param from   Address to burn tokens from.
     /// @param amount Amount of tokens to burn.
     function burn(address from, uint256 amount) external onlyBridge {
-        require(from != address(0), "CrossChainERC20: burn from zero address");
+        require(from != address(0), BurnFromZeroAddress());
 
         _burn(from, amount);
         emit Burn(from, amount);

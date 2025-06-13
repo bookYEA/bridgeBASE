@@ -81,7 +81,7 @@ contract TokenBridge {
 
     /// @notice The Solana pubkey for the native SOL token ("SoL1111111111111111111111111111111111111111")
     Pubkey public constant NATIVE_SOL_PUBKEY =
-        Pubkey.wrap(0x0000000000000000000000000000000000000000000000000000000000000000);
+        Pubkey.wrap(0x069be72ab836d4eacc02525b7350a78a395da2f1253a40ebafd6630000000000);
 
     /// @notice Address of the Messenger contract on this chain.
     address public immutable MESSENGER;
@@ -91,9 +91,6 @@ contract TokenBridge {
 
     /// @notice Pubkey of the token bridge contract on Solana.
     Pubkey public immutable REMOTE_TOKEN_BRIDGE;
-
-    /// @notice The maximum number of decimals for a Solana token.
-    uint8 public constant MAX_SOL_DECIMALS = 9;
 
     //////////////////////////////////////////////////////////////
     ///                       Storage                          ///
@@ -302,31 +299,5 @@ contract TokenBridge {
         onlyRemoteBridge
     {
         scalerExponents[localToken][remoteToken] = 10 ** scalerExponent;
-    }
-
-    //////////////////////////////////////////////////////////////
-    ///                       Private Functions                ///
-    //////////////////////////////////////////////////////////////
-
-    /// @notice Converts a remote amount to a local amount.
-    ///
-    /// @param remoteAmount Amount of tokens being bridged to/from Solana.
-    /// @param localDecimals Number of decimals on this chain.
-    ///
-    /// @return localAmount Amount of tokens in the EVM chain.
-    /// @return remoteDecimals Number of decimals to be used on Solana.
-    function _localAmount(uint64 remoteAmount, uint8 localDecimals)
-        internal
-        pure
-        returns (uint256 localAmount, uint8 remoteDecimals)
-    {
-        remoteDecimals = localDecimals;
-        localAmount = remoteAmount;
-
-        if (localDecimals > MAX_SOL_DECIMALS) {
-            remoteDecimals = MAX_SOL_DECIMALS;
-            uint256 scaleFactor = 10 ** (localDecimals - remoteDecimals);
-            localAmount = remoteAmount * scaleFactor;
-        }
     }
 }

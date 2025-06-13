@@ -47,11 +47,6 @@ contract MessagePasser {
     ///                       Public Functions                 ///
     //////////////////////////////////////////////////////////////
 
-    /// @notice Returns the semantic version of this contract.
-    function version() external pure returns (string memory) {
-        return "1.1.2";
-    }
-
     /// @notice Sends a remote call to a Solana program. This function creates a remote call, hashes it for
     ///         verification, and emits an event that can be monitored by offchain relayers.
     ///

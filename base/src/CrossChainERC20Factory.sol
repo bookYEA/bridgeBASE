@@ -53,11 +53,6 @@ contract CrossChainERC20Factory is Initializable {
         _disableInitializers();
     }
 
-    /// @notice Returns the semantic version of this contract
-    function version() external pure returns (string memory) {
-        return "1.0.1";
-    }
-
     /// @notice Initializes the factory with the bridge contract address
     ///
     /// @dev Can only be called once due to the initializer modifier. Sets the bridge address
