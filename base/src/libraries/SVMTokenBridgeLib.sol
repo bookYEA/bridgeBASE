@@ -97,7 +97,7 @@ library SVMTokenBridgeLib {
         Pubkey to,
         uint64 remoteAmount
     ) internal pure returns (Ix memory) {
-        bytes[] memory serializedAccounts = new bytes[](4);
+        bytes[] memory serializedAccounts = new bytes[](5);
         serializedAccounts[0] = SVMLib.serializePubkeyAccount({pubkey: remoteToken, isWritable: true, isSigner: false}); // mint
         serializedAccounts[1] =
             _tokenVaultIxAccount({remoteBridge: remoteBridge, localToken: localToken, remoteToken: remoteToken}); // token_vault
