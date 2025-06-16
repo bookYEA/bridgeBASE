@@ -60,7 +60,11 @@ impl Eip1559 {
 
         // Process any additional empty windows (0 gas usage each)
         for _ in 1..expired_windows_count {
-            current_base_fee -= current_base_fee / self.denominator;
+            let decrease = current_base_fee / self.denominator;
+            if decrease == 0 {
+                break;
+            }
+            current_base_fee = current_base_fee.saturating_sub(decrease);
         }
 
         // Update state for new window
