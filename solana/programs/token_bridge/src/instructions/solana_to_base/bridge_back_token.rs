@@ -42,6 +42,10 @@ pub struct BridgeBackToken<'info> {
     #[account(mut)]
     pub gas_fee_receiver: AccountInfo<'info>,
 
+    /// CHECK: Checked by the Portal program that we CPI into.
+    #[account(mut)]
+    pub eip1559: AccountInfo<'info>,
+
     pub system_program: Program<'info, System>,
 }
 
@@ -63,6 +67,7 @@ pub fn bridge_back_token_handler(
             payer: ctx.accounts.from.to_account_info(),
             authority: ctx.accounts.bridge_authority.to_account_info(),
             gas_fee_receiver: ctx.accounts.gas_fee_receiver.to_account_info(),
+            eip1559: ctx.accounts.eip1559.to_account_info(),
             system_program: ctx.accounts.system_program.to_account_info(),
             messenger: ctx.accounts.messenger.to_account_info(),
         },

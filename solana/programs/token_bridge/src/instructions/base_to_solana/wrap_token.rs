@@ -61,6 +61,10 @@ pub struct WrapToken<'info> {
     #[account(mut)]
     pub gas_fee_receiver: AccountInfo<'info>,
 
+    /// CHECK: Checked by the Portal program that we CPI into.
+    #[account(mut)]
+    pub eip1559: AccountInfo<'info>,
+
     pub system_program: Program<'info, System>,
 }
 
@@ -180,6 +184,7 @@ fn register_remote_token(
             payer: ctx.accounts.payer.to_account_info(),
             authority: ctx.accounts.bridge_authority.to_account_info(),
             gas_fee_receiver: ctx.accounts.gas_fee_receiver.to_account_info(),
+            eip1559: ctx.accounts.eip1559.to_account_info(),
             system_program: ctx.accounts.system_program.to_account_info(),
             messenger: ctx.accounts.messenger.to_account_info(),
         },
@@ -224,11 +229,11 @@ mod tests {
     use solana_transaction::Transaction;
 
     use crate::{
-        test_utils::{bridge_authority, mock_messenger},
+        test_utils::{bridge_authority, mock_clock, mock_eip1559, mock_messenger},
         ID as TOKEN_BRIDGE_PROGRAM_ID,
     };
 
-    use portal::{constants::GAS_FEE_RECEIVER, ID as PORTAL_PROGRAM_ID};
+    use portal::{constants::GAS_FEE_RECEIVER, state::Eip1559, ID as PORTAL_PROGRAM_ID};
 
     #[test]
     fn test_wrap_token_success() {
@@ -272,6 +277,9 @@ mod tests {
         );
 
         let messenger_pda = mock_messenger(&mut svm, 0);
+        let initial_timestamp = 1000i64;
+        let eip1559_pda = mock_eip1559(&mut svm, Eip1559::new(initial_timestamp));
+        mock_clock(&mut svm, initial_timestamp);
 
         // Build the wrap_token instruction
         let wrap_token_accounts = crate::accounts::WrapToken {
@@ -281,6 +289,7 @@ mod tests {
             bridge_authority: bridge_authority(),
             portal: PORTAL_PROGRAM_ID,
             gas_fee_receiver: GAS_FEE_RECEIVER,
+            eip1559: eip1559_pda,
             messenger: messenger_pda,
             system_program: solana_sdk_ids::system_program::ID,
         };

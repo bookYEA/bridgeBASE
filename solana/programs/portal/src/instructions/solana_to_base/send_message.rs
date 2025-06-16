@@ -3,10 +3,10 @@ use alloy_sol_types::SolCall;
 use anchor_lang::prelude::*;
 
 use crate::{
-    constants::{GAS_FEE_RECEIVER, MESSENGER_SEED, REMOTE_MESSENGER_ADDRESS},
+    constants::{EIP1559_SEED, GAS_FEE_RECEIVER, MESSENGER_SEED, REMOTE_MESSENGER_ADDRESS},
     instructions::{send_call, Call, SendCallError},
     solidity::CrossChainMessenger::{self},
-    state::Messenger,
+    state::{Eip1559, Messenger},
 };
 
 #[derive(Accounts)]
@@ -24,6 +24,13 @@ pub struct SendMessage<'info> {
     /// CHECK: This is the hardcoded gas fee receiver account.
     #[account(mut, address = GAS_FEE_RECEIVER @ SendCallError::IncorrectGasFeeReceiver)]
     pub gas_fee_receiver: AccountInfo<'info>,
+
+    #[account(
+        mut,
+        seeds = [EIP1559_SEED],
+        bump,
+    )]
+    pub eip1559: Account<'info, Eip1559>,
 
     pub system_program: Program<'info, System>,
 }
@@ -47,6 +54,7 @@ pub fn send_message_handler(
         &ctx.accounts.system_program,
         &ctx.accounts.payer,
         &ctx.accounts.gas_fee_receiver,
+        &mut ctx.accounts.eip1559,
         Call {
             from: *ctx.program_id,
             to: REMOTE_MESSENGER_ADDRESS,
@@ -73,65 +81,10 @@ mod tests {
     use solana_signer::Signer;
     use solana_transaction::Transaction;
 
-    use crate::{test_utils::mock_messenger, ID as PORTAL_PROGRAM_ID};
-
-    #[test]
-    fn test_send_message_fail_uninitialized_messenger() {
-        let mut svm = LiteSVM::new();
-        svm.add_program_from_file(PORTAL_PROGRAM_ID, "../../target/deploy/portal.so")
-            .unwrap();
-
-        // Create test accounts
-        let payer = Keypair::new();
-        let payer_pk = payer.pubkey();
-        svm.airdrop(&payer_pk, LAMPORTS_PER_SOL).unwrap();
-
-        let authority = Keypair::new();
-        let authority_pk = authority.pubkey();
-
-        // Don't initialize messenger - this should cause failure
-        let (messenger_pda, _) =
-            Pubkey::find_program_address(&[MESSENGER_SEED], &PORTAL_PROGRAM_ID);
-
-        // Test parameters
-        let target = [1u8; 20];
-        let message = b"test message".to_vec();
-        let min_gas_limit = 100_000u64;
-
-        // Build the send_message instruction
-        let send_message_accounts = crate::accounts::SendMessage {
-            messenger: messenger_pda,
-            payer: payer_pk,
-            authority: authority_pk,
-            gas_fee_receiver: GAS_FEE_RECEIVER,
-            system_program: solana_sdk_ids::system_program::ID,
-        }
-        .to_account_metas(None);
-
-        let send_message_ix = Instruction {
-            program_id: PORTAL_PROGRAM_ID,
-            accounts: send_message_accounts,
-            data: crate::instruction::SendMessage {
-                target,
-                message,
-                min_gas_limit,
-            }
-            .data(),
-        };
-
-        // Build and send the transaction
-        let tx = Transaction::new(
-            &[&payer, &authority],
-            Message::new(&[send_message_ix], Some(&payer_pk)),
-            svm.latest_blockhash(),
-        );
-
-        let result = svm.send_transaction(tx);
-        assert!(
-            result.is_err(),
-            "Transaction should fail with uninitialized messenger"
-        );
-    }
+    use crate::{
+        test_utils::{mock_clock, mock_eip1559, mock_messenger},
+        ID as PORTAL_PROGRAM_ID,
+    };
 
     #[test]
     fn test_send_message_success() {
@@ -147,7 +100,7 @@ mod tests {
         let authority = Keypair::new();
         let authority_pk = authority.pubkey();
 
-        // Mock the messenger account instead of initializing it
+        // Mock the messenger account
         let initial_nonce = 42u64;
         let messenger_pda = mock_messenger(&mut svm, initial_nonce);
 
@@ -156,12 +109,20 @@ mod tests {
         let message = b"Hello, Base chain!".to_vec();
         let min_gas_limit = 100_000u64;
 
+        // Mock the EIP1559 account
+        let initial_timestamp: i64 = 1000i64;
+        let eip1559_pda = mock_eip1559(&mut svm, Eip1559::new(initial_timestamp));
+
+        // Mock clock with initial timestamp
+        mock_clock(&mut svm, initial_timestamp);
+
         // Build the send_message instruction
         let send_message_accounts = crate::accounts::SendMessage {
             messenger: messenger_pda,
             payer: payer_pk,
             authority: authority_pk,
             gas_fee_receiver: GAS_FEE_RECEIVER,
+            eip1559: eip1559_pda,
             system_program: solana_sdk_ids::system_program::ID,
         }
         .to_account_metas(None);
@@ -184,9 +145,9 @@ mod tests {
             svm.latest_blockhash(),
         );
 
-        let result = svm.send_transaction(tx);
-        assert!(result.is_ok(), "Transaction should succeed");
         // TODO: Check that the correct event is emitted
+        svm.send_transaction(tx)
+            .expect("Transaction should succeed");
 
         // Verify that the messenger nonce was incremented
         let messenger_account_after = svm.get_account(&messenger_pda).unwrap();

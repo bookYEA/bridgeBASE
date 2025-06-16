@@ -22,8 +22,8 @@ pub mod portal {
 
     // Portal instructions
 
-    pub fn initialize(_ctx: Context<Initialize>) -> Result<()> {
-        Ok(())
+    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
+        initialize_handler(ctx)
     }
 
     pub fn send_call(
