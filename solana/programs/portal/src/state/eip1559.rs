@@ -1,6 +1,9 @@
-use crate::constants::{
-    EIP1559_DEFAULT_ADJUSTMENT_DENOMINATOR, EIP1559_DEFAULT_GAS_TARGET_PER_WINDOW,
-    EIP1559_DEFAULT_WINDOW_DURATION_SECONDS, EIP1559_INITIAL_BASE_FEE_GWEI,
+use crate::{
+    constants::{
+        EIP1559_DEFAULT_ADJUSTMENT_DENOMINATOR, EIP1559_DEFAULT_GAS_TARGET_PER_WINDOW,
+        EIP1559_DEFAULT_WINDOW_DURATION_SECONDS, EIP1559_INITIAL_BASE_FEE_GWEI,
+    },
+    internal::{fixed_pow, SCALE},
 };
 use anchor_lang::prelude::*;
 
@@ -57,14 +60,34 @@ impl Eip1559 {
 
         // Process the first window with actual gas usage
         let mut current_base_fee = self.calc_base_fee(self.current_window_gas_used);
+        let remaining_windows_count = expired_windows_count - 1;
 
-        // Process any additional empty windows (0 gas usage each)
-        for _ in 1..expired_windows_count {
-            let decrease = current_base_fee / self.denominator;
-            if decrease == 0 {
-                break;
-            }
-            current_base_fee = current_base_fee.saturating_sub(decrease);
+        // Process the remaining empty windows (if any)
+        //
+        // This corresponds to applying this formula (because gas_used is 0):
+        //      base_fee_n+1 = base_fee_n - (base_fee_n / denom)
+        //                   = base_fee_n * (1 - 1 / denom)
+        //                   = base_fee_n * (denom - 1) / denom
+        // Thus:
+        //      base_fee_n = base_fee_0 * [(denom - 1) / denom]^n
+        if remaining_windows_count > 0 {
+            // Scale up as we're going to do some arithmetic
+            let scaled_denominator = self.denominator as u128 * SCALE;
+
+            // [(denom - 1) / denom]
+            // Guaranteed to be < SCALE.
+            // NOTE: scaled_denominator is in SCALE units while self.denominator is not
+            //       so the returned ratio is also in SCALE units
+            let ratio = (scaled_denominator - SCALE) / (self.denominator as u128);
+
+            // [(denom - 1) / denom]^(n-1)
+            // Guaranteed to be < SCALE because ratio < SCALE.
+            let factor = fixed_pow(ratio, remaining_windows_count);
+
+            // base_fee_0 * [(denom - 1) / denom]^n
+            // NOTE: multiply first in u128 and divide to scale back and fit into u64 while
+            //       preserving the best precision
+            current_base_fee = ((current_base_fee as u128 * factor) / SCALE) as u64;
         }
 
         // Update state for new window
