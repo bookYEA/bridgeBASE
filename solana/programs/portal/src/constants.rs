@@ -17,7 +17,8 @@ pub const GAS_PER_BYTE_COST: u64 = 40;
 
 pub const BASE_TRANSACTION_COST: u64 = 21000;
 
-pub const SOL_TO_ETH_FACTOR: u64 = 15;
+pub const GAS_COST_SCALER_DP: u64 = 10u64.pow(6);
+pub const GAS_COST_SCALER: u64 = 1_000_000;
 
 #[cfg(any(test, feature = "test-env"))]
 pub const TRUSTED_ORACLE_KEYPAIR_BASE58: &str =
@@ -37,7 +38,7 @@ pub const OUTPUT_ROOT_SEED: &[u8] = b"output_root";
 
 pub const EIP1559_SEED: &[u8] = b"eip1559";
 
-pub const EIP1559_INITIAL_BASE_FEE_GWEI: u64 = 1; // 1 GWEI
+pub const EIP1559_MINIMUM_BASE_FEE: u64 = 1;
 
 pub const EIP1559_DEFAULT_WINDOW_DURATION_SECONDS: u64 = 1; // 1 second windows
 

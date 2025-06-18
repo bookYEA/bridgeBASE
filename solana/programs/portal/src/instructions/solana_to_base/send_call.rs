@@ -1,7 +1,8 @@
 use anchor_lang::prelude::*;
 
 use crate::constants::{
-    BASE_TRANSACTION_COST, EIP1559_SEED, GAS_FEE_RECEIVER, GAS_PER_BYTE_COST, SOL_TO_ETH_FACTOR,
+    BASE_TRANSACTION_COST, EIP1559_SEED, GAS_COST_SCALER, GAS_COST_SCALER_DP, GAS_FEE_RECEIVER,
+    GAS_PER_BYTE_COST,
 };
 use crate::state::Eip1559;
 
@@ -115,7 +116,7 @@ fn meter_gas<'info>(
     // Record gas usage for this transaction
     eip1559.add_gas_usage(gas_limit);
 
-    let gas_cost = gas_limit * base_fee * SOL_TO_ETH_FACTOR;
+    let gas_cost = gas_limit * base_fee * GAS_COST_SCALER / GAS_COST_SCALER_DP;
 
     let cpi_ctx = CpiContext::new(
         system_program.to_account_info(),
@@ -154,7 +155,7 @@ mod tests {
     use crate::{
         constants::{
             EIP1559_DEFAULT_ADJUSTMENT_DENOMINATOR, EIP1559_DEFAULT_GAS_TARGET_PER_WINDOW,
-            EIP1559_DEFAULT_WINDOW_DURATION_SECONDS, EIP1559_INITIAL_BASE_FEE_GWEI,
+            EIP1559_DEFAULT_WINDOW_DURATION_SECONDS, EIP1559_MINIMUM_BASE_FEE,
         },
         test_utils::{mock_clock, mock_eip1559},
         ID as PORTAL_PROGRAM_ID,
@@ -422,7 +423,7 @@ mod tests {
         let eip1559_pda = mock_eip1559(&mut svm, Eip1559::new(initial_timestamp));
 
         // Get initial state to understand the target
-        let initial_base_fee = EIP1559_INITIAL_BASE_FEE_GWEI;
+        let initial_base_fee = EIP1559_MINIMUM_BASE_FEE;
         let target_gas = EIP1559_DEFAULT_GAS_TARGET_PER_WINDOW;
         let window_duration = EIP1559_DEFAULT_WINDOW_DURATION_SECONDS;
         let denominator = EIP1559_DEFAULT_ADJUSTMENT_DENOMINATOR;

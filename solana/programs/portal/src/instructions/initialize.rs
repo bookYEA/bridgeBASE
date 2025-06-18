@@ -53,7 +53,7 @@ mod tests {
     use crate::{
         constants::{
             EIP1559_DEFAULT_ADJUSTMENT_DENOMINATOR, EIP1559_DEFAULT_GAS_TARGET_PER_WINDOW,
-            EIP1559_INITIAL_BASE_FEE_GWEI,
+            EIP1559_MINIMUM_BASE_FEE,
         },
         test_utils::mock_clock,
         ID as PORTAL_PROGRAM_ID,
@@ -119,7 +119,7 @@ mod tests {
             eip1559_data.denominator,
             EIP1559_DEFAULT_ADJUSTMENT_DENOMINATOR
         );
-        assert_eq!(eip1559_data.current_base_fee, EIP1559_INITIAL_BASE_FEE_GWEI);
+        assert_eq!(eip1559_data.current_base_fee, EIP1559_MINIMUM_BASE_FEE);
         assert_eq!(eip1559_data.current_window_gas_used, 0);
         assert_eq!(eip1559_data.window_start_time, 1747440000);
     }

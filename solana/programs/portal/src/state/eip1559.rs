@@ -1,7 +1,7 @@
 use crate::{
     constants::{
         EIP1559_DEFAULT_ADJUSTMENT_DENOMINATOR, EIP1559_DEFAULT_GAS_TARGET_PER_WINDOW,
-        EIP1559_DEFAULT_WINDOW_DURATION_SECONDS, EIP1559_INITIAL_BASE_FEE_GWEI,
+        EIP1559_DEFAULT_WINDOW_DURATION_SECONDS, EIP1559_MINIMUM_BASE_FEE,
     },
     internal::{fixed_pow, SCALE},
 };
@@ -30,7 +30,7 @@ impl Default for Eip1559 {
             target: EIP1559_DEFAULT_GAS_TARGET_PER_WINDOW,
             denominator: EIP1559_DEFAULT_ADJUSTMENT_DENOMINATOR,
             window_duration_seconds: EIP1559_DEFAULT_WINDOW_DURATION_SECONDS,
-            current_base_fee: EIP1559_INITIAL_BASE_FEE_GWEI,
+            current_base_fee: EIP1559_MINIMUM_BASE_FEE,
             current_window_gas_used: 0,
             window_start_time: 0,
         }
@@ -44,7 +44,7 @@ impl Eip1559 {
             target: EIP1559_DEFAULT_GAS_TARGET_PER_WINDOW,
             denominator: EIP1559_DEFAULT_ADJUSTMENT_DENOMINATOR,
             window_duration_seconds: EIP1559_DEFAULT_WINDOW_DURATION_SECONDS,
-            current_base_fee: EIP1559_INITIAL_BASE_FEE_GWEI,
+            current_base_fee: EIP1559_MINIMUM_BASE_FEE,
             current_window_gas_used: 0,
             window_start_time: current_timestamp,
         }
@@ -126,8 +126,10 @@ impl Eip1559 {
             let base_fee_delta =
                 (gas_used_delta * self.current_base_fee) / self.target / self.denominator;
 
-            // Ensure base fee doesn't go below 0
-            self.current_base_fee.saturating_sub(base_fee_delta)
+            // Ensure base fee doesn't go below EIP1559_MINIMUM_BASE_FEE
+            self.current_base_fee
+                .checked_sub(base_fee_delta)
+                .unwrap_or(EIP1559_MINIMUM_BASE_FEE)
         }
     }
 
@@ -148,7 +150,7 @@ mod tests {
 
         assert_eq!(state.target, EIP1559_DEFAULT_GAS_TARGET_PER_WINDOW);
         assert_eq!(state.denominator, EIP1559_DEFAULT_ADJUSTMENT_DENOMINATOR);
-        assert_eq!(state.current_base_fee, EIP1559_INITIAL_BASE_FEE_GWEI);
+        assert_eq!(state.current_base_fee, EIP1559_MINIMUM_BASE_FEE);
         assert_eq!(state.current_window_gas_used, 0);
         assert_eq!(state.window_start_time, timestamp);
     }
