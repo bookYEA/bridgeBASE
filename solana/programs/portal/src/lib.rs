@@ -4,7 +4,6 @@ use anchor_lang::prelude::*;
 pub mod constants;
 pub mod instructions;
 pub mod internal;
-pub mod solidity;
 pub mod state;
 
 #[cfg(test)]
@@ -20,20 +19,18 @@ pub mod portal {
 
     use super::*;
 
-    // Portal instructions
-
     pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
         initialize_handler(ctx)
     }
 
     pub fn send_call(
         ctx: Context<SendCall>,
+        ty: CallType,
         to: [u8; 20],
         gas_limit: u64,
-        is_creation: bool,
         data: Vec<u8>,
     ) -> Result<()> {
-        send_call_handler(ctx, to, gas_limit, is_creation, data)
+        send_call_handler(ctx, ty, to, gas_limit, data)
     }
 
     pub fn register_output_root(
@@ -58,16 +55,5 @@ pub mod portal {
         ctx: Context<'a, '_, 'info, 'info, RelayCall<'info>>,
     ) -> Result<()> {
         relay_call_handler(ctx)
-    }
-
-    // Messenger instructions
-
-    pub fn send_message(
-        ctx: Context<SendMessage>,
-        target: [u8; 20],
-        message: Vec<u8>,
-        min_gas_limit: u64,
-    ) -> Result<()> {
-        send_message_handler(ctx, target, message, min_gas_limit)
     }
 }

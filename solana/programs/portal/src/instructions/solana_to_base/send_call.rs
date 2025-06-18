@@ -1,9 +1,7 @@
 use anchor_lang::prelude::*;
 
-use crate::constants::{
-    BASE_TRANSACTION_COST, EIP1559_SEED, GAS_COST_SCALER, GAS_COST_SCALER_DP, GAS_FEE_RECEIVER,
-    GAS_PER_BYTE_COST,
-};
+use crate::constants::{EIP1559_SEED, GAS_COST_SCALER, GAS_COST_SCALER_DP, GAS_FEE_RECEIVER};
+use crate::instructions::CallType;
 use crate::state::Eip1559;
 
 use super::Call;
@@ -38,9 +36,9 @@ pub struct CallSent {
 
 pub fn send_call_handler(
     ctx: Context<SendCall>,
+    ty: CallType,
     to: [u8; 20],
-    gas_limit: u64,
-    is_creation: bool,
+    min_gas_limit: u64,
     data: Vec<u8>,
 ) -> Result<()> {
     send_call(
@@ -49,10 +47,10 @@ pub fn send_call_handler(
         &ctx.accounts.gas_fee_receiver,
         &mut ctx.accounts.eip1559,
         Call {
+            ty,
             from: ctx.accounts.authority.key(),
             to,
-            gas_limit,
-            is_creation,
+            min_gas_limit,
             data,
         },
     )
@@ -65,29 +63,42 @@ pub fn send_call<'info>(
     eip1559: &mut Account<'info, Eip1559>,
     call: Call,
 ) -> Result<()> {
+    // TODO: The `relayCall` function on Base expects a `nonce`. Figure out where and how to generate it.
+
     let Call {
+        ty,
         from,
         to,
-        gas_limit,
-        is_creation,
+        min_gas_limit,
         data,
     } = call;
 
-    require!(!is_creation || to == [0; 20], SendCallError::BadTarget);
+    // Ensure no target address is provided for contract creation
     require!(
-        gas_limit >= minimum_gas_limit(&data),
-        SendCallError::GasLimitTooLow
+        matches!(ty, CallType::Call | CallType::DelegateCall) || to == [0; 20],
+        SendCallError::CreationWithNonZeroTarget
     );
+
+    // Calculate the effective minimum gas limit to provide to ensure a successful relay
+    // of a call with `min_gas_limit` gas.
+    let effective_min_gas_limit = base_gas(&data, min_gas_limit);
 
     let opaque_data = {
         let mut opaque_data = vec![];
-        opaque_data.extend_from_slice(&gas_limit.to_le_bytes());
-        opaque_data.push(is_creation as u8);
+        opaque_data.push(ty as u8);
+        opaque_data.extend_from_slice(&effective_min_gas_limit.to_le_bytes());
         opaque_data.extend_from_slice(&data);
         opaque_data
     };
 
-    meter_gas(system_program, payer, gas_fee_receiver, eip1559, gas_limit)?;
+    // Pay for the gas to relay the call on Base.
+    pay_for_gas(
+        system_program,
+        payer,
+        gas_fee_receiver,
+        eip1559,
+        effective_min_gas_limit,
+    )?;
 
     emit!(CallSent {
         from,
@@ -98,25 +109,47 @@ pub fn send_call<'info>(
     Ok(())
 }
 
-fn minimum_gas_limit(data: &[u8]) -> u64 {
-    data.len() as u64 * GAS_PER_BYTE_COST + BASE_TRANSACTION_COST
+fn base_gas(data: &[u8], min_gas_limit: u64) -> u64 {
+    const RELAY_CONSTANT_OVERHEAD_GAS: u64 = 200_000; // Constant overhead added to the base gas to relay a call.
+    const RELAY_CALL_OVERHEAD_GAS: u64 = 40_000; // Covers dynamic parts of the CALL opcode
+    const RELAY_CALL_CHECK_BUFFER_GAS: u64 = 5_000; // Buffer between _hasMinGas check and the CALL
+    const RELAY_CALL_POST_EXECUTION_RESERVED_GAS: u64 = 40_000; // Ensures execution of relayCall completes after call.
+
+    const TX_BASE_GAS: u64 = 21_000;
+    const MIN_GAS_CALLDATA_OVERHEAD: u64 = 16; // Extra gas added to base gas for each byte of calldata in a message.
+    const FLOOR_CALLDATA_OVERHEAD: u64 = 40; // Floor overhead per byte of non-zero calldata in a message. Calldata floor was introduced in EIP-7623.
+
+    let execution_gas = RELAY_CONSTANT_OVERHEAD_GAS
+        + RELAY_CALL_OVERHEAD_GAS
+        + RELAY_CALL_CHECK_BUFFER_GAS
+        + RELAY_CALL_POST_EXECUTION_RESERVED_GAS
+        + min_gas_limit * 63 / 64;
+
+    // TODO: The tx size on Base will be bigger as it's wrapped in a call to the `relayCall` function.
+    let tx_size = data.len() as u64;
+
+    // TODO: More thought is needed here as it is possible to do contract creation
+    //       Taken from: https://github.com/ethereum-optimism/optimism/blob/8261ca8e540558224912d61be8f502cf3e1e3dc5/packages/contracts-bedrock/src/universal/CrossDomainMessenger.sol#L389
+    TX_BASE_GAS
+        + (execution_gas + tx_size * MIN_GAS_CALLDATA_OVERHEAD)
+            .max(tx_size * FLOOR_CALLDATA_OVERHEAD)
 }
 
-fn meter_gas<'info>(
+fn pay_for_gas<'info>(
     system_program: &Program<'info, System>,
     payer: &Signer<'info>,
     gas_fee_receiver: &AccountInfo<'info>,
     eip1559: &mut Account<'info, Eip1559>,
-    gas_limit: u64,
+    effective_min_gas_limit: u64,
 ) -> Result<()> {
     // Get the base fee for the current window
     let current_timestamp = Clock::get()?.unix_timestamp;
     let base_fee = eip1559.refresh_base_fee(current_timestamp);
 
     // Record gas usage for this transaction
-    eip1559.add_gas_usage(gas_limit);
+    eip1559.add_gas_usage(effective_min_gas_limit);
 
-    let gas_cost = gas_limit * base_fee * GAS_COST_SCALER / GAS_COST_SCALER_DP;
+    let gas_cost = effective_min_gas_limit * base_fee * GAS_COST_SCALER / GAS_COST_SCALER_DP;
 
     let cpi_ctx = CpiContext::new(
         system_program.to_account_info(),
@@ -134,10 +167,8 @@ fn meter_gas<'info>(
 pub enum SendCallError {
     #[msg("Incorrect gas fee receiver")]
     IncorrectGasFeeReceiver,
-    #[msg("Bad target")]
-    BadTarget,
-    #[msg("Gas limit too low")]
-    GasLimitTooLow,
+    #[msg("Creation with non-zero target")]
+    CreationWithNonZeroTarget,
 }
 
 #[cfg(test)]
@@ -179,9 +210,9 @@ mod tests {
         let wrong_gas_fee_receiver = Keypair::new().pubkey();
 
         // Test parameters
+        let ty = CallType::Call;
         let to = [1u8; 20];
         let gas_limit = 100_000u64;
-        let is_creation = false;
         let data = b"hello world".to_vec();
 
         // Mock the EIP1559 account
@@ -201,9 +232,9 @@ mod tests {
             program_id: PORTAL_PROGRAM_ID,
             accounts: send_call_accounts,
             data: crate::instruction::SendCall {
+                ty,
                 to,
                 gas_limit,
-                is_creation,
                 data,
             }
             .data(),
@@ -238,9 +269,9 @@ mod tests {
         let authority_pk = authority.pubkey();
 
         // Test parameters - creation call with non-null target (should fail)
+        let ty = CallType::Create;
         let to = [1u8; 20]; // Non-null address
         let gas_limit = 100_000u64;
-        let is_creation = true; // This should require null address
         let data = b"hello world".to_vec();
 
         // Mock the EIP1559 account
@@ -260,9 +291,9 @@ mod tests {
             program_id: PORTAL_PROGRAM_ID,
             accounts: send_call_accounts,
             data: crate::instruction::SendCall {
+                ty,
                 to,
                 gas_limit,
-                is_creation,
                 data,
             }
             .data(),
@@ -297,9 +328,9 @@ mod tests {
         let authority_pk = authority.pubkey();
 
         // Test parameters - very low gas limit
+        let ty = CallType::Call;
         let to = [1u8; 20];
         let gas_limit = 1u64; // Extremely low gas limit that should fail
-        let is_creation = false;
         let data = b"this is a longer message that will require more gas".to_vec();
 
         // Mock the EIP1559 account
@@ -319,9 +350,9 @@ mod tests {
             program_id: PORTAL_PROGRAM_ID,
             accounts: send_call_accounts,
             data: crate::instruction::SendCall {
+                ty,
                 to,
                 gas_limit,
-                is_creation,
                 data,
             }
             .data(),
@@ -356,9 +387,9 @@ mod tests {
         let authority_pk = authority.pubkey();
 
         // Test parameters
+        let ty = CallType::Call;
         let to = [1u8; 20]; // Sample target address
         let gas_limit = 100_000u64;
-        let is_creation = false;
         let data = b"hello world".to_vec();
 
         // Mock the EIP1559 account
@@ -382,9 +413,9 @@ mod tests {
             program_id: PORTAL_PROGRAM_ID,
             accounts: send_call_accounts,
             data: crate::instruction::SendCall {
+                ty,
                 to,
                 gas_limit,
-                is_creation,
                 data: data.clone(),
             }
             .data(),
@@ -456,9 +487,9 @@ mod tests {
                 program_id: PORTAL_PROGRAM_ID,
                 accounts: send_call_accounts.to_account_metas(None),
                 data: crate::instruction::SendCall {
+                    ty: CallType::Call,
                     to: [1u8; 20],
                     gas_limit: high_gas_per_tx,
-                    is_creation: false,
                     data: format!("high_congestion_tx_{}", i).into_bytes(),
                 }
                 .data(),
@@ -490,9 +521,9 @@ mod tests {
             program_id: PORTAL_PROGRAM_ID,
             accounts: trigger_accounts.to_account_metas(None),
             data: crate::instruction::SendCall {
+                ty: CallType::Call,
                 to: [1u8; 20],
                 gas_limit: 100_000,
-                is_creation: false,
                 data: b"trigger_update".to_vec(),
             }
             .data(),
@@ -566,9 +597,9 @@ mod tests {
             program_id: PORTAL_PROGRAM_ID,
             accounts: accounts.to_account_metas(None),
             data: crate::instruction::SendCall {
+                ty: CallType::Call,
                 to: [1u8; 20],
                 gas_limit: 100_000,
-                is_creation: false,
                 data: b"trigger_update".to_vec(),
             }
             .data(),

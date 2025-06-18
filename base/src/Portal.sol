@@ -68,10 +68,13 @@ contract Portal is ReentrancyGuardTransient {
     // TODO: Re-estimate the constants.
     /// @notice Gas reserved for the execution logic between the `_hasMinGas` check and the actual Twin contract
     ///         execution in `relayCall`.
-    uint64 public constant RELAY_GAS_CHECK_BUFFER = 5_000;
+    uint64 public constant RELAY_CALL_CHECK_BUFFER_GAS = 5_000;
 
     /// @notice Gas reserved for finalizing the execution of `relayCall` after the safe call.
-    uint64 public constant POST_EXECUTION_RESERVED_GAS = 40_000;
+    uint64 public constant RELAY_CALL_POST_EXECUTION_RESERVED_GAS = 40_000;
+
+    /// @notice Gas reserved for the dynamic parts of the `CALL` opcode.
+    uint64 public constant RELAY_CALL_OVERHEAD_GAS = 40_000;
 
     /// @notice Address of the trusted relayer.
     address public immutable TRUSTED_RELAYER;
@@ -153,7 +156,7 @@ contract Portal is ReentrancyGuardTransient {
         if (
             !_hasMinGas({
                 minGas: minGasLimit,
-                reservedGas: gasUsedForDeployment + POST_EXECUTION_RESERVED_GAS + RELAY_GAS_CHECK_BUFFER
+                reservedGas: gasUsedForDeployment + RELAY_CALL_POST_EXECUTION_RESERVED_GAS + RELAY_CALL_CHECK_BUFFER_GAS
             })
         ) {
             failedCalls[callHash] = true;
@@ -168,7 +171,7 @@ contract Portal is ReentrancyGuardTransient {
         }
 
         // Relay the calls via the Twin contract.
-        try twin.executeBatch{gas: gasleft() - POST_EXECUTION_RESERVED_GAS, value: value}(call) {
+        try twin.executeBatch{gas: gasleft() - RELAY_CALL_POST_EXECUTION_RESERVED_GAS, value: value}(call) {
             successfulCalls[callHash] = true;
             emit RelayedCall(callHash);
         } catch {
@@ -226,30 +229,28 @@ contract Portal is ReentrancyGuardTransient {
     ///      https://github.com/ethereum-optimism/optimism/blob/4e9ef1aeffd2afd7a2378e2dc5efffa71f04207d/packages/contracts-bedrock/src/libraries/SafeCall.sol#L100
     ///
     /// @dev !!!!! FOOTGUN ALERT !!!!!
-    ///      1.) The 40_000 base buffer is to account for the worst case of the dynamic cost of the
-    ///          `CALL` opcode's `address_access_cost`, `positive_value_cost`, and
-    ///          `value_to_empty_account_cost` factors with an added buffer of 5,700 gas. It is
-    ///          still possible to self-rekt by initiating a withdrawal with a minimum gas limit
-    ///          that does not account for the `memory_expansion_cost` & `code_execution_cost`
-    ///          factors of the dynamic cost of the `CALL` opcode.
-    ///      2.) This function should *directly* precede the external call if possible. There is an
-    ///          added buffer to account for gas consumed between this check and the call, but it
-    ///          is only 5,700 gas.
-    ///      3.) Because EIP-150 ensures that a maximum of 63/64ths of the remaining gas in the call
-    ///          frame may be passed to a subcontext, we need to ensure that the gas will not be
-    ///          truncated.
+    ///      1.) The RELAY_CALL_OVERHEAD_GAS base buffer is to account for the worst case of the dynamic cost of the
+    ///          `CALL` opcode's `address_access_cost`, `positive_value_cost`, and `value_to_empty_account_cost` factors
+    ///          with an added buffer of 5,700 gas. It is still possible to self-rekt by initiating a withdrawal with a
+    ///          minimum gas limit that does not account for the `memory_expansion_cost` & `code_execution_cost` factors
+    ///          of the dynamic cost of the `CALL` opcode.
+    ///      2.) This function should *directly* precede the external call if possible. There is an added buffer to
+    ///          account for gas consumed between this check and the call, but it is only 5,700 gas.
+    ///      3.) Because EIP-150 ensures that a maximum of 63/64ths of the remaining gas in the call frame may be passed
+    ///          to a subcontext, we need to ensure that the gas will not be truncated.
     ///      4.) Use wisely. This function is not a silver bullet.
     ///
     /// @param minGas Minimum amount of gas that is forwarded to the Solana sender's Twin contract.
     /// @param reservedGas Amount of gas that is reserved for the caller after the execution of the target context.
     ///
     /// @return hasMinGas `true` if there is enough gas remaining to safely supply `minGas` to the target
-    ///         context as well as reserve `reservedGas` for the caller after the execution of
-    ///         the target context.
+    ///                    context as well as reserve `reservedGas` for the caller after the execution of
+    ///                    the target context.
     function _hasMinGas(uint256 minGas, uint256 reservedGas) private view returns (bool hasMinGas) {
         assembly {
             // Equation: gas × 63 ≥ minGas × 64 + 63(40_000 + reservedGas)
-            hasMinGas := iszero(lt(mul(gas(), 63), add(mul(minGas, 64), mul(add(40000, reservedGas), 63))))
+            hasMinGas :=
+                iszero(lt(mul(gas(), 63), add(mul(minGas, 64), mul(add(RELAY_CALL_OVERHEAD_GAS, reservedGas), 63))))
         }
     }
 
@@ -257,6 +258,9 @@ contract Portal is ReentrancyGuardTransient {
     ///
     /// @dev TODO: Plug some ISM verification here.
     function _ismVerify(bytes calldata call, bytes calldata ismData) private pure {
+        call; // Silence unused variable warning.
+        ismData; // Silence unused variable warning.
+
         // TODO: Plug some ISM verification here.
         require(true, ISMVerificationFailed());
     }

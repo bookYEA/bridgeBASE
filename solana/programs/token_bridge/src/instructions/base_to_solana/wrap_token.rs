@@ -16,7 +16,7 @@ use crate::constants::{
     BRIDGE_AUTHORITY_SEED, REMOTE_TOKEN_METADATA_KEY, SCALER_EXPONENT_METADATA_KEY,
     WRAPPED_TOKEN_SEED,
 };
-use crate::internal::{cpi_send_message, metadata::PartialTokenMetadata};
+use crate::internal::{cpi_send_call, metadata::PartialTokenMetadata};
 use crate::solidity::Bridge;
 
 #[derive(Accounts)]
@@ -48,10 +48,6 @@ pub struct WrapToken<'info> {
     pub portal: Program<'info, Portal>,
 
     // Portal remaining accounts
-    /// CHECK: Checked by the Portal program that we CPI into.
-    #[account(mut)]
-    pub messenger: AccountInfo<'info>,
-
     /// CHECK: This is the Bridge authority account.
     ///        It is used as the `authority` account when CPIing to the Portal program.
     #[account(seeds = [BRIDGE_AUTHORITY_SEED], bump)]
@@ -178,24 +174,23 @@ fn register_remote_token(
     scaler_exponent: u8,
     min_gas_limit: u64,
 ) -> Result<()> {
-    cpi_send_message(
+    cpi_send_call(
         &ctx.accounts.portal,
-        portal_cpi::accounts::SendMessage {
+        portal_cpi::accounts::SendCall {
             payer: ctx.accounts.payer.to_account_info(),
             authority: ctx.accounts.bridge_authority.to_account_info(),
             gas_fee_receiver: ctx.accounts.gas_fee_receiver.to_account_info(),
             eip1559: ctx.accounts.eip1559.to_account_info(),
             system_program: ctx.accounts.system_program.to_account_info(),
-            messenger: ctx.accounts.messenger.to_account_info(),
         },
         ctx.bumps.bridge_authority,
+        min_gas_limit,
         Bridge::registerRemoteTokenCall {
             localToken: remote_token.into(), // NOTE: Intentionally flip the tokens so that when executing on Base it's correct.
             remoteToken: FixedBytes::from(ctx.accounts.mint.key().to_bytes()), // NOTE: Intentionally flip the tokens so that when executing on Base it's correct.
             scalerExponent: scaler_exponent,
         }
         .abi_encode(),
-        min_gas_limit,
     )?;
 
     Ok(())
@@ -229,7 +224,7 @@ mod tests {
     use solana_transaction::Transaction;
 
     use crate::{
-        test_utils::{bridge_authority, mock_clock, mock_eip1559, mock_messenger},
+        test_utils::{bridge_authority, mock_clock, mock_eip1559},
         ID as TOKEN_BRIDGE_PROGRAM_ID,
     };
 
@@ -245,12 +240,6 @@ mod tests {
         .unwrap();
         svm.add_program_from_file(PORTAL_PROGRAM_ID, "../../target/deploy/portal.so")
             .unwrap();
-
-        println!(
-            "token_2022: {:?}",
-            hex::encode(anchor_spl::token_2022::ID.to_bytes())
-        );
-        println!("token: {:?}", hex::encode(anchor_spl::token::ID.to_bytes()));
 
         // Test parameters
         let partial_token_metadata = PartialTokenMetadata {
@@ -276,7 +265,6 @@ mod tests {
             &TOKEN_BRIDGE_PROGRAM_ID,
         );
 
-        let messenger_pda = mock_messenger(&mut svm, 0);
         let initial_timestamp = 1000i64;
         let eip1559_pda = mock_eip1559(&mut svm, Eip1559::new(initial_timestamp));
         mock_clock(&mut svm, initial_timestamp);
@@ -290,7 +278,6 @@ mod tests {
             portal: PORTAL_PROGRAM_ID,
             gas_fee_receiver: GAS_FEE_RECEIVER,
             eip1559: eip1559_pda,
-            messenger: messenger_pda,
             system_program: solana_sdk_ids::system_program::ID,
         };
 

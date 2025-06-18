@@ -13,8 +13,8 @@ use anchor_spl::{
 };
 use litesvm::LiteSVM;
 use portal::{
-    constants::{EIP1559_SEED, MESSENGER_SEED, PORTAL_AUTHORITY_SEED},
-    state::{Eip1559, Messenger, RemoteCall},
+    constants::{EIP1559_SEED, PORTAL_AUTHORITY_SEED},
+    state::{Eip1559, RemoteCall},
 };
 use solana_account::Account;
 use solana_keypair::Keypair;
@@ -64,29 +64,6 @@ pub fn mock_eip1559(svm: &mut LiteSVM, eip1559: Eip1559) -> Pubkey {
     .unwrap();
 
     eip1559_pda
-}
-
-pub fn mock_messenger(svm: &mut LiteSVM, nonce: u64) -> Pubkey {
-    let (messenger_pda, _) = Pubkey::find_program_address(&[MESSENGER_SEED], &PORTAL_PROGRAM_ID);
-
-    let mut messenger_data = Vec::new();
-    Messenger { nonce }
-        .try_serialize(&mut messenger_data)
-        .unwrap();
-
-    svm.set_account(
-        messenger_pda,
-        Account {
-            lamports: 0,
-            data: messenger_data,
-            owner: PORTAL_PROGRAM_ID,
-            executable: false,
-            rent_epoch: 0,
-        },
-    )
-    .unwrap();
-
-    messenger_pda
 }
 
 pub fn bridge_authority() -> Pubkey {

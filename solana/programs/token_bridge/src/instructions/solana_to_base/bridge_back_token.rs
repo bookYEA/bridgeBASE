@@ -7,7 +7,7 @@ use portal::{cpi as portal_cpi, program::Portal};
 
 use crate::{
     constants::BRIDGE_AUTHORITY_SEED,
-    internal::{cpi_send_message, metadata::PartialTokenMetadata},
+    internal::{cpi_send_call, metadata::PartialTokenMetadata},
     solidity::Bridge,
 };
 
@@ -61,17 +61,17 @@ pub fn bridge_back_token_handler(
 
     burn(&ctx, amount)?;
 
-    cpi_send_message(
+    cpi_send_call(
         &ctx.accounts.portal,
-        portal_cpi::accounts::SendMessage {
+        portal_cpi::accounts::SendCall {
             payer: ctx.accounts.from.to_account_info(),
             authority: ctx.accounts.bridge_authority.to_account_info(),
             gas_fee_receiver: ctx.accounts.gas_fee_receiver.to_account_info(),
             eip1559: ctx.accounts.eip1559.to_account_info(),
             system_program: ctx.accounts.system_program.to_account_info(),
-            messenger: ctx.accounts.messenger.to_account_info(),
         },
         ctx.bumps.bridge_authority,
+        min_gas_limit,
         Bridge::finalizeBridgeTokenCall {
             localToken: partial_token_metadata.remote_token.into(), // NOTE: Intentional flip the token so that when executing on Base it's correct.
             remoteToken: FixedBytes::from(ctx.accounts.mint.key().to_bytes()), // NOTE: Intentional flip the token so that when executing on Base it's correct.
@@ -81,7 +81,6 @@ pub fn bridge_back_token_handler(
             extraData: extra_data.into(),
         }
         .abi_encode(),
-        min_gas_limit,
     )
 }
 
