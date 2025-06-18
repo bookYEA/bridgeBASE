@@ -10,7 +10,6 @@ import {SVMTokenBridgeLib} from "./libraries/SVMTokenBridgeLib.sol";
 import {CrossChainERC20} from "./CrossChainERC20.sol";
 
 import {MessagePasser} from "./MessagePasser.sol";
-import {Messenger} from "./Messenger.sol";
 
 /// @title TokenBridge
 ///
@@ -83,10 +82,10 @@ contract TokenBridge {
     Pubkey public constant NATIVE_SOL_PUBKEY =
         Pubkey.wrap(0x069be72ab836d4eacc02525b7350a78a395da2f1253a40ebafd6630000000000);
 
-    /// @notice Address of the Messenger contract on this chain.
-    address public immutable MESSENGER;
+    /// @notice Address of the TokenBridge Twin contract on Base.
+    address public immutable TOKEN_BRIDGE_TWIN;
 
-    /// @notice Address of the MessagePasser contract on this chain.
+    /// @notice Address of the MessagePasser contract on Base.
     address public immutable MESSAGE_PASSER;
 
     /// @notice Pubkey of the token bridge contract on Solana.
@@ -117,10 +116,7 @@ contract TokenBridge {
     ///      finalization functions. Validates both the immediate caller (messenger) and the
     ///      original cross-chain message sender.
     modifier onlyRemoteBridge() {
-        require(
-            msg.sender == MESSENGER && Pubkey.wrap(Messenger(MESSENGER).xChainMsgSender()) == REMOTE_TOKEN_BRIDGE,
-            NotRemoteBridge()
-        );
+        require(msg.sender == TOKEN_BRIDGE_TWIN, NotRemoteBridge());
         _;
     }
 
@@ -130,18 +126,18 @@ contract TokenBridge {
 
     /// @notice Constructs the Bridge contract.
     ///
-    /// @param messenger Address of the Messenger contract on this chain.
-    /// @param messagePasser Address of the MessagePasser contract on this chain.
+    /// @param tokenBridgeTwin Address of the TokenBridge Twin contract on Base.
+    /// @param messagePasser Address of the MessagePasser contract on Base.
     /// @param remoteTokenBridge Pubkey of the token bridge contract on Solana.
-    constructor(address messenger, address messagePasser, Pubkey remoteTokenBridge) {
-        MESSENGER = messenger;
+    constructor(address tokenBridgeTwin, address messagePasser, Pubkey remoteTokenBridge) {
+        TOKEN_BRIDGE_TWIN = tokenBridgeTwin;
         MESSAGE_PASSER = messagePasser;
         REMOTE_TOKEN_BRIDGE = remoteTokenBridge;
     }
 
     /// @notice Bridges a token to Solana.
     ///
-    /// @param localToken Address of the ERC20 token on this chain.
+    /// @param localToken Address of the ERC20 token on Base.
     /// @param remoteToken Pubkey of the remote token on Solana.
     /// @param to Pubkey of the intended recipient on Solana.
     /// @param remoteAmount Amount of tokens being bridged (expressed in Solana units).

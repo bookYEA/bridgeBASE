@@ -2,16 +2,13 @@
 pragma solidity 0.8.28;
 
 import {Initializable} from "solady/utils/Initializable.sol";
+import {LibClone} from "solady/utils/LibClone.sol";
 
 import {CrossChainERC20} from "./CrossChainERC20.sol";
 
 /// @title CrossChainERC20Factory
 ///
-/// @notice Factory contract for deploying CrossChainERC20 tokens with deterministic addresses
-///
-/// @dev This factory creates CrossChainERC20 tokens that are bridgeable between chains.
-///      Uses CREATE2 with salt for deterministic deployment addresses based on token parameters.
-///      The factory must be initialized with a bridge address before tokens can be deployed.
+/// @notice Factory contract for deploying ERC-1967 beacon proxies of CrossChainERC20 tokens.
 contract CrossChainERC20Factory is Initializable {
     //////////////////////////////////////////////////////////////
     ///                       Events                           ///
@@ -27,13 +24,18 @@ contract CrossChainERC20Factory is Initializable {
     event CrossChainERC20Created(address indexed localToken, bytes32 indexed remoteToken, address deployer);
 
     //////////////////////////////////////////////////////////////
-    ///                       Storage                          ///
+    ///                       Constants                        ///
     //////////////////////////////////////////////////////////////
 
-    /// @notice Address of the Bridge contract that will manage cross-chain token transfers
-    ///
-    /// @dev Set during initialization and used by all deployed CrossChainERC20 tokens
-    address public bridge;
+    /// @notice Address of the CrossChainERC20 beacon proxy.
+    address public immutable BEACON;
+
+    /// @notice Address of the TokenBridge contract that will manage cross-chain token transfers
+    address public immutable TOKEN_BRIDGE;
+
+    //////////////////////////////////////////////////////////////
+    ///                       Storage                          ///
+    //////////////////////////////////////////////////////////////
 
     /// @notice Mapping to track deployed CrossChainERC20 tokens and their remote counterparts
     ///
@@ -49,18 +51,11 @@ contract CrossChainERC20Factory is Initializable {
     /// @notice Constructs the CrossChainERC20Factory contract
     ///
     /// @dev Disables initializers to prevent the implementation contract from being initialized
-    constructor() {
-        _disableInitializers();
-    }
+    constructor(address beacon_, address tokenBridge_) {
+        BEACON = beacon_;
+        TOKEN_BRIDGE = tokenBridge_;
 
-    /// @notice Initializes the factory with the bridge contract address
-    ///
-    /// @dev Can only be called once due to the initializer modifier. Sets the bridge address
-    ///      that will be used by all deployed CrossChainERC20 tokens.
-    ///
-    /// @param bridge_ The address of the Bridge contract that will manage cross-chain transfers
-    function initialize(address bridge_) external initializer {
-        bridge = bridge_;
+        _disableInitializers();
     }
 
     /// @notice Deploys a new CrossChainERC20 token with deterministic address using CREATE2
@@ -80,15 +75,7 @@ contract CrossChainERC20Factory is Initializable {
         returns (address crossChainERC20)
     {
         bytes32 salt = keccak256(abi.encode(remoteToken, name, symbol, decimals));
-        address localToken = address(
-            new CrossChainERC20{salt: salt}({
-                bridge_: bridge,
-                remoteToken_: remoteToken,
-                name_: name,
-                symbol_: symbol,
-                decimals_: decimals
-            })
-        );
+        address localToken = LibClone.deployDeterministicERC1967BeaconProxy({beacon: BEACON, salt: salt});
 
         // Store the deployment mapping for future reference
         deployments[localToken] = remoteToken;
