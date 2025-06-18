@@ -1,9 +1,8 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token_interface::Mint;
 
 use portal::{cpi as portal_cpi, program::Portal};
 
-use crate::constants::{BRIDGE_AUTHORITY_SEED, REMOTE_BRIDGE, WRAPPED_TOKEN_SEED};
+use crate::constants::{BRIDGE_AUTHORITY_SEED, REMOTE_BRIDGE};
 
 pub mod metadata;
 
@@ -21,21 +20,4 @@ pub fn cpi_send_message<'info>(
     portal_cpi::send_message(cpi_ctx, REMOTE_BRIDGE, message, min_gas_limit)?;
 
     Ok(())
-}
-
-pub fn is_wrapped_token<'info>(
-    program_id: &Pubkey,
-    mint: &InterfaceAccount<'info, Mint>,
-    remote_token: &[u8; 20],
-) -> (bool, u8) {
-    let (wrapped_token, bump) = Pubkey::find_program_address(
-        &[
-            WRAPPED_TOKEN_SEED,
-            remote_token.as_ref(),
-            mint.decimals.to_le_bytes().as_ref(),
-        ],
-        program_id,
-    );
-
-    (wrapped_token != mint.key(), bump)
 }

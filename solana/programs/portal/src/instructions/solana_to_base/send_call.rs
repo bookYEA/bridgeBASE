@@ -587,8 +587,6 @@ mod tests {
         let final_eip1559 = Eip1559::try_deserialize(&mut final_account.data.as_slice()).unwrap();
         let final_base_fee = final_eip1559.current_base_fee;
 
-        // Verify that base fee decreased significantly due to no usage
-
         // Verify it actually decreased
         assert!(
             final_base_fee < high_base_fee,
