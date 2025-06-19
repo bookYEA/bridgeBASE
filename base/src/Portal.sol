@@ -96,6 +96,9 @@ contract Portal is ReentrancyGuardTransient {
     ///         attempt won't appear here.
     mapping(bytes32 callHash => bool failed) public failedCalls;
 
+    /// @notice Mapping of Solana owner pubkeys to their Twin contract addresses.
+    mapping(bytes32 owner => address twinAddress) public twins;
+
     //////////////////////////////////////////////////////////////
     ///                       Public Functions                 ///
     //////////////////////////////////////////////////////////////
@@ -112,18 +115,20 @@ contract Portal is ReentrancyGuardTransient {
     /// @param nonce Unique nonce associated with the calls batch.
     /// @param sender Solana sender pubkey.
     /// @param value Value that is forwarded to the Solana sender's Twin contract.
-    /// @param minGasLimit Minimum amount of gas that is forwarded to the Solana sender's Twin contract.
+    /// @param gasLimit Amount of gas that is forwarded to the Solana sender's Twin contract.
     /// @param call Encoded call to send to the Solana sender's Twin contract.
     /// @param ismData Encoded ISM data used to verify the call.
     function relayCall(
         uint256 nonce,
         bytes32 sender,
         uint256 value,
-        uint256 minGasLimit,
+        uint256 gasLimit,
         bytes calldata call,
         bytes calldata ismData
     ) external payable nonReentrant {
-        bytes32 callHash = keccak256(abi.encode(nonce, sender, value, minGasLimit, call));
+        // NOTE: Don't include the `gasLimit` in the call hash to allow replays of failed calls with different
+        //       `gasLimit`s.
+        bytes32 callHash = keccak256(abi.encode(nonce, sender, value, call));
 
         // Check that the call can be relayed.
         if (_isTrustedRelayer()) {
@@ -137,26 +142,18 @@ contract Portal is ReentrancyGuardTransient {
 
         require(!successfulCalls[callHash], CallAlreadyRelayed());
 
-        // Get the Twin contract.
-        // NOTE: This will deploy the Twin contract behind a beacon proxy if it doesn't exist already.
-        uint256 gas = gasleft();
-        uint256 gasUsedForDeployment;
-        (bool alreadyDeployed, address twinAddress) =
-            LibClone.createDeterministicERC1967BeaconProxy({beacon: TWIN_BEACON, salt: sender});
-
-        // Initialize if needed and deduct gas used.
-        Twin twin = Twin(payable(twinAddress));
-        if (!alreadyDeployed) {
-            twin.initialize(sender);
-            gasUsedForDeployment = gas - gasleft();
+        // Get (and deploy if needed) the Twin contract.
+        address twinAddress = twins[sender];
+        if (twinAddress == address(0)) {
+            twinAddress = LibClone.deployDeterministicERC1967BeaconProxy({beacon: TWIN_BEACON, salt: sender});
+            twins[sender] = twinAddress;
         }
 
         // Ensures sufficient gas for Twin contract execution and cleanup.
-        // NOTE: Adds deployment gas to reserved gas instead of subtracting from minGasLimit to prevent underflow.
         if (
             !_hasMinGas({
-                minGas: minGasLimit,
-                reservedGas: gasUsedForDeployment + RELAY_CALL_POST_EXECUTION_RESERVED_GAS + RELAY_CALL_CHECK_BUFFER_GAS
+                minGas: gasLimit,
+                reservedGas: RELAY_CALL_POST_EXECUTION_RESERVED_GAS + RELAY_CALL_CHECK_BUFFER_GAS
             })
         ) {
             failedCalls[callHash] = true;
@@ -171,7 +168,10 @@ contract Portal is ReentrancyGuardTransient {
         }
 
         // Relay the calls via the Twin contract.
-        try twin.executeBatch{gas: gasleft() - RELAY_CALL_POST_EXECUTION_RESERVED_GAS, value: value}(call) {
+        try Twin(payable(twinAddress)).executeBatch{
+            gas: gasleft() - RELAY_CALL_POST_EXECUTION_RESERVED_GAS,
+            value: value
+        }(call) {
             successfulCalls[callHash] = true;
             emit RelayedCall(callHash);
         } catch {
@@ -184,21 +184,6 @@ contract Portal is ReentrancyGuardTransient {
 
             emit FailedRelayedCall(callHash);
         }
-    }
-
-    /// @notice Deploys a Twin contract and initializes it.
-    ///
-    /// @dev Not really expected to be called directly (as the relayCall function will deploy the Twin
-    ///      contract if needed), but can potentially unblock failing calls.
-    ///
-    /// @param sender Solana sender pubkey.
-    ///
-    /// @return twinAddress Address of the deployed Twin contract.
-    function deployAndInitializeTwin(bytes32 sender) external payable returns (address twinAddress) {
-        twinAddress =
-            LibClone.deployDeterministicERC1967BeaconProxy({beacon: TWIN_BEACON, salt: sender, value: msg.value});
-
-        Twin(payable(twinAddress)).initialize(sender);
     }
 
     //////////////////////////////////////////////////////////////
