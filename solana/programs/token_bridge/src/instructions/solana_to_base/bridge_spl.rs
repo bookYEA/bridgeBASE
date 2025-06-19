@@ -36,7 +36,7 @@ pub struct BridgeSpl<'info> {
 
     pub token_program: Interface<'info, TokenInterface>,
 
-    pub portal: Program<'info, Portal>,
+    pub portal_program: Program<'info, Portal>,
 
     // Portal remaining accounts
     /// CHECK: Checked by the Portal program that we CPI into.
@@ -54,7 +54,7 @@ pub struct BridgeSpl<'info> {
 
     /// CHECK: Checked by the Portal program that we CPI into.
     #[account(mut)]
-    pub eip1559: AccountInfo<'info>,
+    pub portal: AccountInfo<'info>,
 
     pub system_program: Program<'info, System>,
 }
@@ -64,7 +64,7 @@ pub fn bridge_spl_handler(
     remote_token: [u8; 20],
     to: [u8; 20],
     amount: u64,
-    min_gas_limit: u64,
+    gas_limit: u64,
     extra_data: Vec<u8>,
 ) -> Result<()> {
     // Check that the provided mint is not a wrapped `remote_token`, in which case the `bridge_back_token` instruction should be called instead.
@@ -92,16 +92,16 @@ pub fn bridge_spl_handler(
     lock_spl(&ctx, amount)?;
 
     cpi_send_call(
-        &ctx.accounts.portal,
+        &ctx.accounts.portal_program,
         portal_cpi::accounts::SendCall {
             payer: ctx.accounts.from.to_account_info(),
             authority: ctx.accounts.bridge_authority.to_account_info(),
             gas_fee_receiver: ctx.accounts.gas_fee_receiver.to_account_info(),
-            eip1559: ctx.accounts.eip1559.to_account_info(),
+            portal: ctx.accounts.portal.to_account_info(),
             system_program: ctx.accounts.system_program.to_account_info(),
         },
         ctx.bumps.bridge_authority,
-        min_gas_limit,
+        gas_limit,
         Bridge::finalizeBridgeTokenCall {
             localToken: remote_token.into(), // NOTE: Intentionally flip the tokens so that when executing on Base it's correct.
             remoteToken: FixedBytes::from(ctx.accounts.mint.key().to_bytes()), // NOTE: Intentionally flip the tokens so that when executing on Base it's correct.

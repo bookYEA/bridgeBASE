@@ -45,7 +45,7 @@ pub struct WrapToken<'info> {
 
     pub token_program: Program<'info, Token2022>,
 
-    pub portal: Program<'info, Portal>,
+    pub portal_program: Program<'info, Portal>,
 
     // Portal remaining accounts
     /// CHECK: This is the Bridge authority account.
@@ -59,7 +59,7 @@ pub struct WrapToken<'info> {
 
     /// CHECK: Checked by the Portal program that we CPI into.
     #[account(mut)]
-    pub eip1559: AccountInfo<'info>,
+    pub portal: AccountInfo<'info>,
 
     pub system_program: Program<'info, System>,
 }
@@ -68,7 +68,7 @@ pub fn wrap_token_handler(
     ctx: Context<WrapToken>,
     decimals: u8,
     partial_token_metadata: PartialTokenMetadata,
-    min_gas_limit: u64,
+    gas_limit: u64,
 ) -> Result<()> {
     initialize_metadata(&ctx, decimals, &partial_token_metadata)?;
 
@@ -76,7 +76,7 @@ pub fn wrap_token_handler(
         &ctx,
         &partial_token_metadata.remote_token,
         partial_token_metadata.scaler_exponent,
-        min_gas_limit,
+        gas_limit,
     )?;
 
     Ok(())
@@ -172,19 +172,19 @@ fn register_remote_token(
     ctx: &Context<WrapToken>,
     remote_token: &[u8; 20],
     scaler_exponent: u8,
-    min_gas_limit: u64,
+    gas_limit: u64,
 ) -> Result<()> {
     cpi_send_call(
-        &ctx.accounts.portal,
+        &ctx.accounts.portal_program,
         portal_cpi::accounts::SendCall {
             payer: ctx.accounts.payer.to_account_info(),
             authority: ctx.accounts.bridge_authority.to_account_info(),
             gas_fee_receiver: ctx.accounts.gas_fee_receiver.to_account_info(),
-            eip1559: ctx.accounts.eip1559.to_account_info(),
+            portal: ctx.accounts.portal.to_account_info(),
             system_program: ctx.accounts.system_program.to_account_info(),
         },
         ctx.bumps.bridge_authority,
-        min_gas_limit,
+        gas_limit,
         Bridge::registerRemoteTokenCall {
             localToken: remote_token.into(), // NOTE: Intentionally flip the tokens so that when executing on Base it's correct.
             remoteToken: FixedBytes::from(ctx.accounts.mint.key().to_bytes()), // NOTE: Intentionally flip the tokens so that when executing on Base it's correct.
@@ -224,11 +224,15 @@ mod tests {
     use solana_transaction::Transaction;
 
     use crate::{
-        test_utils::{bridge_authority, mock_clock, mock_eip1559},
+        test_utils::{bridge_authority, mock_clock, mock_portal},
         ID as TOKEN_BRIDGE_PROGRAM_ID,
     };
 
-    use portal::{constants::GAS_FEE_RECEIVER, state::Eip1559, ID as PORTAL_PROGRAM_ID};
+    use portal::{
+        constants::GAS_FEE_RECEIVER,
+        state::{Eip1559, Portal},
+        ID as PORTAL_PROGRAM_ID,
+    };
 
     #[test]
     fn test_wrap_token_success() {
@@ -249,7 +253,7 @@ mod tests {
             scaler_exponent: 9u8,
         };
         let decimals = 6u8; // USDC-like decimals
-        let min_gas_limit = 100_000u64;
+        let gas_limit = 100_000u64;
 
         // Create payer
         let payer = Keypair::new();
@@ -266,8 +270,17 @@ mod tests {
         );
 
         let initial_timestamp = 1000i64;
-        let eip1559_pda = mock_eip1559(&mut svm, Eip1559::new(initial_timestamp));
+        let portal_pda = mock_portal(
+            &mut svm,
+            Portal {
+                nonce: 0,
+                eip1559: Eip1559::new(initial_timestamp),
+            },
+        );
         mock_clock(&mut svm, initial_timestamp);
+
+        println!("PORTAL_PROGRAM_ID: {:?}", PORTAL_PROGRAM_ID);
+        println!("portal_pda: {:?}", portal_pda);
 
         // Build the wrap_token instruction
         let wrap_token_accounts = crate::accounts::WrapToken {
@@ -275,9 +288,9 @@ mod tests {
             mint: wrapped_mint,
             token_program: anchor_spl::token_2022::ID,
             bridge_authority: bridge_authority(),
-            portal: PORTAL_PROGRAM_ID,
+            portal_program: PORTAL_PROGRAM_ID,
             gas_fee_receiver: GAS_FEE_RECEIVER,
-            eip1559: eip1559_pda,
+            portal: portal_pda,
             system_program: solana_sdk_ids::system_program::ID,
         };
 
@@ -287,7 +300,7 @@ mod tests {
             data: crate::instruction::WrapToken {
                 decimals,
                 partial_token_metadata: partial_token_metadata.clone(),
-                min_gas_limit,
+                gas_limit,
             }
             .data(),
         };

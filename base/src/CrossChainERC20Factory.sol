@@ -34,26 +34,15 @@ contract CrossChainERC20Factory is Initializable {
     address public immutable TOKEN_BRIDGE;
 
     //////////////////////////////////////////////////////////////
-    ///                       Storage                          ///
-    //////////////////////////////////////////////////////////////
-
-    /// @notice Mapping to track deployed CrossChainERC20 tokens and their remote counterparts
-    ///
-    /// @dev Maps local token address to the remote token identifier for verification and lookup.
-    ///      Key: localToken - The address of the CrossChainERC20 deployed on this chain
-    ///      Value: remoteToken - The 32-byte identifier of the token on the remote chain
-    mapping(address localToken => bytes32 remoteToken) public deployments;
-
-    //////////////////////////////////////////////////////////////
     ///                       Public Functions                 ///
     //////////////////////////////////////////////////////////////
 
     /// @notice Constructs the CrossChainERC20Factory contract
     ///
     /// @dev Disables initializers to prevent the implementation contract from being initialized
-    constructor(address beacon_, address tokenBridge_) {
-        BEACON = beacon_;
-        TOKEN_BRIDGE = tokenBridge_;
+    constructor(address beacon, address tokenBridge) {
+        BEACON = beacon;
+        TOKEN_BRIDGE = tokenBridge;
 
         _disableInitializers();
     }
@@ -76,9 +65,6 @@ contract CrossChainERC20Factory is Initializable {
     {
         bytes32 salt = keccak256(abi.encode(remoteToken, name, symbol, decimals));
         address localToken = LibClone.deployDeterministicERC1967BeaconProxy({beacon: BEACON, salt: salt});
-
-        // Store the deployment mapping for future reference
-        deployments[localToken] = remoteToken;
 
         emit CrossChainERC20Created({localToken: localToken, remoteToken: remoteToken, deployer: msg.sender});
 

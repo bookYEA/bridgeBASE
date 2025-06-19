@@ -16,8 +16,7 @@ pub enum CallType {
 #[derive(Debug, Clone, AnchorSerialize, AnchorDeserialize)]
 pub struct Call {
     pub ty: CallType,
-    pub from: Pubkey,
     pub to: [u8; 20],
-    pub min_gas_limit: u64,
+    pub gas_limit: u64,
     pub data: Vec<u8>,
 }

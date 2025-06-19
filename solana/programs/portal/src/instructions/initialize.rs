@@ -1,6 +1,9 @@
 use anchor_lang::prelude::*;
 
-use crate::{constants::EIP1559_SEED, state::Eip1559};
+use crate::{
+    constants::PORTAL_SEED,
+    state::{Eip1559, Portal},
+};
 
 #[derive(Accounts)]
 pub struct Initialize<'info> {
@@ -10,18 +13,21 @@ pub struct Initialize<'info> {
     #[account(
         init,
         payer = payer,
-        seeds = [EIP1559_SEED],
+        seeds = [PORTAL_SEED],
         bump,
-        space = 8 + Eip1559::INIT_SPACE
+        space = 8 + Portal::INIT_SPACE
     )]
-    pub eip1559: Account<'info, Eip1559>,
+    pub portal: Account<'info, Portal>,
 
     pub system_program: Program<'info, System>,
 }
 
 pub fn initialize_handler(ctx: Context<Initialize>) -> Result<()> {
     let current_timestamp = Clock::get()?.unix_timestamp;
-    *ctx.accounts.eip1559 = Eip1559::new(current_timestamp);
+    *ctx.accounts.portal = Portal {
+        nonce: 0,
+        eip1559: Eip1559::new(current_timestamp),
+    };
 
     Ok(())
 }
@@ -62,12 +68,12 @@ mod tests {
         mock_clock(&mut svm, 1747440000); // May 16th, 2025
 
         // Find the PDAs
-        let (eip1559, _) = Pubkey::find_program_address(&[EIP1559_SEED], &PORTAL_PROGRAM_ID);
+        let (portal, _) = Pubkey::find_program_address(&[PORTAL_SEED], &PORTAL_PROGRAM_ID);
 
         // Build the instruction
         let initialize_accounts = crate::accounts::Initialize {
             payer: payer_pk,
-            eip1559,
+            portal,
             system_program: solana_sdk_ids::system_program::ID,
         }
         .to_account_metas(None);
@@ -89,17 +95,24 @@ mod tests {
         assert!(result.is_ok(), "Transaction should succeed: {:?}", result);
 
         // Assert the expected Eip1559 account data
-        let eip1559_account = svm.get_account(&eip1559).unwrap();
-        assert_eq!(eip1559_account.owner, PORTAL_PROGRAM_ID);
+        let portal_account = svm.get_account(&portal).unwrap();
+        assert_eq!(portal_account.owner, PORTAL_PROGRAM_ID);
 
-        let eip1559_data = Eip1559::try_deserialize(&mut &eip1559_account.data[..]).unwrap();
-        assert_eq!(eip1559_data.target, EIP1559_DEFAULT_GAS_TARGET_PER_WINDOW);
+        let portal_data = Portal::try_deserialize(&mut &portal_account.data[..]).unwrap();
+        assert_eq!(portal_data.nonce, 0);
         assert_eq!(
-            eip1559_data.denominator,
+            portal_data.eip1559.target,
+            EIP1559_DEFAULT_GAS_TARGET_PER_WINDOW
+        );
+        assert_eq!(
+            portal_data.eip1559.denominator,
             EIP1559_DEFAULT_ADJUSTMENT_DENOMINATOR
         );
-        assert_eq!(eip1559_data.current_base_fee, EIP1559_MINIMUM_BASE_FEE);
-        assert_eq!(eip1559_data.current_window_gas_used, 0);
-        assert_eq!(eip1559_data.window_start_time, 1747440000);
+        assert_eq!(
+            portal_data.eip1559.current_base_fee,
+            EIP1559_MINIMUM_BASE_FEE
+        );
+        assert_eq!(portal_data.eip1559.current_window_gas_used, 0);
+        assert_eq!(portal_data.eip1559.window_start_time, 1747440000);
     }
 }

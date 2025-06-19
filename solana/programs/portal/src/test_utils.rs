@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use litesvm::LiteSVM;
 use solana_account::Account;
 
-use crate::{constants::EIP1559_SEED, state::Eip1559, ID as PORTAL_PROGRAM_ID};
+use crate::{constants::PORTAL_SEED, state::Portal, ID as PORTAL_PROGRAM_ID};
 
 pub fn mock_clock(svm: &mut LiteSVM, timestamp: i64) {
     let mut clock = svm.get_sysvar::<Clock>();
@@ -10,17 +10,17 @@ pub fn mock_clock(svm: &mut LiteSVM, timestamp: i64) {
     svm.set_sysvar::<Clock>(&clock);
 }
 
-pub fn mock_eip1559(svm: &mut LiteSVM, eip1559: Eip1559) -> Pubkey {
-    let (eip1559_pda, _) = Pubkey::find_program_address(&[EIP1559_SEED], &PORTAL_PROGRAM_ID);
+pub fn mock_portal(svm: &mut LiteSVM, portal: Portal) -> Pubkey {
+    let (portal_pda, _) = Pubkey::find_program_address(&[PORTAL_SEED], &PORTAL_PROGRAM_ID);
 
-    let mut eip1559_data = Vec::new();
-    eip1559.try_serialize(&mut eip1559_data).unwrap();
+    let mut portal_data = Vec::new();
+    portal.try_serialize(&mut portal_data).unwrap();
 
     svm.set_account(
-        eip1559_pda,
+        portal_pda,
         Account {
             lamports: 0,
-            data: eip1559_data,
+            data: portal_data,
             owner: PORTAL_PROGRAM_ID,
             executable: false,
             rent_epoch: 0,
@@ -28,5 +28,5 @@ pub fn mock_eip1559(svm: &mut LiteSVM, eip1559: Eip1559) -> Pubkey {
     )
     .unwrap();
 
-    eip1559_pda
+    portal_pda
 }

@@ -105,25 +105,25 @@ contract Portal is ReentrancyGuardTransient {
 
     /// @notice Constructs the Portal contract with immutable references.
     ///
-    constructor(address trustedRelayer_, address twinBeacon_) {
-        TRUSTED_RELAYER = trustedRelayer_;
-        TWIN_BEACON = twinBeacon_;
+    constructor(address trustedRelayer, address twinBeacon) {
+        TRUSTED_RELAYER = trustedRelayer;
+        TWIN_BEACON = twinBeacon;
     }
 
-    /// @notice Relays calls via the sender's Twin contract.
+    /// @notice Relays a call via the sender's Twin contract.
     ///
-    /// @param nonce Unique nonce associated with the calls batch.
+    /// @param nonce Unique nonce associated with the call.
     /// @param sender Solana sender pubkey.
     /// @param value Value that is forwarded to the Solana sender's Twin contract.
     /// @param gasLimit Amount of gas that is forwarded to the Solana sender's Twin contract.
-    /// @param call Encoded call to send to the Solana sender's Twin contract.
+    /// @param call Call to send to the Solana sender's Twin contract.
     /// @param ismData Encoded ISM data used to verify the call.
     function relayCall(
         uint256 nonce,
         bytes32 sender,
         uint256 value,
         uint256 gasLimit,
-        bytes calldata call,
+        Call calldata call,
         bytes calldata ismData
     ) external payable nonReentrant {
         // NOTE: Don't include the `gasLimit` in the call hash to allow replays of failed calls with different
@@ -167,11 +167,10 @@ contract Portal is ReentrancyGuardTransient {
             return;
         }
 
-        // Relay the calls via the Twin contract.
-        try Twin(payable(twinAddress)).executeBatch{
-            gas: gasleft() - RELAY_CALL_POST_EXECUTION_RESERVED_GAS,
-            value: value
-        }(call) {
+        // Relay the call via the Twin contract.
+        try Twin(payable(twinAddress)).execute{gas: gasleft() - RELAY_CALL_POST_EXECUTION_RESERVED_GAS, value: value}(
+            call
+        ) {
             successfulCalls[callHash] = true;
             emit RelayedCall(callHash);
         } catch {
@@ -241,8 +240,9 @@ contract Portal is ReentrancyGuardTransient {
 
     /// @notice Checks whether the ISM verification is successful.
     ///
-    /// @dev TODO: Plug some ISM verification here.
-    function _ismVerify(bytes calldata call, bytes calldata ismData) private pure {
+    /// @param call Encoded call to send to the Solana sender's Twin contract.
+    /// @param ismData Encoded ISM data used to verify the call.
+    function _ismVerify(Call calldata call, bytes calldata ismData) private pure {
         call; // Silence unused variable warning.
         ismData; // Silence unused variable warning.
 

@@ -1,3 +1,5 @@
+use anchor_lang::prelude::*;
+
 use crate::{
     constants::{
         EIP1559_DEFAULT_ADJUSTMENT_DENOMINATOR, EIP1559_DEFAULT_GAS_TARGET_PER_WINDOW,
@@ -5,10 +7,17 @@ use crate::{
     },
     internal::{fixed_pow, SCALE},
 };
-use anchor_lang::prelude::*;
 
 #[account]
-#[derive(InitSpace)]
+#[derive(Default, InitSpace)]
+pub struct Portal {
+    /// Incremental nonce assigned to each call.
+    pub nonce: u64,
+    /// EIP-1559 state for dynamic pricing.
+    pub eip1559: Eip1559,
+}
+
+#[derive(Debug, Clone, InitSpace, AnchorSerialize, AnchorDeserialize)]
 pub struct Eip1559 {
     /// Gas target per window
     pub target: u64,

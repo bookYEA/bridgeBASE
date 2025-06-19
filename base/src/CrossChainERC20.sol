@@ -77,17 +77,17 @@ contract CrossChainERC20 is ERC20 {
     ///
     /// @dev Sets the bridge address, remote token address, and token metadata as immutable values.
     ///
-    /// @param bridge_      Address of the bridge contract that will have minting and burning privileges.
+    /// @param bridge_ Address of the bridge contract that will have minting and burning privileges.
     /// @param remoteToken_ Address of the corresponding token on the remote chain.
-    /// @param name_        ERC20 name of the token.
-    /// @param symbol_      ERC20 symbol of the token.
-    /// @param decimals_    ERC20 decimals for the token.
+    /// @param name_ ERC20 name of the token.
+    /// @param symbol_ ERC20 symbol of the token.
+    /// @param decimals_ ERC20 decimals for the token.
     constructor(address bridge_, bytes32 remoteToken_, string memory name_, string memory symbol_, uint8 decimals_) {
         _BRIDGE = bridge_;
         _REMOTE_TOKEN = remoteToken_;
+        _DECIMALS = decimals_;
         _name = name_;
         _symbol = symbol_;
-        _DECIMALS = decimals_;
     }
 
     /// @notice Returns the bridge contract address.

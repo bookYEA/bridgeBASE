@@ -27,10 +27,10 @@ pub mod token_bridge {
         remote_token: [u8; 20],
         to: [u8; 20],
         amount: u64,
-        min_gas_limit: u64,
+        gas_limit: u64,
         extra_data: Vec<u8>,
     ) -> Result<()> {
-        bridge_sol_handler(ctx, remote_token, to, amount, min_gas_limit, extra_data)
+        bridge_sol_handler(ctx, remote_token, to, amount, gas_limit, extra_data)
     }
 
     pub fn bridge_spl(
@@ -38,20 +38,20 @@ pub mod token_bridge {
         remote_token: [u8; 20],
         to: [u8; 20],
         amount: u64,
-        min_gas_limit: u64,
+        gas_limit: u64,
         extra_data: Vec<u8>,
     ) -> Result<()> {
-        bridge_spl_handler(ctx, remote_token, to, amount, min_gas_limit, extra_data)
+        bridge_spl_handler(ctx, remote_token, to, amount, gas_limit, extra_data)
     }
 
     pub fn bridge_back_token(
         ctx: Context<BridgeBackToken>,
         to: [u8; 20],
         amount: u64,
-        min_gas_limit: u64,
+        gas_limit: u64,
         extra_data: Vec<u8>,
     ) -> Result<()> {
-        bridge_back_token_handler(ctx, to, amount, min_gas_limit, extra_data)
+        bridge_back_token_handler(ctx, to, amount, gas_limit, extra_data)
     }
 
     // Base to Solana
@@ -60,9 +60,9 @@ pub mod token_bridge {
         ctx: Context<WrapToken>,
         decimals: u8,
         partial_token_metadata: PartialTokenMetadata,
-        min_gas_limit: u64,
+        gas_limit: u64,
     ) -> Result<()> {
-        wrap_token_handler(ctx, decimals, partial_token_metadata, min_gas_limit)
+        wrap_token_handler(ctx, decimals, partial_token_metadata, gas_limit)
     }
 
     pub fn finalize_bridge_sol(

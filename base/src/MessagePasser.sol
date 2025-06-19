@@ -37,8 +37,8 @@ contract MessagePasser {
     ///                       Storage                          ///
     //////////////////////////////////////////////////////////////
 
-    /// @notice Tracks whether a remote call hash has been processed to prevent replay attacks.
-    mapping(bytes32 remoteCallHash => bool sent) public sentRemoteCalls;
+    /// @notice Mapping of sent remote calls.
+    mapping(bytes32 remoteCallHash => bool sent) public remoteCallsSent;
 
     /// @notice Internal counter for generating unique nonces for each remote call.
     uint256 internal _remoteCallNonce;
@@ -55,7 +55,7 @@ contract MessagePasser {
         uint256 nonce = _remoteCallNonce;
 
         bytes32 remoteCallHash = _hashRemoteCall(RemoteCall({nonce: nonce, sender: msg.sender, data: data}));
-        sentRemoteCalls[remoteCallHash] = true;
+        remoteCallsSent[remoteCallHash] = true;
 
         emit RemoteCallSent(nonce, msg.sender, data, remoteCallHash);
 

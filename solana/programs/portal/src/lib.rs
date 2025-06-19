@@ -23,14 +23,8 @@ pub mod portal {
         initialize_handler(ctx)
     }
 
-    pub fn send_call(
-        ctx: Context<SendCall>,
-        ty: CallType,
-        to: [u8; 20],
-        gas_limit: u64,
-        data: Vec<u8>,
-    ) -> Result<()> {
-        send_call_handler(ctx, ty, to, gas_limit, data)
+    pub fn send_call(ctx: Context<SendCall>, call: Call) -> Result<()> {
+        send_call_handler(ctx, call)
     }
 
     pub fn register_output_root(

@@ -1,8 +1,8 @@
 use anchor_lang::prelude::*;
 
-use crate::constants::{EIP1559_SEED, GAS_COST_SCALER, GAS_COST_SCALER_DP, GAS_FEE_RECEIVER};
+use crate::constants::{GAS_COST_SCALER, GAS_COST_SCALER_DP, GAS_FEE_RECEIVER, PORTAL_SEED};
 use crate::instructions::CallType;
-use crate::state::Eip1559;
+use crate::state::{Eip1559, Portal};
 
 use super::Call;
 
@@ -19,40 +19,29 @@ pub struct SendCall<'info> {
 
     #[account(
         mut,
-        seeds = [EIP1559_SEED],
+        seeds = [PORTAL_SEED],
         bump,
     )]
-    pub eip1559: Account<'info, Eip1559>,
+    pub portal: Account<'info, Portal>,
 
     pub system_program: Program<'info, System>,
 }
 
 #[event]
 pub struct CallSent {
+    pub nonce: u64,
     pub from: Pubkey,
-    pub to: [u8; 20],
-    pub opaque_data: Vec<u8>,
+    pub call: Call,
 }
 
-pub fn send_call_handler(
-    ctx: Context<SendCall>,
-    ty: CallType,
-    to: [u8; 20],
-    min_gas_limit: u64,
-    data: Vec<u8>,
-) -> Result<()> {
+pub fn send_call_handler(ctx: Context<SendCall>, call: Call) -> Result<()> {
     send_call(
         &ctx.accounts.system_program,
         &ctx.accounts.payer,
         &ctx.accounts.gas_fee_receiver,
-        &mut ctx.accounts.eip1559,
-        Call {
-            ty,
-            from: ctx.accounts.authority.key(),
-            to,
-            min_gas_limit,
-            data,
-        },
+        &mut ctx.accounts.portal,
+        ctx.accounts.authority.key(),
+        call,
     )
 }
 
@@ -60,96 +49,59 @@ pub fn send_call<'info>(
     system_program: &Program<'info, System>,
     payer: &Signer<'info>,
     gas_fee_receiver: &AccountInfo<'info>,
-    eip1559: &mut Account<'info, Eip1559>,
+    portal: &mut Account<'info, Portal>,
+    from: Pubkey,
     call: Call,
 ) -> Result<()> {
-    // TODO: The `relayCall` function on Base expects a `nonce`. Figure out where and how to generate it.
-
-    let Call {
-        ty,
-        from,
-        to,
-        min_gas_limit,
-        data,
-    } = call;
-
-    // Ensure no target address is provided for contract creation
+    // Can't hurt to check this here (though it's not strictly preventing the user to footgun themselves)
     require!(
-        matches!(ty, CallType::Call | CallType::DelegateCall) || to == [0; 20],
+        matches!(call.ty, CallType::Call | CallType::DelegateCall) || call.to == [0; 20],
         SendCallError::CreationWithNonZeroTarget
     );
 
-    // Calculate the effective minimum gas limit to provide to ensure a successful relay
-    // of a call with `min_gas_limit` gas.
-    let effective_min_gas_limit = base_gas(&data, min_gas_limit);
+    require!(
+        call.gas_limit >= min_gas_limit(call.data.len()),
+        SendCallError::GasLimitTooLow
+    );
 
-    let opaque_data = {
-        let mut opaque_data = vec![];
-        opaque_data.push(ty as u8);
-        opaque_data.extend_from_slice(&effective_min_gas_limit.to_le_bytes());
-        opaque_data.extend_from_slice(&data);
-        opaque_data
-    };
-
-    // Pay for the gas to relay the call on Base.
     pay_for_gas(
         system_program,
         payer,
         gas_fee_receiver,
-        eip1559,
-        effective_min_gas_limit,
+        &mut portal.eip1559,
+        call.gas_limit,
     )?;
 
     emit!(CallSent {
+        nonce: portal.nonce,
         from,
-        to,
-        opaque_data,
+        call,
     });
+
+    portal.nonce += 1;
 
     Ok(())
 }
 
-fn base_gas(data: &[u8], min_gas_limit: u64) -> u64 {
-    const RELAY_CONSTANT_OVERHEAD_GAS: u64 = 200_000; // Constant overhead added to the base gas to relay a call.
-    const RELAY_CALL_OVERHEAD_GAS: u64 = 40_000; // Covers dynamic parts of the CALL opcode
-    const RELAY_CALL_CHECK_BUFFER_GAS: u64 = 5_000; // Buffer between _hasMinGas check and the CALL
-    const RELAY_CALL_POST_EXECUTION_RESERVED_GAS: u64 = 40_000; // Ensures execution of relayCall completes after call.
-
-    const TX_BASE_GAS: u64 = 21_000;
-    const MIN_GAS_CALLDATA_OVERHEAD: u64 = 16; // Extra gas added to base gas for each byte of calldata in a message.
-    const FLOOR_CALLDATA_OVERHEAD: u64 = 40; // Floor overhead per byte of non-zero calldata in a message. Calldata floor was introduced in EIP-7623.
-
-    let execution_gas = RELAY_CONSTANT_OVERHEAD_GAS
-        + RELAY_CALL_OVERHEAD_GAS
-        + RELAY_CALL_CHECK_BUFFER_GAS
-        + RELAY_CALL_POST_EXECUTION_RESERVED_GAS
-        + min_gas_limit * 63 / 64;
-
-    // TODO: The tx size on Base will be bigger as it's wrapped in a call to the `relayCall` function.
-    let tx_size = data.len() as u64;
-
-    // TODO: More thought is needed here as it is possible to do contract creation
-    //       Taken from: https://github.com/ethereum-optimism/optimism/blob/8261ca8e540558224912d61be8f502cf3e1e3dc5/packages/contracts-bedrock/src/universal/CrossDomainMessenger.sol#L389
-    TX_BASE_GAS
-        + (execution_gas + tx_size * MIN_GAS_CALLDATA_OVERHEAD)
-            .max(tx_size * FLOOR_CALLDATA_OVERHEAD)
+fn min_gas_limit(total_data_len: usize) -> u64 {
+    total_data_len as u64 * 40 + 21_000
 }
 
 fn pay_for_gas<'info>(
     system_program: &Program<'info, System>,
     payer: &Signer<'info>,
     gas_fee_receiver: &AccountInfo<'info>,
-    eip1559: &mut Account<'info, Eip1559>,
-    effective_min_gas_limit: u64,
+    eip1559: &mut Eip1559,
+    gas_limit: u64,
 ) -> Result<()> {
     // Get the base fee for the current window
     let current_timestamp = Clock::get()?.unix_timestamp;
     let base_fee = eip1559.refresh_base_fee(current_timestamp);
 
     // Record gas usage for this transaction
-    eip1559.add_gas_usage(effective_min_gas_limit);
+    eip1559.add_gas_usage(gas_limit);
 
-    let gas_cost = effective_min_gas_limit * base_fee * GAS_COST_SCALER / GAS_COST_SCALER_DP;
+    let gas_cost = gas_limit * base_fee * GAS_COST_SCALER / GAS_COST_SCALER_DP;
 
     let cpi_ctx = CpiContext::new(
         system_program.to_account_info(),
@@ -169,6 +121,8 @@ pub enum SendCallError {
     IncorrectGasFeeReceiver,
     #[msg("Creation with non-zero target")]
     CreationWithNonZeroTarget,
+    #[msg("Gas limit too low")]
+    GasLimitTooLow,
 }
 
 #[cfg(test)]
@@ -188,7 +142,7 @@ mod tests {
             EIP1559_DEFAULT_ADJUSTMENT_DENOMINATOR, EIP1559_DEFAULT_GAS_TARGET_PER_WINDOW,
             EIP1559_DEFAULT_WINDOW_DURATION_SECONDS, EIP1559_MINIMUM_BASE_FEE,
         },
-        test_utils::{mock_clock, mock_eip1559},
+        test_utils::{mock_clock, mock_portal},
         ID as PORTAL_PROGRAM_ID,
     };
 
@@ -210,40 +164,42 @@ mod tests {
         let wrong_gas_fee_receiver = Keypair::new().pubkey();
 
         // Test parameters
-        let ty = CallType::Call;
-        let to = [1u8; 20];
-        let gas_limit = 100_000u64;
-        let data = b"hello world".to_vec();
+        let call = Call {
+            ty: CallType::Call,
+            to: [1u8; 20],
+            gas_limit: 100_000,
+            data: b"hello world".to_vec(),
+        };
 
-        // Mock the EIP1559 account
-        let eip1559_pda = mock_eip1559(&mut svm, Eip1559::new(1000));
+        // Mock the Portal account
+        let portal_pda = mock_portal(
+            &mut svm,
+            Portal {
+                nonce: 0,
+                eip1559: Eip1559::new(1000),
+            },
+        );
 
         // Build the instruction with wrong gas fee receiver
-        let send_call_accounts = crate::accounts::SendCall {
+        let send_calls_accounts = crate::accounts::SendCall {
             payer: payer_pk,
             authority: authority_pk,
             gas_fee_receiver: wrong_gas_fee_receiver, // This should fail
-            eip1559: eip1559_pda,
+            portal: portal_pda,
             system_program: solana_sdk_ids::system_program::ID,
         }
         .to_account_metas(None);
 
-        let send_call_ix = Instruction {
+        let send_calls_ix = Instruction {
             program_id: PORTAL_PROGRAM_ID,
-            accounts: send_call_accounts,
-            data: crate::instruction::SendCall {
-                ty,
-                to,
-                gas_limit,
-                data,
-            }
-            .data(),
+            accounts: send_calls_accounts,
+            data: crate::instruction::SendCall { call }.data(),
         };
 
         // Build and send the transaction
         let tx = Transaction::new(
             &[&payer, &authority],
-            Message::new(&[send_call_ix], Some(&payer_pk)),
+            Message::new(&[send_calls_ix], Some(&payer_pk)),
             svm.latest_blockhash(),
         );
 
@@ -269,40 +225,42 @@ mod tests {
         let authority_pk = authority.pubkey();
 
         // Test parameters - creation call with non-null target (should fail)
-        let ty = CallType::Create;
-        let to = [1u8; 20]; // Non-null address
-        let gas_limit = 100_000u64;
-        let data = b"hello world".to_vec();
+        let call = Call {
+            ty: CallType::Call,
+            to: [1u8; 20],
+            gas_limit: 100_000,
+            data: b"hello world".to_vec(),
+        };
 
-        // Mock the EIP1559 account
-        let eip1559_pda = mock_eip1559(&mut svm, Eip1559::new(1000));
+        // Mock the Portal account
+        let portal_pda = mock_portal(
+            &mut svm,
+            Portal {
+                nonce: 0,
+                eip1559: Eip1559::new(1000),
+            },
+        );
 
         // Build the instruction
-        let send_call_accounts = crate::accounts::SendCall {
+        let send_calls_accounts = crate::accounts::SendCall {
             payer: payer_pk,
             authority: authority_pk,
             gas_fee_receiver: GAS_FEE_RECEIVER,
-            eip1559: eip1559_pda,
+            portal: portal_pda,
             system_program: solana_sdk_ids::system_program::ID,
         }
         .to_account_metas(None);
 
-        let send_call_ix = Instruction {
+        let send_calls_ix = Instruction {
             program_id: PORTAL_PROGRAM_ID,
-            accounts: send_call_accounts,
-            data: crate::instruction::SendCall {
-                ty,
-                to,
-                gas_limit,
-                data,
-            }
-            .data(),
+            accounts: send_calls_accounts,
+            data: crate::instruction::SendCall { call }.data(),
         };
 
         // Build and send the transaction
         let tx = Transaction::new(
             &[&payer, &authority],
-            Message::new(&[send_call_ix], Some(&payer_pk)),
+            Message::new(&[send_calls_ix], Some(&payer_pk)),
             svm.latest_blockhash(),
         );
 
@@ -328,40 +286,42 @@ mod tests {
         let authority_pk = authority.pubkey();
 
         // Test parameters - very low gas limit
-        let ty = CallType::Call;
-        let to = [1u8; 20];
-        let gas_limit = 1u64; // Extremely low gas limit that should fail
-        let data = b"this is a longer message that will require more gas".to_vec();
+        let call = Call {
+            ty: CallType::Call,
+            to: [1u8; 20],
+            gas_limit: 20_000,
+            data: b"this is a longer message that will require more gas".to_vec(),
+        };
 
-        // Mock the EIP1559 account
-        let eip1559_pda = mock_eip1559(&mut svm, Eip1559::new(1000));
+        // Mock the Portal account
+        let portal_pda = mock_portal(
+            &mut svm,
+            Portal {
+                nonce: 0,
+                eip1559: Eip1559::new(1000),
+            },
+        );
 
         // Build the instruction
-        let send_call_accounts = crate::accounts::SendCall {
+        let send_calls_accounts = crate::accounts::SendCall {
             payer: payer_pk,
             authority: authority_pk,
             gas_fee_receiver: GAS_FEE_RECEIVER,
-            eip1559: eip1559_pda,
+            portal: portal_pda,
             system_program: solana_sdk_ids::system_program::ID,
         }
         .to_account_metas(None);
 
-        let send_call_ix = Instruction {
+        let send_calls_ix = Instruction {
             program_id: PORTAL_PROGRAM_ID,
-            accounts: send_call_accounts,
-            data: crate::instruction::SendCall {
-                ty,
-                to,
-                gas_limit,
-                data,
-            }
-            .data(),
+            accounts: send_calls_accounts,
+            data: crate::instruction::SendCall { call }.data(),
         };
 
         // Build and send the transaction
         let tx = Transaction::new(
             &[&payer, &authority],
-            Message::new(&[send_call_ix], Some(&payer_pk)),
+            Message::new(&[send_calls_ix], Some(&payer_pk)),
             svm.latest_blockhash(),
         );
 
@@ -387,44 +347,46 @@ mod tests {
         let authority_pk = authority.pubkey();
 
         // Test parameters
-        let ty = CallType::Call;
-        let to = [1u8; 20]; // Sample target address
-        let gas_limit = 100_000u64;
-        let data = b"hello world".to_vec();
+        let call = Call {
+            ty: CallType::Call,
+            to: [1u8; 20],
+            gas_limit: 100_000,
+            data: b"hello world".to_vec(),
+        };
 
-        // Mock the EIP1559 account
+        // Mock the Portal account
         let initial_timestamp = 1000i64;
-        let eip1559_pda = mock_eip1559(&mut svm, Eip1559::new(initial_timestamp));
+        let portal_pda = mock_portal(
+            &mut svm,
+            Portal {
+                nonce: 0,
+                eip1559: Eip1559::new(initial_timestamp),
+            },
+        );
 
         // Mock clock with initial timestamp
         mock_clock(&mut svm, initial_timestamp);
 
         // Build the instruction
-        let send_call_accounts = crate::accounts::SendCall {
+        let send_calls_accounts = crate::accounts::SendCall {
             payer: payer_pk,
             authority: authority_pk,
             gas_fee_receiver: GAS_FEE_RECEIVER,
-            eip1559: eip1559_pda,
+            portal: portal_pda,
             system_program: solana_sdk_ids::system_program::ID,
         }
         .to_account_metas(None);
 
-        let send_call_ix = Instruction {
+        let send_calls_ix = Instruction {
             program_id: PORTAL_PROGRAM_ID,
-            accounts: send_call_accounts,
-            data: crate::instruction::SendCall {
-                ty,
-                to,
-                gas_limit,
-                data: data.clone(),
-            }
-            .data(),
+            accounts: send_calls_accounts,
+            data: crate::instruction::SendCall { call }.data(),
         };
 
         // Build and send the transaction
         let tx = Transaction::new(
             &[&payer, &authority],
-            Message::new(&[send_call_ix], Some(&payer_pk)),
+            Message::new(&[send_calls_ix], Some(&payer_pk)),
             svm.latest_blockhash(),
         );
 
@@ -438,6 +400,11 @@ mod tests {
             gas_fee_receiver_account.lamports > 0,
             "Gas fee receiver should have received lamports"
         );
+
+        // Verify that the nonce was incremented
+        let portal_account = svm.get_account(&portal_pda).unwrap();
+        let portal_data = Portal::try_deserialize(&mut portal_account.data.as_slice()).unwrap();
+        assert_eq!(portal_data.nonce, 1);
     }
 
     #[test]
@@ -450,8 +417,14 @@ mod tests {
         let initial_timestamp = 1000i64;
         mock_clock(&mut svm, initial_timestamp);
 
-        // Mock EIP1559 account with this timestamp
-        let eip1559_pda = mock_eip1559(&mut svm, Eip1559::new(initial_timestamp));
+        // Mock Portal account with this timestamp
+        let portal_pda = mock_portal(
+            &mut svm,
+            Portal {
+                nonce: 0,
+                eip1559: Eip1559::new(initial_timestamp),
+            },
+        );
 
         // Get initial state to understand the target
         let initial_base_fee = EIP1559_MINIMUM_BASE_FEE;
@@ -475,29 +448,31 @@ mod tests {
         let expected_base_fee_increase = gas_diff / target_gas / denominator;
 
         for i in 0..num_transactions {
-            let send_call_accounts = crate::accounts::SendCall {
+            let send_calls_accounts = crate::accounts::SendCall {
                 payer: payer_pk,
                 authority: authority_pk,
                 gas_fee_receiver: GAS_FEE_RECEIVER,
-                eip1559: eip1559_pda,
+                portal: portal_pda,
                 system_program: solana_sdk_ids::system_program::ID,
             };
 
-            let send_call_ix = Instruction {
+            let send_calls_ix = Instruction {
                 program_id: PORTAL_PROGRAM_ID,
-                accounts: send_call_accounts.to_account_metas(None),
+                accounts: send_calls_accounts.to_account_metas(None),
                 data: crate::instruction::SendCall {
-                    ty: CallType::Call,
-                    to: [1u8; 20],
-                    gas_limit: high_gas_per_tx,
-                    data: format!("high_congestion_tx_{}", i).into_bytes(),
+                    call: Call {
+                        ty: CallType::Call,
+                        to: [1u8; 20],
+                        gas_limit: high_gas_per_tx,
+                        data: format!("high_congestion_tx_{}", i).into_bytes(),
+                    },
                 }
                 .data(),
             };
 
             let tx = Transaction::new(
                 &[&payer, &authority],
-                Message::new(&[send_call_ix], Some(&payer_pk)),
+                Message::new(&[send_calls_ix], Some(&payer_pk)),
                 svm.latest_blockhash(),
             );
 
@@ -513,7 +488,7 @@ mod tests {
             payer: payer_pk,
             authority: authority_pk,
             gas_fee_receiver: GAS_FEE_RECEIVER,
-            eip1559: eip1559_pda,
+            portal: portal_pda,
             system_program: solana_sdk_ids::system_program::ID,
         };
 
@@ -521,10 +496,12 @@ mod tests {
             program_id: PORTAL_PROGRAM_ID,
             accounts: trigger_accounts.to_account_metas(None),
             data: crate::instruction::SendCall {
-                ty: CallType::Call,
-                to: [1u8; 20],
-                gas_limit: 100_000,
-                data: b"trigger_update".to_vec(),
+                call: Call {
+                    ty: CallType::Call,
+                    to: [1u8; 20],
+                    gas_limit: 100_000,
+                    data: b"trigger_update".to_vec(),
+                },
             }
             .data(),
         };
@@ -538,10 +515,12 @@ mod tests {
         svm.send_transaction(trigger_tx)
             .expect("Trigger transaction should succeed");
 
-        // Read the base fee from the EIP1559 account
-        let final_account = svm.get_account(&eip1559_pda).unwrap();
-        let final_eip1559 = Eip1559::try_deserialize(&mut final_account.data.as_slice()).unwrap();
-        let final_base_fee = final_eip1559.current_base_fee;
+        // Read the base fee from the Portal account
+        let portal_account = svm.get_account(&portal_pda).unwrap();
+        let final_base_fee = Portal::try_deserialize(&mut portal_account.data.as_slice())
+            .unwrap()
+            .eip1559
+            .current_base_fee;
 
         // Verify that base fee increased as expected due to high congestion
         assert_eq!(
@@ -565,11 +544,11 @@ mod tests {
         let initial_timestamp = 1000i64;
         mock_clock(&mut svm, initial_timestamp);
 
-        // Mock EIP1559 account with high base fee
+        // Mock Portal account with high base fee
         let high_base_fee = 100u64; // 100 GWEI in wei
         let mut eip1559 = Eip1559::new(initial_timestamp);
         eip1559.current_base_fee = high_base_fee;
-        let eip1559_pda = mock_eip1559(&mut svm, eip1559);
+        let portal_pda = mock_portal(&mut svm, Portal { nonce: 0, eip1559 });
 
         // Mock clock to be 10 time windows later (10 seconds later)
         let windows_passed = window_duration * 10;
@@ -589,7 +568,7 @@ mod tests {
             payer: payer_pk,
             authority: authority_pk,
             gas_fee_receiver: GAS_FEE_RECEIVER,
-            eip1559: eip1559_pda,
+            portal: portal_pda,
             system_program: solana_sdk_ids::system_program::ID,
         };
 
@@ -597,10 +576,12 @@ mod tests {
             program_id: PORTAL_PROGRAM_ID,
             accounts: accounts.to_account_metas(None),
             data: crate::instruction::SendCall {
-                ty: CallType::Call,
-                to: [1u8; 20],
-                gas_limit: 100_000,
-                data: b"trigger_update".to_vec(),
+                call: Call {
+                    ty: CallType::Call,
+                    to: [1u8; 20],
+                    gas_limit: 100_000,
+                    data: b"trigger_update".to_vec(),
+                },
             }
             .data(),
         };
@@ -614,14 +595,13 @@ mod tests {
         svm.send_transaction(tx)
             .expect("Transaction should succeed");
 
-        // Read the base fee from the EIP1559 account
-        let final_account = svm.get_account(&eip1559_pda).unwrap();
-        let final_eip1559 = Eip1559::try_deserialize(&mut final_account.data.as_slice()).unwrap();
-        let final_base_fee = final_eip1559.current_base_fee;
+        // Read the new base fee
+        let portal_account = svm.get_account(&portal_pda).unwrap();
+        let portal_data = Portal::try_deserialize(&mut portal_account.data.as_slice()).unwrap();
 
         // Verify it actually decreased
         assert!(
-            final_base_fee < high_base_fee,
+            portal_data.eip1559.current_base_fee < high_base_fee,
             "Base fee should have decreased from initial high value"
         );
     }

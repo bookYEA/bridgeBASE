@@ -31,7 +31,7 @@ pub const PORTAL_AUTHORITY_SEED: &[u8] = b"portal_authority";
 
 pub const OUTPUT_ROOT_SEED: &[u8] = b"output_root";
 
-pub const EIP1559_SEED: &[u8] = b"eip1559";
+pub const PORTAL_SEED: &[u8] = b"portal";
 
 pub const EIP1559_MINIMUM_BASE_FEE: u64 = 1;
 

@@ -8,8 +8,8 @@ contract Twin {
     ///                       Errors                           ///
     //////////////////////////////////////////////////////////////
 
-    /// @notice Thrown when the caller is not the portal.
-    error NotPortal();
+    /// @notice Thrown when the caller is neither the portal nor the twin itself.
+    error Unauthorized();
 
     //////////////////////////////////////////////////////////////
     ///                       Constants                        ///
@@ -28,15 +28,11 @@ contract Twin {
 
     receive() external payable {}
 
-    /// @notice Executes a batch of calls.
+    /// @notice Executes a call.
     ///
-    /// @param data The encoded calls to execute.
-    function executeBatch(bytes calldata data) external payable {
-        Call[] memory calls = abi.decode(data, (Call[]));
-        if (msg.sender != PORTAL) revert NotPortal();
-
-        for (uint256 i; i < calls.length; i++) {
-            CallLib.execute(calls[i]);
-        }
+    /// @param call The encoded call to execute.
+    function execute(Call calldata call) external payable {
+        require(msg.sender == PORTAL || msg.sender == address(this), Unauthorized());
+        CallLib.execute(call);
     }
 }
