@@ -84,7 +84,10 @@ pub fn send_call<'info>(
 }
 
 fn min_gas_limit(total_data_len: usize) -> u64 {
-    total_data_len as u64 * 40 + 21_000
+    const RELAY_CALL_GAS_BUFFER: u64 = 40_000;
+    const RELAY_CALL_OVERHEAD_GAS: u64 = 40_000;
+
+    total_data_len as u64 * 40 + 21_000 + RELAY_CALL_GAS_BUFFER + RELAY_CALL_OVERHEAD_GAS
 }
 
 fn pay_for_gas<'info>(
@@ -350,7 +353,7 @@ mod tests {
         let call = Call {
             ty: CallType::Call,
             to: [1u8; 20],
-            gas_limit: 100_000,
+            gas_limit: 200_000,
             data: b"hello world".to_vec(),
         };
 
@@ -499,7 +502,7 @@ mod tests {
                 call: Call {
                     ty: CallType::Call,
                     to: [1u8; 20],
-                    gas_limit: 100_000,
+                    gas_limit: 200_000,
                     data: b"trigger_update".to_vec(),
                 },
             }
@@ -579,7 +582,7 @@ mod tests {
                 call: Call {
                     ty: CallType::Call,
                     to: [1u8; 20],
-                    gas_limit: 100_000,
+                    gas_limit: 200_000,
                     data: b"trigger_update".to_vec(),
                 },
             }

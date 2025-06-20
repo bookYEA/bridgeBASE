@@ -31,6 +31,9 @@ contract Portal is ReentrancyGuardTransient {
     ///                       Errors                           ///
     //////////////////////////////////////////////////////////////
 
+    /// @notice Thrown when the sender is not the entrypoint.
+    error SenderIsNotEntrypoint();
+
     /// @notice Thrown when doing gas estimation and the call's gas left is insufficient to cover the `minGas` plus the
     ///         `reservedGas`.
     error EstimationInsufficientGas();
@@ -53,6 +56,9 @@ contract Portal is ReentrancyGuardTransient {
     /// @notice Thrown when the call is already relayed.
     error CallAlreadyRelayed();
 
+    /// @notice Thrown when the call execution fails.
+    error ExecutionFailed();
+
     //////////////////////////////////////////////////////////////
     ///                       Constants                        ///
     //////////////////////////////////////////////////////////////
@@ -65,22 +71,17 @@ contract Portal is ReentrancyGuardTransient {
     ///         never have any code on any EVM chain.
     address public constant ESTIMATION_ADDRESS = address(1);
 
-    // TODO: Re-estimate the constants.
-    /// @notice Gas reserved for the execution logic between the `_hasMinGas` check and the actual Twin contract
-    ///         execution in `relayCall`.
-    uint64 public constant RELAY_CALL_CHECK_BUFFER_GAS = 5_000;
-
-    /// @notice Gas reserved for finalizing the execution of `relayCall` after the safe call.
-    uint64 public constant RELAY_CALL_POST_EXECUTION_RESERVED_GAS = 40_000;
-
-    /// @notice Gas reserved for the dynamic parts of the `CALL` opcode.
-    uint64 public constant RELAY_CALL_OVERHEAD_GAS = 40_000;
-
     /// @notice Address of the trusted relayer.
     address public immutable TRUSTED_RELAYER;
 
     /// @notice Address of the Twin beacon.
     address public immutable TWIN_BEACON;
+
+    /// @notice Additional gas buffer reserved to ensure the correct execution of the `relayCallEntrypoint` function.
+    uint64 private constant _RELAY_CALL_GAS_BUFFER = 40_000;
+
+    /// @notice Gas reserved for the dynamic parts of the `CALL` opcode.
+    uint64 private constant _RELAY_CALL_OVERHEAD_GAS = 40_000;
 
     //////////////////////////////////////////////////////////////
     ///                       Storage                          ///
@@ -110,31 +111,88 @@ contract Portal is ReentrancyGuardTransient {
         TWIN_BEACON = twinBeacon;
     }
 
+    /// @notice Entrypoint for relaying a call from Solana to Base.
+    ///
+    /// @param nonce Nonce of the call.
+    /// @param sender Solana sender pubkey.
+    /// @param call Encoded call to send to the Solana sender's Twin contract.
+    /// @param ismData Encoded ISM data used to verify the call.
+    function relayCallEntrypoint(uint256 nonce, bytes32 sender, Call calldata call, bytes calldata ismData)
+        external
+        payable
+    {
+        // INVARIANTs for the relay to work properly:
+        //      1. The `gasLimit` set on the Solana side must be sufficient to cover the _RELAY_CALL_GAS_BUFFER (+ the
+        //         minimum gas to cover the calldata size + tx base gas cost).
+        //      2. On first call, the relayer MUST provide a `tx.gas` = `call.gasLimit` + ISM_BUFFER, where ISM_BUFFER
+        //         is the gas required to cover the ISM verification (which will be removed once enshrined).
+        //      3. In case of replay, the user must provide a `tx.gas` >= `call.gasLimit`.
+
+        bool isTrustedRelayer = msg.sender == TRUSTED_RELAYER;
+        if (isTrustedRelayer) {
+            _ismVerify({call: call, ismData: ismData});
+        }
+
+        bytes32 callHash = keccak256(abi.encode(nonce, sender, call.ty, call.to, call.value, call.data));
+
+        // Ensures sufficient gas for execution and cleanup.
+        if (!_hasMinGas({minGas: call.gasLimit, reservedGas: _RELAY_CALL_GAS_BUFFER})) {
+            failedCalls[callHash] = true;
+            emit FailedRelayedCall(callHash);
+
+            // Revert for gas estimation.
+            if (tx.origin == ESTIMATION_ADDRESS) {
+                revert EstimationInsufficientGas();
+            }
+
+            return;
+        }
+
+        try this.relayCall{gas: gasleft() - _RELAY_CALL_GAS_BUFFER, value: msg.value}({
+            sender: sender,
+            call: call,
+            isTrustedRelayer: isTrustedRelayer,
+            callHash: callHash
+        }) {
+            // Register the call as successful.
+            successfulCalls[callHash] = true;
+            if (failedCalls[callHash]) {
+                delete failedCalls[callHash];
+            }
+
+            emit RelayedCall(callHash);
+        } catch (bytes memory reason) {
+            // Some mandatory invariant has been violated, we should revert.
+            if (bytes4(reason) != ExecutionFailed.selector) {
+                assembly {
+                    revert(add(reason, 32), mload(reason))
+                }
+            }
+
+            // Otherwise the user call reverted, register the call as failed.
+            failedCalls[callHash] = true;
+            emit FailedRelayedCall(callHash);
+        }
+    }
+
     /// @notice Relays a call via the sender's Twin contract.
     ///
-    /// @param nonce Unique nonce associated with the call.
+    /// @dev This function can only be called by the entrypoint and is here to allow for safe gas accounting.
+    ///
     /// @param sender Solana sender pubkey.
-    /// @param value Value that is forwarded to the Solana sender's Twin contract.
-    /// @param gasLimit Amount of gas that is forwarded to the Solana sender's Twin contract.
-    /// @param call Call to send to the Solana sender's Twin contract.
-    /// @param ismData Encoded ISM data used to verify the call.
-    function relayCall(
-        uint256 nonce,
-        bytes32 sender,
-        uint256 value,
-        uint256 gasLimit,
-        Call calldata call,
-        bytes calldata ismData
-    ) external payable nonReentrant {
-        // NOTE: Don't include the `gasLimit` in the call hash to allow replays of failed calls with different
-        //       `gasLimit`s.
-        bytes32 callHash = keccak256(abi.encode(nonce, sender, value, call));
+    /// @param call Encoded call to send to the Solana sender's Twin contract.
+    /// @param isTrustedRelayer Whether the relayer is trusted.
+    /// @param callHash Keccak256 hash of the call that was successfully relayed.
+    function relayCall(bytes32 sender, Call calldata call, bool isTrustedRelayer, bytes32 callHash) external payable {
+        // Check that the caller is the entrypoint.
+        require(msg.sender == address(this), SenderIsNotEntrypoint());
 
-        // Check that the call can be relayed.
-        if (_isTrustedRelayer()) {
-            require(msg.value == value, IncorrectMsgValue());
+        // Check that the relay is allowed.
+        // TODO: Need to address the value issue. Instead of expecting a value attached to the message it might need to
+        //       be taken from the TokenBridge (and sent back in case of issue) OR some alternative solution.
+        if (isTrustedRelayer) {
+            require(msg.value == call.value, IncorrectMsgValue());
             require(!failedCalls[callHash], CallAlreadyFailed());
-            _ismVerify({call: call, ismData: ismData});
         } else {
             require(msg.value == 0, IncorrectMsgValue());
             require(failedCalls[callHash], CallNotAlreadyFailed());
@@ -149,39 +207,10 @@ contract Portal is ReentrancyGuardTransient {
             twins[sender] = twinAddress;
         }
 
-        // Ensures sufficient gas for Twin contract execution and cleanup.
-        if (
-            !_hasMinGas({
-                minGas: gasLimit,
-                reservedGas: RELAY_CALL_POST_EXECUTION_RESERVED_GAS + RELAY_CALL_CHECK_BUFFER_GAS
-            })
-        ) {
-            failedCalls[callHash] = true;
-            emit FailedRelayedCall(callHash);
-
-            // Revert for gas estimation.
-            if (tx.origin == ESTIMATION_ADDRESS) {
-                revert EstimationInsufficientGas();
-            }
-
-            return;
-        }
-
-        // Relay the call via the Twin contract.
-        try Twin(payable(twinAddress)).execute{gas: gasleft() - RELAY_CALL_POST_EXECUTION_RESERVED_GAS, value: value}(
-            call
-        ) {
-            successfulCalls[callHash] = true;
-            emit RelayedCall(callHash);
-        } catch {
-            failedCalls[callHash] = true;
-
-            // Revert for gas estimation.
-            if (tx.origin == ESTIMATION_ADDRESS) {
-                revert EstimationFailedRelayedCall();
-            }
-
-            emit FailedRelayedCall(callHash);
+        // Execute the call via the Twin contract.
+        try Twin(payable(twinAddress)).execute{value: msg.value}(call) {}
+        catch {
+            revert ExecutionFailed();
         }
     }
 
@@ -213,7 +242,7 @@ contract Portal is ReentrancyGuardTransient {
     ///      https://github.com/ethereum-optimism/optimism/blob/4e9ef1aeffd2afd7a2378e2dc5efffa71f04207d/packages/contracts-bedrock/src/libraries/SafeCall.sol#L100
     ///
     /// @dev !!!!! FOOTGUN ALERT !!!!!
-    ///      1.) The RELAY_CALL_OVERHEAD_GAS base buffer is to account for the worst case of the dynamic cost of the
+    ///      1.) The _RELAY_CALL_OVERHEAD_GAS base buffer is to account for the worst case of the dynamic cost of the
     ///          `CALL` opcode's `address_access_cost`, `positive_value_cost`, and `value_to_empty_account_cost` factors
     ///          with an added buffer of 5,700 gas. It is still possible to self-rekt by initiating a withdrawal with a
     ///          minimum gas limit that does not account for the `memory_expansion_cost` & `code_execution_cost` factors
@@ -232,9 +261,10 @@ contract Portal is ReentrancyGuardTransient {
     ///                    the target context.
     function _hasMinGas(uint256 minGas, uint256 reservedGas) private view returns (bool hasMinGas) {
         assembly {
-            // Equation: gas × 63 ≥ minGas × 64 + 63(40_000 + reservedGas)
+            // Equation: gas × 63 - 63(40_000 + reservedGas) ≥ minGas × 64
+            //       =>  gas × 63 ≥ minGas × 64 + 63(40_000 + reservedGas)
             hasMinGas :=
-                iszero(lt(mul(gas(), 63), add(mul(minGas, 64), mul(add(RELAY_CALL_OVERHEAD_GAS, reservedGas), 63))))
+                iszero(lt(mul(gas(), 63), add(mul(minGas, 64), mul(add(_RELAY_CALL_OVERHEAD_GAS, reservedGas), 63))))
         }
     }
 

@@ -253,7 +253,7 @@ mod tests {
             scaler_exponent: 9u8,
         };
         let decimals = 6u8; // USDC-like decimals
-        let gas_limit = 100_000u64;
+        let gas_limit = 200_000u64;
 
         // Create payer
         let payer = Keypair::new();
