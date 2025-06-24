@@ -1,13 +1,14 @@
-use alloy_primitives::{FixedBytes, U256};
+use alloy_primitives::FixedBytes;
 use alloy_sol_types::SolCall;
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{self, Mint, TokenAccount, TokenInterface, TransferChecked};
 
+use common::metadata::PartialTokenMetadata;
 use portal::{cpi as portal_cpi, program::Portal};
 
 use crate::{
     constants::{BRIDGE_AUTHORITY_SEED, TOKEN_VAULT_SEED, WRAPPED_TOKEN_SEED},
-    internal::{cpi_send_call, metadata::PartialTokenMetadata},
+    internal::cpi_send_call,
     solidity::Bridge,
 };
 
@@ -107,7 +108,7 @@ pub fn bridge_spl_handler(
             remoteToken: FixedBytes::from(ctx.accounts.mint.key().to_bytes()), // NOTE: Intentionally flip the tokens so that when executing on Base it's correct.
             from: FixedBytes::from(ctx.accounts.from.key().to_bytes()),
             to: to.into(),
-            amount: U256::from(amount),
+            remoteAmount: amount,
             extraData: extra_data.into(),
         }
         .abi_encode(),

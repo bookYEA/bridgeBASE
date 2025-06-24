@@ -8,7 +8,11 @@ use anchor_spl::{
     token_interface::spl_token_metadata_interface::state::TokenMetadata,
 };
 
-use crate::constants::{REMOTE_TOKEN_METADATA_KEY, SCALER_EXPONENT_METADATA_KEY};
+#[constant]
+pub const REMOTE_TOKEN_METADATA_KEY: &str = "remote_token";
+
+#[constant]
+pub const SCALER_EXPONENT_METADATA_KEY: &str = "scaler_exponent";
 
 #[derive(Debug, Clone, AnchorDeserialize, AnchorSerialize)]
 pub struct PartialTokenMetadata {

@@ -10,13 +10,14 @@ use anchor_spl::token_interface::{
     token_metadata_initialize, token_metadata_update_field, Mint, Token2022,
     TokenMetadataInitialize, TokenMetadataUpdateField,
 };
+use common::metadata::PartialTokenMetadata;
 use portal::{cpi as portal_cpi, program::Portal};
 
 use crate::constants::{
     BRIDGE_AUTHORITY_SEED, REMOTE_TOKEN_METADATA_KEY, SCALER_EXPONENT_METADATA_KEY,
     WRAPPED_TOKEN_SEED,
 };
-use crate::internal::{cpi_send_call, metadata::PartialTokenMetadata};
+use crate::internal::cpi_send_call;
 use crate::solidity::Bridge;
 
 #[derive(Accounts)]

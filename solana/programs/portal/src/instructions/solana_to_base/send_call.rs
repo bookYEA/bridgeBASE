@@ -1,10 +1,10 @@
 use anchor_lang::prelude::*;
 
-use crate::constants::{GAS_COST_SCALER, GAS_COST_SCALER_DP, GAS_FEE_RECEIVER, PORTAL_SEED};
-use crate::instructions::CallType;
-use crate::state::{Eip1559, Portal};
+use crate::constants::{GAS_FEE_RECEIVER, PORTAL_SEED};
+use crate::internal::send_call_internal;
+use crate::state::Portal;
 
-use super::Call;
+use super::{Call, CallType};
 
 #[derive(Accounts)]
 pub struct SendCall<'info> {
@@ -14,7 +14,7 @@ pub struct SendCall<'info> {
     pub authority: Signer<'info>,
 
     /// CHECK: This is the hardcoded gas fee receiver account.
-    #[account(mut, address = GAS_FEE_RECEIVER @ SendCallError::IncorrectGasFeeReceiver)]
+    #[account(mut, address = GAS_FEE_RECEIVER)]
     pub gas_fee_receiver: AccountInfo<'info>,
 
     #[account(
@@ -27,105 +27,27 @@ pub struct SendCall<'info> {
     pub system_program: Program<'info, System>,
 }
 
-#[event]
-pub struct CallSent {
-    pub nonce: u64,
-    pub from: Pubkey,
-    pub call: Call,
-}
-
-pub fn send_call_handler(ctx: Context<SendCall>, call: Call) -> Result<()> {
-    send_call(
+pub fn send_call_handler(
+    ctx: Context<SendCall>,
+    ty: CallType,
+    to: [u8; 20],
+    gas_limit: u64,
+    data: Vec<u8>,
+) -> Result<()> {
+    send_call_internal(
         &ctx.accounts.system_program,
         &ctx.accounts.payer,
         &ctx.accounts.gas_fee_receiver,
         &mut ctx.accounts.portal,
         ctx.accounts.authority.key(),
-        call,
-    )
-}
-
-pub fn send_call<'info>(
-    system_program: &Program<'info, System>,
-    payer: &Signer<'info>,
-    gas_fee_receiver: &AccountInfo<'info>,
-    portal: &mut Account<'info, Portal>,
-    from: Pubkey,
-    call: Call,
-) -> Result<()> {
-    // Can't hurt to check this here (though it's not strictly preventing the user to footgun themselves)
-    require!(
-        matches!(call.ty, CallType::Call | CallType::DelegateCall) || call.to == [0; 20],
-        SendCallError::CreationWithNonZeroTarget
-    );
-
-    require!(
-        call.gas_limit >= min_gas_limit(call.data.len()),
-        SendCallError::GasLimitTooLow
-    );
-
-    pay_for_gas(
-        system_program,
-        payer,
-        gas_fee_receiver,
-        &mut portal.eip1559,
-        call.gas_limit,
-    )?;
-
-    emit!(CallSent {
-        nonce: portal.nonce,
-        from,
-        call,
-    });
-
-    portal.nonce += 1;
-
-    Ok(())
-}
-
-fn min_gas_limit(total_data_len: usize) -> u64 {
-    const RELAY_CALL_GAS_BUFFER: u64 = 40_000;
-    const RELAY_CALL_OVERHEAD_GAS: u64 = 40_000;
-
-    total_data_len as u64 * 40 + 21_000 + RELAY_CALL_GAS_BUFFER + RELAY_CALL_OVERHEAD_GAS
-}
-
-fn pay_for_gas<'info>(
-    system_program: &Program<'info, System>,
-    payer: &Signer<'info>,
-    gas_fee_receiver: &AccountInfo<'info>,
-    eip1559: &mut Eip1559,
-    gas_limit: u64,
-) -> Result<()> {
-    // Get the base fee for the current window
-    let current_timestamp = Clock::get()?.unix_timestamp;
-    let base_fee = eip1559.refresh_base_fee(current_timestamp);
-
-    // Record gas usage for this transaction
-    eip1559.add_gas_usage(gas_limit);
-
-    let gas_cost = gas_limit * base_fee * GAS_COST_SCALER / GAS_COST_SCALER_DP;
-
-    let cpi_ctx = CpiContext::new(
-        system_program.to_account_info(),
-        anchor_lang::system_program::Transfer {
-            from: payer.to_account_info(),
-            to: gas_fee_receiver.clone(),
+        Call {
+            ty,
+            to,
+            gas_limit,
+            remote_value: 0,
+            data,
         },
-    );
-    anchor_lang::system_program::transfer(cpi_ctx, gas_cost)?;
-
-    Ok(())
-}
-
-#[error_code]
-pub enum SendCallError {
-    #[msg("Incorrect gas fee receiver")]
-    IncorrectGasFeeReceiver,
-    #[msg("Creation with non-zero target")]
-    CreationWithNonZeroTarget,
-    #[msg("Gas limit too low")]
-    GasLimitTooLow,
+    )
 }
 
 #[cfg(test)]
@@ -145,6 +67,8 @@ mod tests {
             EIP1559_DEFAULT_ADJUSTMENT_DENOMINATOR, EIP1559_DEFAULT_GAS_TARGET_PER_WINDOW,
             EIP1559_DEFAULT_WINDOW_DURATION_SECONDS, EIP1559_MINIMUM_BASE_FEE,
         },
+        instructions::CallType,
+        state::Eip1559,
         test_utils::{mock_clock, mock_portal},
         ID as PORTAL_PROGRAM_ID,
     };
@@ -167,12 +91,10 @@ mod tests {
         let wrong_gas_fee_receiver = Keypair::new().pubkey();
 
         // Test parameters
-        let call = Call {
-            ty: CallType::Call,
-            to: [1u8; 20],
-            gas_limit: 100_000,
-            data: b"hello world".to_vec(),
-        };
+        let ty = CallType::Call;
+        let to = [1u8; 20];
+        let gas_limit = 100_000;
+        let data = b"hello world".to_vec();
 
         // Mock the Portal account
         let portal_pda = mock_portal(
@@ -196,7 +118,13 @@ mod tests {
         let send_calls_ix = Instruction {
             program_id: PORTAL_PROGRAM_ID,
             accounts: send_calls_accounts,
-            data: crate::instruction::SendCall { call }.data(),
+            data: crate::instruction::SendCall {
+                ty,
+                to,
+                gas_limit,
+                data,
+            }
+            .data(),
         };
 
         // Build and send the transaction
@@ -228,12 +156,10 @@ mod tests {
         let authority_pk = authority.pubkey();
 
         // Test parameters - creation call with non-null target (should fail)
-        let call = Call {
-            ty: CallType::Call,
-            to: [1u8; 20],
-            gas_limit: 100_000,
-            data: b"hello world".to_vec(),
-        };
+        let ty = CallType::Call;
+        let to = [1u8; 20];
+        let gas_limit = 100_000;
+        let data = b"hello world".to_vec();
 
         // Mock the Portal account
         let portal_pda = mock_portal(
@@ -257,7 +183,13 @@ mod tests {
         let send_calls_ix = Instruction {
             program_id: PORTAL_PROGRAM_ID,
             accounts: send_calls_accounts,
-            data: crate::instruction::SendCall { call }.data(),
+            data: crate::instruction::SendCall {
+                ty,
+                to,
+                gas_limit,
+                data,
+            }
+            .data(),
         };
 
         // Build and send the transaction
@@ -289,12 +221,10 @@ mod tests {
         let authority_pk = authority.pubkey();
 
         // Test parameters - very low gas limit
-        let call = Call {
-            ty: CallType::Call,
-            to: [1u8; 20],
-            gas_limit: 20_000,
-            data: b"this is a longer message that will require more gas".to_vec(),
-        };
+        let ty = CallType::Call;
+        let to = [1u8; 20];
+        let gas_limit = 20_000;
+        let data = b"this is a longer message that will require more gas".to_vec();
 
         // Mock the Portal account
         let portal_pda = mock_portal(
@@ -318,7 +248,13 @@ mod tests {
         let send_calls_ix = Instruction {
             program_id: PORTAL_PROGRAM_ID,
             accounts: send_calls_accounts,
-            data: crate::instruction::SendCall { call }.data(),
+            data: crate::instruction::SendCall {
+                ty,
+                to,
+                gas_limit,
+                data,
+            }
+            .data(),
         };
 
         // Build and send the transaction
@@ -350,12 +286,10 @@ mod tests {
         let authority_pk = authority.pubkey();
 
         // Test parameters
-        let call = Call {
-            ty: CallType::Call,
-            to: [1u8; 20],
-            gas_limit: 200_000,
-            data: b"hello world".to_vec(),
-        };
+        let ty = CallType::Call;
+        let to = [1u8; 20];
+        let gas_limit = 200_000;
+        let data = b"hello world".to_vec();
 
         // Mock the Portal account
         let initial_timestamp = 1000i64;
@@ -383,7 +317,13 @@ mod tests {
         let send_calls_ix = Instruction {
             program_id: PORTAL_PROGRAM_ID,
             accounts: send_calls_accounts,
-            data: crate::instruction::SendCall { call }.data(),
+            data: crate::instruction::SendCall {
+                ty,
+                to,
+                gas_limit,
+                data,
+            }
+            .data(),
         };
 
         // Build and send the transaction
@@ -463,12 +403,10 @@ mod tests {
                 program_id: PORTAL_PROGRAM_ID,
                 accounts: send_calls_accounts.to_account_metas(None),
                 data: crate::instruction::SendCall {
-                    call: Call {
-                        ty: CallType::Call,
-                        to: [1u8; 20],
-                        gas_limit: high_gas_per_tx,
-                        data: format!("high_congestion_tx_{}", i).into_bytes(),
-                    },
+                    ty: CallType::Call,
+                    to: [1u8; 20],
+                    gas_limit: high_gas_per_tx,
+                    data: format!("high_congestion_tx_{}", i).into_bytes(),
                 }
                 .data(),
             };
@@ -499,12 +437,10 @@ mod tests {
             program_id: PORTAL_PROGRAM_ID,
             accounts: trigger_accounts.to_account_metas(None),
             data: crate::instruction::SendCall {
-                call: Call {
-                    ty: CallType::Call,
-                    to: [1u8; 20],
-                    gas_limit: 200_000,
-                    data: b"trigger_update".to_vec(),
-                },
+                ty: CallType::Call,
+                to: [1u8; 20],
+                gas_limit: 200_000,
+                data: b"trigger_update".to_vec(),
             }
             .data(),
         };
@@ -579,12 +515,10 @@ mod tests {
             program_id: PORTAL_PROGRAM_ID,
             accounts: accounts.to_account_metas(None),
             data: crate::instruction::SendCall {
-                call: Call {
-                    ty: CallType::Call,
-                    to: [1u8; 20],
-                    gas_limit: 200_000,
-                    data: b"trigger_update".to_vec(),
-                },
+                ty: CallType::Call,
+                to: [1u8; 20],
+                gas_limit: 200_000,
+                data: b"trigger_update".to_vec(),
             }
             .data(),
         };

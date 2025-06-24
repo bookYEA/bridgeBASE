@@ -12,7 +12,7 @@ pub mod test_utils;
 use instructions::*;
 use internal::Proof;
 
-declare_id!("4aRCwRtUjaoNA34AVLUmYVsyPRph2fNcAhXUxwHKUGtn");
+declare_id!("4jduFi9ShXq258vmY4GroJUYTRQnd9GWZxzK8zTxTmmw");
 
 #[program]
 pub mod portal {
@@ -23,8 +23,25 @@ pub mod portal {
         initialize_handler(ctx)
     }
 
-    pub fn send_call(ctx: Context<SendCall>, call: Call) -> Result<()> {
-        send_call_handler(ctx, call)
+    pub fn send_call(
+        ctx: Context<SendCall>,
+        ty: CallType,
+        to: [u8; 20],
+        gas_limit: u64,
+        data: Vec<u8>,
+    ) -> Result<()> {
+        send_call_handler(ctx, ty, to, gas_limit, data)
+    }
+
+    pub fn send_call_with_eth(
+        ctx: Context<SendCallWithEth>,
+        ty: CallType,
+        to: [u8; 20],
+        gas_limit: u64,
+        value: u64,
+        data: Vec<u8>,
+    ) -> Result<()> {
+        send_call_with_eth_handler(ctx, ty, to, gas_limit, value, data)
     }
 
     pub fn register_output_root(

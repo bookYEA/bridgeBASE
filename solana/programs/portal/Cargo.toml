@@ -14,11 +14,17 @@ cpi = ["no-entrypoint"]
 no-entrypoint = []
 no-idl = []
 no-log-ix-name = []
-idl-build = ["anchor-lang/idl-build"]
-test-env = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+localnet = []
+devnet = []
+mainnet = []
 
 [dependencies]
+common = { path = "../../common" }
+
 anchor-lang = "0.31.0"
+anchor-spl = "=0.31.0"
+
 alloy-sol-types = "=0.8.13"
 alloy-primitives = "=0.8.13"
 

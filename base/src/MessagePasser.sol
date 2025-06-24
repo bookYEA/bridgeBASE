@@ -51,7 +51,7 @@ contract MessagePasser {
     ///         verification, and emits an event that can be monitored by offchain relayers.
     ///
     /// @param data Data to be passed to the Solana program.
-    function sendRemoteCall(bytes calldata data) public payable {
+    function sendRemoteCall(bytes calldata data) public {
         uint256 nonce = _remoteCallNonce;
 
         bytes32 remoteCallHash = _hashRemoteCall(RemoteCall({nonce: nonce, sender: msg.sender, data: data}));

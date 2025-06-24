@@ -88,6 +88,9 @@ contract TokenBridge {
     /// @notice Address of the MessagePasser contract on Base.
     address public immutable MESSAGE_PASSER;
 
+    /// @notice Address of the Portal contract on Base.
+    address public immutable PORTAL;
+
     /// @notice Pubkey of the token bridge contract on Solana.
     Pubkey public immutable REMOTE_TOKEN_BRIDGE;
 
@@ -97,9 +100,10 @@ contract TokenBridge {
 
     /// @notice Mapping that stores deposit balances for token pairs between local and remote chains.
     ///
-    /// @dev For standard ERC20 tokens and ETH, this tracks the total amount deposited and available for withdrawal.
-    ///      CrossChainERC20 tokens bypass this mechanism as they use mint/burn instead.
-    mapping(address localToken => mapping(Pubkey remoteToken => uint256 amount)) public deposits;
+    /// @dev For native ERC20 tokens, this tracks the total amount deposited and available for withdrawal.
+    ///      CrossChainERC20 tokens bypass this mechanism as they use mint/burn instead. Native ETH is handled
+    ///      differently as it is forwarded and managed by the Portal contract.
+    mapping(address localToken => mapping(Pubkey remoteToken => uint256 amount)) public erc20Deposits;
 
     /// @notice Mapping that stores the scaler exponent for token pairs between local and remote chains.
     ///
@@ -128,10 +132,12 @@ contract TokenBridge {
     ///
     /// @param tokenBridgeTwin Address of the TokenBridge Twin contract on Base.
     /// @param messagePasser Address of the MessagePasser contract on Base.
+    /// @param portal Address of the Portal contract on Base.
     /// @param remoteTokenBridge Pubkey of the token bridge contract on Solana.
-    constructor(address tokenBridgeTwin, address messagePasser, Pubkey remoteTokenBridge) {
+    constructor(address tokenBridgeTwin, address messagePasser, address portal, Pubkey remoteTokenBridge) {
         TOKEN_BRIDGE_TWIN = tokenBridgeTwin;
         MESSAGE_PASSER = messagePasser;
+        PORTAL = portal;
         REMOTE_TOKEN_BRIDGE = remoteTokenBridge;
     }
 
@@ -159,8 +165,7 @@ contract TokenBridge {
 
             localAmount = remoteAmount * scaler;
             require(msg.value == localAmount, InvalidMsgValue());
-
-            deposits[localToken][remoteToken] += localAmount;
+            SafeTransferLib.safeTransferETH({to: PORTAL, amount: localAmount});
 
             ix = SVMTokenBridgeLib.finalizeBridgeTokenIx({
                 remoteBridge: REMOTE_TOKEN_BRIDGE,
@@ -170,6 +175,9 @@ contract TokenBridge {
                 remoteAmount: remoteAmount
             });
         } else {
+            // Prevent sending ETH when bridging ERC20 tokens
+            require(msg.value == 0, InvalidMsgValue());
+
             try CrossChainERC20(localToken).remoteToken() returns (bytes32 remoteToken_) {
                 // Case: Bridging back native SOL or SPL token to Solana
                 require(Pubkey.wrap(remoteToken_) == remoteToken, IncorrectRemoteToken());
@@ -205,7 +213,7 @@ contract TokenBridge {
                     amount: localAmount
                 });
 
-                deposits[localToken][remoteToken] += localAmount;
+                erc20Deposits[localToken][remoteToken] += localAmount;
 
                 ix = SVMTokenBridgeLib.finalizeBridgeTokenIx({
                     remoteBridge: REMOTE_TOKEN_BRIDGE,
@@ -250,16 +258,19 @@ contract TokenBridge {
         address to,
         uint64 remoteAmount,
         bytes calldata extraData
-    ) external onlyRemoteBridge {
+    ) external payable onlyRemoteBridge {
         uint256 localAmount;
+
         if (localToken == ETH_ADDRESS) {
             // Case: Bridging back native ETH to EVM
             uint256 scaler = scalerExponents[localToken][remoteToken];
             localAmount = remoteAmount * scaler;
-            deposits[localToken][remoteToken] -= localAmount;
 
+            require(msg.value == localAmount, InvalidMsgValue());
             SafeTransferLib.safeTransferETH({to: to, amount: localAmount});
         } else {
+            require(msg.value == 0, InvalidMsgValue());
+
             try CrossChainERC20(localToken).remoteToken() returns (bytes32 remoteToken_) {
                 // Case: Bridging native SOL or SPL token to EVM
                 require(Pubkey.wrap(remoteToken_) == remoteToken, IncorrectRemoteToken());
@@ -269,7 +280,7 @@ contract TokenBridge {
                 // Case: Bridging back native ERC20 to EVM
                 uint256 scaler = scalerExponents[localToken][remoteToken];
                 localAmount = remoteAmount * scaler;
-                deposits[localToken][remoteToken] -= localAmount;
+                erc20Deposits[localToken][remoteToken] -= localAmount;
 
                 SafeTransferLib.safeTransfer({token: localToken, to: to, amount: localAmount});
             }

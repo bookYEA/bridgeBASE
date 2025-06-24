@@ -9,11 +9,11 @@ pub mod solidity;
 #[cfg(test)]
 pub mod test_utils;
 
+use common::metadata::PartialTokenMetadata;
+
 use instructions::*;
 
-use crate::internal::metadata::PartialTokenMetadata;
-
-declare_id!("3R8PyojdmUTwB6FAkzjwRZsfAzucA9E1nK4ydNARvT8b");
+declare_id!("99GM6j7R186ie7izfeHaB97LWSamFHiV8EbQVTdLuhan");
 
 #[program]
 pub mod token_bridge {

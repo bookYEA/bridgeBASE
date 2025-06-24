@@ -5,24 +5,26 @@ sol! {
 
     #[derive(Debug, PartialEq, Eq)]
     contract Bridge {
-        /// @notice Finalizes a token bridge on this chain. Can only be triggered by the Bridge contract on the remote
-        ///         chain.
+        /// @notice Finalizes a token bridge transaction initiated from Solana.
         ///
-        /// @param localToken Address of the ERC20 on this chain.
-        /// @param remoteToken Address of the corresponding token on the remote chain.
-        /// @param from Address of the sender.
-        /// @param to Address of the receiver.
-        /// @param amount Amount of the ERC20 being bridged.
-        /// @param extraData Extra data to be sent with the transaction. Note that the recipient will not be triggered with
-        ///                  this data, but it will be emitted and can be used to identify the transaction.
+        /// @dev This function can only be called by the remote bridge through the messenger system. For CrossChainERC20
+        ///      tokens, it mints new tokens. For standard tokens, it withdraws from the deposit pool. Supports both
+        ///      ERC20 tokens and native ETH.
+        ///
+        /// @param localToken Address of the ERC20 token on this chain (use ETH_ADDRESS for native ETH).
+        /// @param remoteToken Pubkey of the remote token on Solana.
+        /// @param from Pubkey of the original sender on Solana.
+        /// @param to Address of the recipient on this chain.
+        /// @param remoteAmount Amount of tokens being bridged from Solana (expressed in Solana units).
+        /// @param extraData Additional data associated with the original bridge transaction.
         function finalizeBridgeToken(
             address localToken,
-            bytes32 remoteToken,
-            bytes32 from,
+            Pubkey remoteToken,
+            Pubkey from,
             address to,
-            uint256 amount,
+            uint64 remoteAmount,
             bytes calldata extraData
-        ) public;
+        ) external payable;
 
         /// @notice Registers a remote token with the bridge.
         ///

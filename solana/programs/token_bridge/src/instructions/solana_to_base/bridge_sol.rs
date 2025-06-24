@@ -1,4 +1,4 @@
-use alloy_primitives::{FixedBytes, U256};
+use alloy_primitives::FixedBytes;
 use alloy_sol_types::SolCall;
 use anchor_lang::{
     prelude::*,
@@ -72,7 +72,7 @@ pub fn bridge_sol_handler(
             remoteToken: FixedBytes::from(NATIVE_SOL_PUBKEY.to_bytes()), // NOTE: Intentionally flip the tokens so that when executing on Base it's correct.
             from: FixedBytes::from(ctx.accounts.from.key().to_bytes()),
             to: to.into(),
-            amount: U256::from(amount),
+            remoteAmount: amount,
             extraData: extra_data.into(),
         }
         .abi_encode(),

@@ -1,12 +1,10 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{self, Mint, MintToChecked, Token2022, TokenAccount};
 
+use common::metadata::PartialTokenMetadata;
 use portal::constants::PORTAL_AUTHORITY_SEED;
 
-use crate::{
-    constants::{REMOTE_BRIDGE, WRAPPED_TOKEN_SEED},
-    internal::metadata::PartialTokenMetadata,
-};
+use crate::constants::{REMOTE_BRIDGE, WRAPPED_TOKEN_SEED};
 
 #[derive(Accounts)]
 pub struct FinalizeBridgeToken<'info> {

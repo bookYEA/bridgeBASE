@@ -59,6 +59,9 @@ contract Portal is ReentrancyGuardTransient {
     /// @notice Thrown when the call execution fails.
     error ExecutionFailed();
 
+    /// @notice Thrown when the nonce is not incremental.
+    error NonceNotIncremental();
+
     //////////////////////////////////////////////////////////////
     ///                       Constants                        ///
     //////////////////////////////////////////////////////////////
@@ -82,6 +85,9 @@ contract Portal is ReentrancyGuardTransient {
 
     /// @notice Gas reserved for the dynamic parts of the `CALL` opcode.
     uint64 private constant _RELAY_CALL_OVERHEAD_GAS = 40_000;
+
+    /// @notice The last nonce used for a call.
+    uint256 public lastNonce;
 
     //////////////////////////////////////////////////////////////
     ///                       Storage                          ///
@@ -117,16 +123,16 @@ contract Portal is ReentrancyGuardTransient {
     /// @param sender Solana sender pubkey.
     /// @param call Encoded call to send to the Solana sender's Twin contract.
     /// @param ismData Encoded ISM data used to verify the call.
-    function relayCallEntrypoint(uint256 nonce, bytes32 sender, Call calldata call, bytes calldata ismData)
-        external
-        payable
-    {
+    function relayCallEntrypoint(uint256 nonce, bytes32 sender, Call calldata call, bytes calldata ismData) external {
         // INVARIANTs for the relay to work properly:
         //      1. The `gasLimit` set on the Solana side must be sufficient to cover the _RELAY_CALL_GAS_BUFFER (+ the
         //         minimum gas to cover the calldata size + tx base gas cost).
         //      2. On first call, the relayer MUST provide a `tx.gas` = `call.gasLimit` + ISM_BUFFER, where ISM_BUFFER
         //         is the gas required to cover the ISM verification (which will be removed once enshrined).
         //      3. In case of replay, the user must provide a `tx.gas` >= `call.gasLimit`.
+
+        require(nonce == lastNonce + 1, NonceNotIncremental());
+        lastNonce = nonce;
 
         bool isTrustedRelayer = msg.sender == TRUSTED_RELAYER;
         if (isTrustedRelayer) {
@@ -148,7 +154,7 @@ contract Portal is ReentrancyGuardTransient {
             return;
         }
 
-        try this.relayCall{gas: gasleft() - _RELAY_CALL_GAS_BUFFER, value: msg.value}({
+        try this.relayCall{gas: gasleft() - _RELAY_CALL_GAS_BUFFER}({
             sender: sender,
             call: call,
             isTrustedRelayer: isTrustedRelayer,
@@ -169,7 +175,7 @@ contract Portal is ReentrancyGuardTransient {
                 }
             }
 
-            // Otherwise the user call reverted, register the call as failed.
+            // Otherwise the user call itself reverted, register the call as failed.
             failedCalls[callHash] = true;
             emit FailedRelayedCall(callHash);
         }
@@ -183,18 +189,14 @@ contract Portal is ReentrancyGuardTransient {
     /// @param call Encoded call to send to the Solana sender's Twin contract.
     /// @param isTrustedRelayer Whether the relayer is trusted.
     /// @param callHash Keccak256 hash of the call that was successfully relayed.
-    function relayCall(bytes32 sender, Call calldata call, bool isTrustedRelayer, bytes32 callHash) external payable {
+    function relayCall(bytes32 sender, Call calldata call, bool isTrustedRelayer, bytes32 callHash) external {
         // Check that the caller is the entrypoint.
         require(msg.sender == address(this), SenderIsNotEntrypoint());
 
         // Check that the relay is allowed.
-        // TODO: Need to address the value issue. Instead of expecting a value attached to the message it might need to
-        //       be taken from the TokenBridge (and sent back in case of issue) OR some alternative solution.
         if (isTrustedRelayer) {
-            require(msg.value == call.value, IncorrectMsgValue());
             require(!failedCalls[callHash], CallAlreadyFailed());
         } else {
-            require(msg.value == 0, IncorrectMsgValue());
             require(failedCalls[callHash], CallNotAlreadyFailed());
         }
 
@@ -208,7 +210,7 @@ contract Portal is ReentrancyGuardTransient {
         }
 
         // Execute the call via the Twin contract.
-        try Twin(payable(twinAddress)).execute{value: msg.value}(call) {}
+        try Twin(payable(twinAddress)).execute{value: call.value}(call) {}
         catch {
             revert ExecutionFailed();
         }

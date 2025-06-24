@@ -1,18 +1,18 @@
-use alloy_primitives::{FixedBytes, U256};
+use alloy_primitives::FixedBytes;
 use alloy_sol_types::SolCall;
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{self, BurnChecked, Mint, Token2022, TokenAccount};
 
-use portal::{cpi as portal_cpi, program::Portal};
+use common::metadata::PartialTokenMetadata;
+use portal::{constants::NATIVE_ETH_TOKEN, cpi as portal_cpi, program::Portal};
 
 use crate::{
     constants::BRIDGE_AUTHORITY_SEED,
-    internal::{cpi_send_call, metadata::PartialTokenMetadata},
+    internal::{cpi_send_call, cpi_send_call_with_eth},
     solidity::Bridge,
 };
 
 #[derive(Accounts)]
-#[instruction(remote_token: [u8; 20], remote_decimals: u8)]
 pub struct BridgeBackToken<'info> {
     // Bridge accounts
     #[account(mut)]
@@ -59,29 +59,60 @@ pub fn bridge_back_token_handler(
     let partial_token_metadata =
         PartialTokenMetadata::try_from(&ctx.accounts.mint.to_account_info())?;
 
-    burn(&ctx, amount)?;
+    let finalize_bridge_token_call = Bridge::finalizeBridgeTokenCall {
+        localToken: partial_token_metadata.remote_token.into(), // NOTE: Intentional flip the token so that when executing on Base it's correct.
+        remoteToken: FixedBytes::from(ctx.accounts.mint.key().to_bytes()), // NOTE: Intentional flip the token so that when executing on Base it's correct.
+        from: FixedBytes::from(ctx.accounts.from.key().to_bytes()),
+        to: to.into(),
+        remoteAmount: amount,
+        extraData: extra_data.into(),
+    }
+    .abi_encode();
 
-    cpi_send_call(
-        &ctx.accounts.portal_program,
-        portal_cpi::accounts::SendCall {
-            payer: ctx.accounts.from.to_account_info(),
-            authority: ctx.accounts.bridge_authority.to_account_info(),
-            gas_fee_receiver: ctx.accounts.gas_fee_receiver.to_account_info(),
-            portal: ctx.accounts.portal.to_account_info(),
-            system_program: ctx.accounts.system_program.to_account_info(),
-        },
-        ctx.bumps.bridge_authority,
-        gas_limit,
-        Bridge::finalizeBridgeTokenCall {
-            localToken: partial_token_metadata.remote_token.into(), // NOTE: Intentional flip the token so that when executing on Base it's correct.
-            remoteToken: FixedBytes::from(ctx.accounts.mint.key().to_bytes()), // NOTE: Intentional flip the token so that when executing on Base it's correct.
-            from: FixedBytes::from(ctx.accounts.from.key().to_bytes()),
-            to: to.into(),
-            amount: U256::from(amount),
-            extraData: extra_data.into(),
-        }
-        .abi_encode(),
-    )
+    if partial_token_metadata.remote_token == NATIVE_ETH_TOKEN {
+        // NOTE: We don't need to check the mint account is the expected PDA here because the Portal program already ensures that.
+        //       for the native ETH remote token on Base.
+
+        // NOTE: Wrapped ETH burning is handled by the Portal program.
+
+        cpi_send_call_with_eth(
+            &ctx.accounts.portal_program,
+            portal_cpi::accounts::SendCallWithEth {
+                payer: ctx.accounts.from.to_account_info(),
+                authority: ctx.accounts.bridge_authority.to_account_info(),
+                gas_fee_receiver: ctx.accounts.gas_fee_receiver.to_account_info(),
+                portal: ctx.accounts.portal.to_account_info(),
+                mint: ctx.accounts.mint.to_account_info(),
+                from_token_account: ctx.accounts.from_token_account.to_account_info(),
+                token_program: ctx.accounts.token_program.to_account_info(),
+                system_program: ctx.accounts.system_program.to_account_info(),
+            },
+            ctx.bumps.bridge_authority,
+            gas_limit,
+            amount,
+            finalize_bridge_token_call,
+        )
+    } else {
+        // NOTE: Checking that the mint account is the expected PDA is not strictly necessary but might be worth doing to prevent
+        //       misuse and token locking. It's not strictly necessary as on the Base side the `deposits` mapping will underflow
+        //       when bridging back on an incorrect token pair.
+
+        burn(&ctx, amount)?;
+
+        cpi_send_call(
+            &ctx.accounts.portal_program,
+            portal_cpi::accounts::SendCall {
+                payer: ctx.accounts.from.to_account_info(),
+                authority: ctx.accounts.bridge_authority.to_account_info(),
+                gas_fee_receiver: ctx.accounts.gas_fee_receiver.to_account_info(),
+                portal: ctx.accounts.portal.to_account_info(),
+                system_program: ctx.accounts.system_program.to_account_info(),
+            },
+            ctx.bumps.bridge_authority,
+            gas_limit,
+            finalize_bridge_token_call,
+        )
+    }
 }
 
 fn burn(ctx: &Context<BridgeBackToken>, amount: u64) -> Result<()> {

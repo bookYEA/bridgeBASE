@@ -15,10 +15,13 @@ no-entrypoint = []
 no-idl = []
 no-log-ix-name = []
 idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
-test-env = []
+localnet = []
+devnet = []
+mainnet = []
 
 [dependencies]
-portal = { path = "../portal", features = ["cpi", "test-env"] }
+common = { path = "../../common" }
+portal = { path = "../portal", features = ["cpi", "localnet"] }
 
 anchor-lang = { version = "=0.31.0", features = ["init-if-needed"] }
 anchor-spl = "=0.31.0"

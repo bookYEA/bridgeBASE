@@ -1021,6 +1021,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "common"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+ "hex",
+]
+
+[[package]]
 name = "console_error_panic_hook"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2682,6 +2691,8 @@ dependencies = [
  "alloy-sol-macro-input",
  "alloy-sol-types",
  "anchor-lang",
+ "anchor-spl",
+ "common",
  "hex",
  "hex-literal",
  "litesvm",
@@ -5698,6 +5709,7 @@ dependencies = [
  "alloy-sol-types",
  "anchor-lang",
  "anchor-spl",
+ "common",
  "hex",
  "hex-literal",
  "litesvm",

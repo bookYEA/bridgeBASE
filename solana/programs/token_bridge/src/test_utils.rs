@@ -11,6 +11,7 @@ use anchor_spl::{
     },
     token_interface::spl_token_metadata_interface::state::TokenMetadata,
 };
+use common::metadata::PartialTokenMetadata;
 use litesvm::LiteSVM;
 use portal::{
     constants::{PORTAL_AUTHORITY_SEED, PORTAL_SEED},
@@ -25,7 +26,6 @@ use crate::{
     constants::{
         BRIDGE_AUTHORITY_SEED, REMOTE_BRIDGE, SOL_VAULT_SEED, TOKEN_VAULT_SEED, WRAPPED_TOKEN_SEED,
     },
-    internal::metadata::PartialTokenMetadata,
     ID as TOKEN_BRIDGE_PROGRAM_ID,
 };
 use portal::ID as PORTAL_PROGRAM_ID;
