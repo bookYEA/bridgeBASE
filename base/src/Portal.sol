@@ -131,9 +131,6 @@ contract Portal is ReentrancyGuardTransient {
         //         is the gas required to cover the ISM verification (which will be removed once enshrined).
         //      3. In case of replay, the user must provide a `tx.gas` >= `call.gasLimit`.
 
-        require(nonce == lastNonce + 1, NonceNotIncremental());
-        lastNonce = nonce;
-
         bool isTrustedRelayer = msg.sender == TRUSTED_RELAYER;
         if (isTrustedRelayer) {
             _ismVerify({call: call, ismData: ismData});
@@ -155,6 +152,7 @@ contract Portal is ReentrancyGuardTransient {
         }
 
         try this.relayCall{gas: gasleft() - _RELAY_CALL_GAS_BUFFER}({
+            nonce: nonce,
             sender: sender,
             call: call,
             isTrustedRelayer: isTrustedRelayer,
@@ -185,16 +183,22 @@ contract Portal is ReentrancyGuardTransient {
     ///
     /// @dev This function can only be called by the entrypoint and is here to allow for safe gas accounting.
     ///
+    /// @param nonce Nonce of the call.
     /// @param sender Solana sender pubkey.
     /// @param call Encoded call to send to the Solana sender's Twin contract.
     /// @param isTrustedRelayer Whether the relayer is trusted.
     /// @param callHash Keccak256 hash of the call that was successfully relayed.
-    function relayCall(bytes32 sender, Call calldata call, bool isTrustedRelayer, bytes32 callHash) external {
+    function relayCall(uint256 nonce, bytes32 sender, Call calldata call, bool isTrustedRelayer, bytes32 callHash)
+        external
+    {
         // Check that the caller is the entrypoint.
         require(msg.sender == address(this), SenderIsNotEntrypoint());
 
         // Check that the relay is allowed.
         if (isTrustedRelayer) {
+            require(nonce == lastNonce + 1, NonceNotIncremental());
+            lastNonce = nonce;
+
             require(!failedCalls[callHash], CallAlreadyFailed());
         } else {
             require(failedCalls[callHash], CallNotAlreadyFailed());
