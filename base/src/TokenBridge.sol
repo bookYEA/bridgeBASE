@@ -264,6 +264,7 @@ contract TokenBridge {
         if (localToken == ETH_ADDRESS) {
             // Case: Bridging back native ETH to EVM
             uint256 scaler = scalerExponents[localToken][remoteToken];
+            require(scaler != 0, WrappedSplRouteNotRegistered());
             localAmount = remoteAmount * scaler;
 
             require(msg.value == localAmount, InvalidMsgValue());
@@ -279,6 +280,8 @@ contract TokenBridge {
             } catch {
                 // Case: Bridging back native ERC20 to EVM
                 uint256 scaler = scalerExponents[localToken][remoteToken];
+                require(scaler != 0, WrappedSplRouteNotRegistered());
+
                 localAmount = remoteAmount * scaler;
                 erc20Deposits[localToken][remoteToken] -= localAmount;
 
