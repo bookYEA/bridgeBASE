@@ -1,13 +1,13 @@
 #![allow(unexpected_cfgs)]
 use anchor_lang::prelude::*;
 
+#[cfg(test)]
+mod test_utils;
+
 pub mod constants;
 pub mod instructions;
 pub mod internal;
 pub mod state;
-
-#[cfg(test)]
-pub mod test_utils;
 
 use instructions::*;
 use internal::Proof;

@@ -29,9 +29,6 @@ mod private {
         pub const GAS_FEE_RECEIVER: Pubkey = pubkey!("eEwCrQLBdQchykrkYitkYUZskd7MPrU2YxBXcPDPnMt");
         pub const TRUSTED_ORACLE: Pubkey = pubkey!("eEwCrQLBdQchykrkYitkYUZskd7MPrU2YxBXcPDPnMt");
         pub const TOKEN_BRIDGE: Pubkey = pubkey!("99GM6j7R186ie7izfeHaB97LWSamFHiV8EbQVTdLuhan");
-
-        pub const GAS_FEE_RECEIVER_KEYPAIR_BASE58: &str = "";
-        pub const TRUSTED_ORACLE_KEYPAIR_BASE58: &str = "";
     }
 
     #[cfg(feature = "mainnet")]
@@ -41,10 +38,6 @@ mod private {
         pub const GAS_FEE_RECEIVER: Pubkey = pubkey!("11111111111111111111111111111111");
         pub const TRUSTED_ORACLE: Pubkey = pubkey!("11111111111111111111111111111111");
         pub const TOKEN_BRIDGE: Pubkey = pubkey!("11111111111111111111111111111111");
-
-        pub const GAS_FEE_RECEIVER_KEYPAIR_BASE58: &str = "";
-
-        pub const TRUSTED_ORACLE_KEYPAIR_BASE58: &str = "";
     }
 
     #[cfg(not(any(feature = "devnet", feature = "mainnet")))]
@@ -53,14 +46,8 @@ mod private {
 
         pub const GAS_FEE_RECEIVER: Pubkey =
             pubkey!("CB8GXDdZDSD5uqfeow1qfp48ouayxXGpw7ycmoovuQMX");
-
         pub const TRUSTED_ORACLE: Pubkey = pubkey!("CB8GXDdZDSD5uqfeow1qfp48ouayxXGpw7ycmoovuQMX");
-
         pub const TOKEN_BRIDGE: Pubkey = pubkey!("99GM6j7R186ie7izfeHaB97LWSamFHiV8EbQVTdLuhan");
-
-        pub const GAS_FEE_RECEIVER_KEYPAIR_BASE58: &str =
-        "31wWhPeEw1NQmnC2kNCwHfk4eA1G1QtxH2iqAWsEpMuCb2mvSrej2HGn3nn698dviwBGRaTZBmwXRAyVSHcSQFqs";
-
         pub const TRUSTED_ORACLE_KEYPAIR_BASE58: &str =
             "31wWhPeEw1NQmnC2kNCwHfk4eA1G1QtxH2iqAWsEpMuCb2mvSrej2HGn3nn698dviwBGRaTZBmwXRAyVSHcSQFqs";
     }

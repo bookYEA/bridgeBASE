@@ -38,7 +38,7 @@ pub enum RegisterOutputRootError {
     Unauthorized,
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(any(feature = "devnet", feature = "mainnet"))))]
 mod tests {
     use super::*;
 
