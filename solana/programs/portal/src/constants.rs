@@ -17,8 +17,6 @@ pub const NATIVE_ETH_TOKEN: [u8; 20] =
 pub const GAS_COST_SCALER_DP: u64 = 10u64.pow(6);
 pub const GAS_COST_SCALER: u64 = 1_000_000;
 
-// TODO: Maybe the portal should deploy the wrapped ETH SPLs insted of the bridge to avoid having to rely on the
-//       token_bridge logic.
 pub const WRAPPED_TOKEN_SEED: &[u8] = b"wrapped_token";
 
 mod private {
@@ -30,9 +28,6 @@ mod private {
 
         pub const GAS_FEE_RECEIVER: Pubkey = pubkey!("eEwCrQLBdQchykrkYitkYUZskd7MPrU2YxBXcPDPnMt");
         pub const TRUSTED_ORACLE: Pubkey = pubkey!("eEwCrQLBdQchykrkYitkYUZskd7MPrU2YxBXcPDPnMt");
-
-        // TODO: Maybe the portal should deploy the wrapped ETH SPLs insted of the bridge to avoid having to rely on the
-        //       token_bridge pubkey.
         pub const TOKEN_BRIDGE: Pubkey = pubkey!("99GM6j7R186ie7izfeHaB97LWSamFHiV8EbQVTdLuhan");
 
         pub const GAS_FEE_RECEIVER_KEYPAIR_BASE58: &str = "";

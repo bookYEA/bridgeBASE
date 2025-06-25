@@ -53,11 +53,10 @@ pub fn send_call_with_eth_handler(
 
     require!(
         partial_token_metadata.remote_token == NATIVE_ETH_TOKEN,
-        SendCallWithEthError::NotNativeEthToken
+        SendCallWithEthError::RemoteTokenIsNotEth
     );
 
-    // Ensure that the given mint account is a legit wrapped ETH SPL token of the `token_bridge` program.
-    let (wrapped_token, _) = Pubkey::find_program_address(
+    let (wrapped_eth, _) = Pubkey::find_program_address(
         &[
             WRAPPED_TOKEN_SEED,
             ctx.accounts.mint.decimals.to_le_bytes().as_ref(),
@@ -66,13 +65,13 @@ pub fn send_call_with_eth_handler(
         &TOKEN_BRIDGE,
     );
 
-    require_keys_neq!(
-        wrapped_token,
+    require_keys_eq!(
+        wrapped_eth,
         ctx.accounts.mint.key(),
-        SendCallWithEthError::IncorrectMint
+        SendCallWithEthError::MintIsNotWrappedEth
     );
 
-    // Scaled the ETH value according to the mint's scaler exponent.
+    // Scale the ETH value according to the mint's scaler exponent.
     // NOTE: Very unlikely that an ETH value will overflow a u128.
     let scaler = 10u128.pow(partial_token_metadata.scaler_exponent as u32);
     let remote_value = (value as u128) * scaler;
@@ -109,10 +108,10 @@ fn burn(ctx: &Context<SendCallWithEth>, amount: u64) -> Result<()> {
 
 #[error_code]
 pub enum SendCallWithEthError {
-    #[msg("Not native ETH token")]
-    NotNativeEthToken,
-    #[msg("Incorrect mint")]
-    IncorrectMint,
+    #[msg("Remote token is not ETH")]
+    RemoteTokenIsNotEth,
+    #[msg("Mint is not a wrapped ETH")]
+    MintIsNotWrappedEth,
     #[msg("Overflow")]
     Overflow,
 }

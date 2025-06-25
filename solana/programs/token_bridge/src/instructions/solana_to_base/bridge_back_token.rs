@@ -7,7 +7,7 @@ use common::metadata::PartialTokenMetadata;
 use portal::{constants::NATIVE_ETH_TOKEN, cpi as portal_cpi, program::Portal};
 
 use crate::{
-    constants::BRIDGE_AUTHORITY_SEED,
+    constants::{BRIDGE_AUTHORITY_SEED, WRAPPED_TOKEN_SEED},
     internal::{cpi_send_call, cpi_send_call_with_eth},
     solidity::Bridge,
 };
@@ -93,9 +93,23 @@ pub fn bridge_back_token_handler(
             finalize_bridge_token_call,
         )
     } else {
-        // NOTE: Checking that the mint account is the expected PDA is not strictly necessary but might be worth doing to prevent
-        //       misuse and token locking. It's not strictly necessary as on the Base side the `deposits` mapping will underflow
-        //       when bridging back on an incorrect token pair.
+        // NOTE: This check validates that the provided mint is a valid wrapped token SPL created by the token_bridge program.
+        //       While not strictly necessary (since the TokenBridge on Base side also validates the token pair), it provides
+        //       an early safety check to prevent users from accidentally burning incorrect tokens and losing their funds.
+        let (wrapped_token, _) = Pubkey::find_program_address(
+            &[
+                WRAPPED_TOKEN_SEED,
+                ctx.accounts.mint.decimals.to_le_bytes().as_ref(),
+                partial_token_metadata.hash().as_ref(),
+            ],
+            ctx.program_id,
+        );
+
+        require_keys_eq!(
+            wrapped_token,
+            ctx.accounts.mint.key(),
+            BridgeBackTokenError::MintIsNotWrappedToken
+        );
 
         burn(&ctx, amount)?;
 
@@ -129,6 +143,6 @@ fn burn(ctx: &Context<BridgeBackToken>, amount: u64) -> Result<()> {
 
 #[error_code]
 pub enum BridgeBackTokenError {
-    #[msg("Incorrect mint account")]
-    IncorrectMintAccount,
+    #[msg("Mint is not a wrapped token")]
+    MintIsNotWrappedToken,
 }

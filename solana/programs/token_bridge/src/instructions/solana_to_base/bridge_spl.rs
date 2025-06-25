@@ -7,7 +7,7 @@ use common::metadata::PartialTokenMetadata;
 use portal::{cpi as portal_cpi, program::Portal};
 
 use crate::{
-    constants::{BRIDGE_AUTHORITY_SEED, TOKEN_VAULT_SEED, WRAPPED_TOKEN_SEED},
+    constants::{BRIDGE_AUTHORITY_SEED, TOKEN_VAULT_SEED},
     internal::cpi_send_call,
     solidity::Bridge,
 };
@@ -68,27 +68,11 @@ pub fn bridge_spl_handler(
     gas_limit: u64,
     extra_data: Vec<u8>,
 ) -> Result<()> {
-    // Check that the provided mint is not a wrapped `remote_token`, in which case the `bridge_back_token` instruction should be called instead.
-    if ctx.accounts.token_program.key() == anchor_spl::token_2022::ID {
-        if let Ok(partial_token_metadata) =
-            PartialTokenMetadata::try_from(&ctx.accounts.mint.to_account_info())
-        {
-            let (wrapped_token, _) = Pubkey::find_program_address(
-                &[
-                    WRAPPED_TOKEN_SEED,
-                    ctx.accounts.mint.decimals.to_le_bytes().as_ref(),
-                    partial_token_metadata.hash().as_ref(),
-                ],
-                ctx.program_id,
-            );
-
-            require_keys_neq!(
-                wrapped_token,
-                ctx.accounts.mint.key(),
-                BridgeSplError::MintIsAWrappedToken
-            );
-        }
-    }
+    // Check that the provided mint is NOT a wrapped token, in which case the `bridge_back_token` instruction should be called instead.
+    require!(
+        PartialTokenMetadata::try_from(&ctx.accounts.mint.to_account_info()).is_err(),
+        BridgeSplError::MintIsAWrappedToken
+    );
 
     lock_spl(&ctx, amount)?;
 

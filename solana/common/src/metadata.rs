@@ -8,12 +8,6 @@ use anchor_spl::{
     token_interface::spl_token_metadata_interface::state::TokenMetadata,
 };
 
-#[constant]
-pub const REMOTE_TOKEN_METADATA_KEY: &str = "remote_token";
-
-#[constant]
-pub const SCALER_EXPONENT_METADATA_KEY: &str = "scaler_exponent";
-
 #[derive(Debug, Clone, AnchorDeserialize, AnchorSerialize)]
 pub struct PartialTokenMetadata {
     pub name: String,
@@ -21,6 +15,9 @@ pub struct PartialTokenMetadata {
     pub remote_token: [u8; 20],
     pub scaler_exponent: u8,
 }
+
+pub const REMOTE_TOKEN_METADATA_KEY: &str = "remote_token";
+pub const SCALER_EXPONENT_METADATA_KEY: &str = "scaler_exponent";
 
 impl From<&PartialTokenMetadata> for TokenMetadata {
     fn from(value: &PartialTokenMetadata) -> Self {
@@ -108,7 +105,13 @@ impl PartialTokenMetadata {
     }
 }
 
-pub fn mint_info_to_token_metadata(mint: &AccountInfo<'_>) -> Result<TokenMetadata> {
+fn mint_info_to_token_metadata(mint: &AccountInfo<'_>) -> Result<TokenMetadata> {
+    require_keys_eq!(
+        *mint.owner,
+        anchor_spl::token_2022::ID,
+        TokenMetadataError::MintIsNotFromToken2022
+    );
+
     let mint_data = mint.data.borrow();
     let mint_with_extension = PodStateWithExtensions::<PodMint>::unpack(&mint_data)?;
     let token_metadata = mint_with_extension.get_variable_len_extension::<TokenMetadata>()?;
@@ -125,4 +128,6 @@ pub enum TokenMetadataError {
     InvalidRemoteToken,
     #[msg("Invalid scaler exponent")]
     InvalidScalerExponent,
+    #[msg("Mint is not a token 2022 mint")]
+    MintIsNotFromToken2022,
 }
