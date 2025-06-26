@@ -26,7 +26,10 @@ pub struct RegisterOutputRoot<'info> {
 pub fn register_output_root_handler(
     ctx: Context<RegisterOutputRoot>,
     output_root: [u8; 32],
+    _block_number: u64,
 ) -> Result<()> {
+    // TODO: Plug some ISM verification here.
+
     ctx.accounts.root.root = output_root;
 
     Ok(())
@@ -87,7 +90,7 @@ mod tests {
             accounts: register_output_root_accounts,
             data: crate::instruction::RegisterOutputRoot {
                 output_root,
-                _block_number: block_number,
+                block_number,
             }
             .data(),
         };
@@ -155,7 +158,7 @@ mod tests {
             accounts: register_output_root_accounts,
             data: crate::instruction::RegisterOutputRoot {
                 output_root,
-                _block_number: block_number,
+                block_number,
             }
             .data(),
         };

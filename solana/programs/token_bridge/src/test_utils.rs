@@ -1,4 +1,3 @@
-#[cfg(test)]
 use anchor_lang::solana_program::program_option::COption;
 use anchor_lang::{prelude::*, solana_program::native_token::LAMPORTS_PER_SOL};
 use anchor_spl::{
@@ -13,6 +12,7 @@ use anchor_spl::{
 };
 use common::metadata::PartialTokenMetadata;
 use litesvm::LiteSVM;
+use portal::constants::CALL_SEED;
 use portal::{
     constants::{PORTAL_AUTHORITY_SEED, PORTAL_SEED},
     state::{Portal, RemoteCall},
@@ -37,6 +37,14 @@ pub fn portal_authority() -> Pubkey {
     );
 
     portal_authority
+}
+
+pub fn call_pda(nonce: u64) -> Pubkey {
+    let (call_pda, _) = Pubkey::find_program_address(
+        &[CALL_SEED, nonce.to_le_bytes().as_ref()],
+        &PORTAL_PROGRAM_ID,
+    );
+    call_pda
 }
 
 pub fn mock_clock(svm: &mut LiteSVM, timestamp: i64) {

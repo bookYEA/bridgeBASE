@@ -16,7 +16,7 @@ contract MessagePasser {
     /// @custom:field sender Ethereum address that initiated the remote call.
     /// @custom:field data Data to be passed to the Solana program.
     struct RemoteCall {
-        uint256 nonce;
+        uint64 nonce;
         address sender;
         bytes data;
     }
@@ -31,7 +31,7 @@ contract MessagePasser {
     /// @param sender The Ethereum address that initiated the remote call.
     /// @param data Data to be passed to the Solana program.
     /// @param remoteCallHash The hash of the complete remote call.
-    event RemoteCallSent(uint256 indexed nonce, address indexed sender, bytes data, bytes32 remoteCallHash);
+    event RemoteCallSent(uint64 indexed nonce, address indexed sender, bytes data, bytes32 remoteCallHash);
 
     //////////////////////////////////////////////////////////////
     ///                       Storage                          ///
@@ -41,7 +41,7 @@ contract MessagePasser {
     mapping(bytes32 remoteCallHash => bool sent) public remoteCallsSent;
 
     /// @notice Internal counter for generating unique nonces for each remote call.
-    uint256 internal _remoteCallNonce;
+    uint64 internal _remoteCallNonce;
 
     //////////////////////////////////////////////////////////////
     ///                       Public Functions                 ///
@@ -52,7 +52,7 @@ contract MessagePasser {
     ///
     /// @param data Data to be passed to the Solana program.
     function sendRemoteCall(bytes calldata data) public {
-        uint256 nonce = _remoteCallNonce;
+        uint64 nonce = _remoteCallNonce;
 
         bytes32 remoteCallHash = _hashRemoteCall(RemoteCall({nonce: nonce, sender: msg.sender, data: data}));
         remoteCallsSent[remoteCallHash] = true;
@@ -68,8 +68,7 @@ contract MessagePasser {
     ///                       Internal Functions               ///
     //////////////////////////////////////////////////////////////
 
-    /// @notice Computes the hash of a remote call for verification and storage. Uses the same encoding format as
-    ///         expected by relayer and verification systems.
+    /// @notice Computes the hash of a remote call.
     ///
     /// @param remoteCall The remote call to hash.
     ///

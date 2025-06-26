@@ -4,12 +4,10 @@ use anchor_spl::token_interface::{self, Mint, Token2022, TokenAccount};
 use common::metadata::PartialTokenMetadata;
 
 use crate::constants::{
-    GAS_FEE_RECEIVER, NATIVE_ETH_TOKEN, PORTAL_SEED, TOKEN_BRIDGE, WRAPPED_TOKEN_SEED,
+    CALL_SEED, GAS_FEE_RECEIVER, NATIVE_ETH_TOKEN, PORTAL_SEED, TOKEN_BRIDGE, WRAPPED_TOKEN_SEED,
 };
 use crate::internal::send_call_internal;
-use crate::state::Portal;
-
-use super::{Call, CallType};
+use crate::state::{Call, CallType, Portal};
 
 #[derive(Accounts)]
 pub struct SendCallWithEth<'info> {
@@ -28,6 +26,15 @@ pub struct SendCallWithEth<'info> {
         bump,
     )]
     pub portal: Account<'info, Portal>,
+
+    #[account(
+        init,
+        seeds = [CALL_SEED, portal.nonce.to_le_bytes().as_ref()],
+        bump,
+        payer = payer,
+        space = 8 + Call::INIT_SPACE,
+    )]
+    pub call: Account<'info, Call>,
 
     #[account(mut)]
     pub mint: InterfaceAccount<'info, Mint>,
@@ -81,17 +88,18 @@ pub fn send_call_with_eth_handler(
     send_call_internal(
         &ctx.accounts.system_program,
         &ctx.accounts.payer,
+        &ctx.accounts.authority,
         &ctx.accounts.gas_fee_receiver,
         &mut ctx.accounts.portal,
-        ctx.accounts.authority.key(),
-        Call {
-            ty,
-            to,
-            gas_limit,
-            remote_value,
-            data,
-        },
-    )
+        &mut ctx.accounts.call,
+        ty,
+        to,
+        gas_limit,
+        remote_value,
+        data,
+    )?;
+
+    Ok(())
 }
 
 fn burn(ctx: &Context<SendCallWithEth>, amount: u64) -> Result<()> {

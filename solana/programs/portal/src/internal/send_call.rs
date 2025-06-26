@@ -2,26 +2,31 @@ use anchor_lang::prelude::*;
 
 use crate::{
     constants::{GAS_COST_SCALER, GAS_COST_SCALER_DP},
-    instructions::{solana_to_base::CallSent, Call, CallType},
-    state::{Eip1559, Portal},
+    state::{Call, CallType, Eip1559, Portal},
 };
 
+#[allow(clippy::too_many_arguments)]
 pub fn send_call_internal<'info>(
     system_program: &Program<'info, System>,
     payer: &Signer<'info>,
+    authority: &Signer<'info>,
     gas_fee_receiver: &AccountInfo<'info>,
-    portal: &mut Account<'info, Portal>,
-    from: Pubkey,
-    call: Call,
+    portal: &mut Portal,
+    call: &mut Call,
+    ty: CallType,
+    to: [u8; 20],
+    gas_limit: u64,
+    remote_value: u128,
+    data: Vec<u8>,
 ) -> Result<()> {
     // Can't hurt to check this here (though it's not strictly preventing the user to footgun themselves)
     require!(
-        matches!(call.ty, CallType::Call | CallType::DelegateCall) || call.to == [0; 20],
+        matches!(ty, CallType::Call | CallType::DelegateCall) || to == [0; 20],
         SendCallError::CreationWithNonZeroTarget
     );
 
     require!(
-        call.gas_limit >= min_gas_limit(call.data.len()),
+        gas_limit >= min_gas_limit(data.len()),
         SendCallError::GasLimitTooLow
     );
 
@@ -30,14 +35,18 @@ pub fn send_call_internal<'info>(
         payer,
         gas_fee_receiver,
         &mut portal.eip1559,
-        call.gas_limit,
+        gas_limit,
     )?;
 
-    emit!(CallSent {
+    *call = Call {
         nonce: portal.nonce,
-        from,
-        call,
-    });
+        ty,
+        from: authority.key(),
+        to,
+        gas_limit,
+        remote_value,
+        data,
+    };
 
     portal.nonce += 1;
 

@@ -28,13 +28,13 @@ pub struct ProveCall<'info> {
 
 pub fn prove_call_handler(
     ctx: Context<ProveCall>,
-    nonce: [u8; 32],
+    nonce: u64,
     sender: [u8; 20],
     data: Vec<u8>,
     proof: Proof,
 ) -> Result<()> {
     // Hash the call
-    let call_hash = hash_call(&nonce, &sender, &data);
+    let call_hash = hash_call(&nonce.to_le_bytes(), &sender, &data);
 
     // Verify the PDA derivation is correct
     let (remote_call_pda, _) =
@@ -54,7 +54,7 @@ pub fn prove_call_handler(
     Ok(())
 }
 
-fn hash_call(nonce: &[u8; 32], sender: &[u8; 20], data: &[u8]) -> [u8; 32] {
+fn hash_call(nonce: &[u8], sender: &[u8; 20], data: &[u8]) -> [u8; 32] {
     let mut data_to_hash = Vec::new();
     data_to_hash.extend_from_slice(nonce);
     data_to_hash.extend_from_slice(sender);

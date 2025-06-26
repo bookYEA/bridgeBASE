@@ -2,7 +2,11 @@ use anchor_lang::prelude::*;
 use litesvm::LiteSVM;
 use solana_account::Account;
 
-use crate::{constants::PORTAL_SEED, state::Portal, ID as PORTAL_PROGRAM_ID};
+use crate::{
+    constants::{CALL_SEED, PORTAL_SEED},
+    state::Portal,
+    ID as PORTAL_PROGRAM_ID,
+};
 
 pub fn mock_clock(svm: &mut LiteSVM, timestamp: i64) {
     let mut clock = svm.get_sysvar::<Clock>();
@@ -29,4 +33,12 @@ pub fn mock_portal(svm: &mut LiteSVM, portal: Portal) -> Pubkey {
     .unwrap();
 
     portal_pda
+}
+
+pub fn call_pda(nonce: u64) -> Pubkey {
+    let (call_pda, _) = Pubkey::find_program_address(
+        &[CALL_SEED, nonce.to_le_bytes().as_ref()],
+        &PORTAL_PROGRAM_ID,
+    );
+    call_pda
 }
