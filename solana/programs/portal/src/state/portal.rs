@@ -13,6 +13,8 @@ use crate::{
 pub struct Portal {
     /// Incremental nonce assigned to each call.
     pub nonce: u64,
+    /// Latest Base block number represented on Solana
+    pub base_block_number: u64,
     /// EIP-1559 state for dynamic pricing.
     pub eip1559: Eip1559,
 }

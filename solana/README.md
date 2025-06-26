@@ -7,19 +7,19 @@ This directory contains all Solana programs related to the Base Bridge. These pr
 Install dependencies:
 
 ```bash
-yarn install
+make deps
 ```
 
 Build the programs:
 
 ```bash
-anchor build
+make build-devnet
 ```
 
 Run tests:
 
 ```bash
-anchor test
+make test
 ```
 
 Deploy to a live network:
@@ -50,5 +50,5 @@ cluster = "Mainnet"
 2. Deploy the program(s)
 
 ```bash
-anchor deploy
+make deploy
 ```

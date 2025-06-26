@@ -26,6 +26,7 @@ pub fn initialize_handler(ctx: Context<Initialize>) -> Result<()> {
     let current_timestamp = Clock::get()?.unix_timestamp;
     *ctx.accounts.portal = Portal {
         nonce: 0,
+        base_block_number: 0,
         eip1559: Eip1559::new(current_timestamp),
     };
 
