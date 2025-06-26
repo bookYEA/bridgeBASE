@@ -49,6 +49,24 @@ contract MessagePasser {
     /// @notice Thrown when a node query is received with an out of bounds index
     error InvalidIndex();
 
+    /// @notice Thrown when trying to generate a proof for an empty MMR
+    error EmptyMMR();
+
+    /// @notice Thrown when the leaf index is out of bounds
+    error LeafIndexOutOfBounds();
+
+    /// @notice Thrown when failing to locate a leaf in the MMR structure
+    error LeafNotFound();
+
+    /// @notice Thrown when failing to locate the mountain containing a leaf
+    error MountainNotFound();
+
+    /// @notice Thrown when a sibling node index is out of bounds
+    error SiblingNodeOutOfBounds();
+
+    /// @notice Thrown when a peak index is out of bounds
+    error PeakIndexOutOfBounds();
+
     //////////////////////////////////////////////////////////////
     ///                       Storage                          ///
     //////////////////////////////////////////////////////////////
@@ -113,6 +131,68 @@ contract MessagePasser {
             revert InvalidIndex();
         }
         return _nodes[index];
+    }
+
+    /// @notice Generates a Merkle proof for a specific leaf in the MMR
+    /// @dev This function may consume significant gas for large MMRs (O(log N) storage reads)
+    /// @param leafIndex The 0-indexed position of the leaf to prove
+    /// @return proof Array of sibling hashes for the proof
+    /// @return totalLeafCount The total number of leaves when proof was generated
+    function generateProof(uint64 leafIndex) external view returns (bytes32[] memory proof, uint64 totalLeafCount) {
+        if (_remoteCallNonce == 0) {
+            revert EmptyMMR();
+        }
+        if (leafIndex >= _remoteCallNonce) {
+            revert LeafIndexOutOfBounds();
+        }
+
+        // Use optimized single-pass algorithm
+        (
+            uint256 leafNodePos,
+            uint256 mountainHeight,
+            uint64 leafIdxInMountain,
+            bytes32[] memory otherPeaks
+        ) = _generateProofData(leafIndex);
+        
+        // Generate intra-mountain proof directly
+        bytes32[] memory intraMountainProof = new bytes32[](mountainHeight);
+        uint256 currentPathNodePos = leafNodePos;
+        
+        for (uint256 hClimb = 0; hClimb < mountainHeight; hClimb++) {
+            bool isRightChildInSubtree = (leafIdxInMountain >> hClimb) & 1 == 1;
+            
+            uint256 siblingNodePos;
+            uint256 parentNodePos;
+
+            if (isRightChildInSubtree) {
+                parentNodePos = currentPathNodePos + 1;
+                siblingNodePos = parentNodePos - (1 << (hClimb + 1));
+            } else {
+                parentNodePos = currentPathNodePos + (1 << (hClimb + 1));
+                siblingNodePos = parentNodePos - 1;
+            }
+
+            if (siblingNodePos >= _nodes.length) {
+                revert SiblingNodeOutOfBounds();
+            }
+
+            intraMountainProof[hClimb] = _nodes[siblingNodePos];
+            currentPathNodePos = parentNodePos;
+        }
+        
+        // Combine proof elements
+        proof = new bytes32[](intraMountainProof.length + otherPeaks.length);
+        uint256 proofIndex = 0;
+        
+        for (uint256 i = 0; i < intraMountainProof.length; i++) {
+            proof[proofIndex++] = intraMountainProof[i];
+        }
+        
+        for (uint256 i = 0; i < otherPeaks.length; i++) {
+            proof[proofIndex++] = otherPeaks[i];
+        }
+        
+        totalLeafCount = _remoteCallNonce;
     }
 
     //////////////////////////////////////////////////////////////
@@ -180,25 +260,83 @@ contract MessagePasser {
         }
     }
 
-    /// @dev Check if nodes should be merged at the given height based on leaf count
-    ///
-    /// @param leafCount The number of leaves in the MMR
-    /// @param height The height at which to check for merging
-    ///
-    /// @return shouldMerge True if nodes should be merged at this height
-    function _shouldMergeAtHeight(uint64 leafCount, uint256 height) private pure returns (bool) {
-        return (leafCount >> height) & 1 == 1;
+    /// @dev Optimized single traversal to get leaf position and other peaks
+    /// @param leafIndex The 0-indexed position of the leaf to prove
+    /// @return leafNodePos Position of the leaf in the _nodes array
+    /// @return mountainHeight Height of the mountain containing the leaf
+    /// @return leafIdxInMountain Position of leaf within its mountain
+    /// @return otherPeaks Hashes of other mountain peaks
+    function _generateProofData(uint64 leafIndex) private view returns (
+        uint256 leafNodePos,
+        uint256 mountainHeight,
+        uint64 leafIdxInMountain,
+        bytes32[] memory otherPeaks
+    ) {
+        // First pass: find the leaf mountain
+        (leafNodePos, mountainHeight, leafIdxInMountain) = _findLeafMountain(leafIndex);
+        
+        // Second pass: collect other peaks
+        otherPeaks = _collectOtherPeaks(leafIndex);
     }
 
-    /// @dev Calculate the index of the left sibling node
-    ///
-    /// @param currentNodeIndex The index of the current node
-    /// @param height The height of the current level
-    ///
-    /// @return leftSiblingIndex The index of the left sibling node
-    function _calculateLeftSiblingIndex(uint256 currentNodeIndex, uint256 height) private pure returns (uint256) {
-        uint256 leftSubtreeSize = (1 << (height + 1)) - 1;
-        return currentNodeIndex - leftSubtreeSize;
+    /// @dev Find leaf mountain with minimal local variables
+    function _findLeafMountain(uint64 leafIndex) private view returns (uint256, uint256, uint64) {
+        uint256 nodeOffset = 0;
+        uint64 leafOffset = 0;
+        uint256 maxHeight = _calculateMaxPossibleHeight(_remoteCallNonce);
+
+        for (uint256 h = maxHeight + 1; h > 0; h--) {
+            uint256 height = h - 1;
+            
+            if ((_remoteCallNonce >> height) & 1 == 1) {
+                uint64 mountainLeaves = uint64(1 << height);
+                
+                if (leafIndex >= leafOffset && leafIndex < leafOffset + mountainLeaves) {
+                    // Found the mountain
+                    uint64 localLeafIdx = leafIndex - leafOffset;
+                    uint256 localNodePos = 2 * uint256(localLeafIdx) - _popcount(localLeafIdx);
+                    return (nodeOffset + localNodePos, height, localLeafIdx);
+                }
+                
+                nodeOffset += (1 << (height + 1)) - 1;
+                leafOffset += mountainLeaves;
+            }
+        }
+        
+        revert LeafNotFound();
+    }
+
+    /// @dev Collect other mountain peaks
+    function _collectOtherPeaks(uint64 leafIndex) private view returns (bytes32[] memory) {
+        bytes32[] memory tempPeaks = new bytes32[](MAX_PEAKS);
+        uint256 peakCount = 0;
+        uint256 nodeOffset = 0;
+        uint64 leafOffset = 0;
+        uint256 maxHeight = _calculateMaxPossibleHeight(_remoteCallNonce);
+
+        for (uint256 h = maxHeight + 1; h > 0; h--) {
+            uint256 height = h - 1;
+            
+            if ((_remoteCallNonce >> height) & 1 == 1) {
+                uint64 mountainLeaves = uint64(1 << height);
+                bool isLeafMountain = (leafIndex >= leafOffset && leafIndex < leafOffset + mountainLeaves);
+                
+                if (!isLeafMountain) {
+                    uint256 peakPos = nodeOffset + (1 << (height + 1)) - 2;
+                    tempPeaks[peakCount++] = _nodes[peakPos];
+                }
+                
+                nodeOffset += (1 << (height + 1)) - 1;
+                leafOffset += mountainLeaves;
+            }
+        }
+        
+        // Copy to exact size array
+        bytes32[] memory peaks = new bytes32[](peakCount);
+        for (uint256 i = 0; i < peakCount; i++) {
+            peaks[i] = tempPeaks[i];
+        }
+        return peaks;
     }
 
     /// @dev Calculate the current root by "bagging the peaks"
@@ -265,6 +403,27 @@ contract MessagePasser {
         }
 
         return _reversePeakIndices(tempPeakIndices, peakCount);
+    }
+
+    /// @dev Check if nodes should be merged at the given height based on leaf count
+    ///
+    /// @param leafCount The number of leaves in the MMR
+    /// @param height The height at which to check for merging
+    ///
+    /// @return shouldMerge True if nodes should be merged at this height
+    function _shouldMergeAtHeight(uint64 leafCount, uint256 height) private pure returns (bool) {
+        return (leafCount >> height) & 1 == 1;
+    }
+
+    /// @dev Calculate the index of the left sibling node
+    ///
+    /// @param currentNodeIndex The index of the current node
+    /// @param height The height of the current level
+    ///
+    /// @return leftSiblingIndex The index of the left sibling node
+    function _calculateLeftSiblingIndex(uint256 currentNodeIndex, uint256 height) private pure returns (uint256) {
+        uint256 leftSubtreeSize = (1 << (height + 1)) - 1;
+        return currentNodeIndex - leftSubtreeSize;
     }
 
     /// @dev Calculate the maximum possible height for the given number of leaves
@@ -339,5 +498,17 @@ contract MessagePasser {
             return keccak256(abi.encodePacked(left, right));
         }
         return keccak256(abi.encodePacked(right, left));
+    }
+
+    /// @dev Calculate the population count (number of 1 bits) in a uint64
+    /// @param x The number to count bits in
+    /// @return count The number of 1 bits
+    function _popcount(uint64 x) private pure returns (uint256) {
+        uint256 count = 0;
+        while (x != 0) {
+            count += x & 1;
+            x >>= 1;
+        }
+        return count;
     }
 }

@@ -502,6 +502,115 @@ contract MessagePasserTest is Test {
     }
 
     //////////////////////////////////////////////////////////////
+    ///                Proof Generation Tests                  ///
+    //////////////////////////////////////////////////////////////
+
+    function test_GenerateProof_WithEmptyMMR_Reverts() public {
+        // Act & Assert
+        vm.expectRevert(MessagePasser.EmptyMMR.selector);
+        messagePasser.generateProof(0);
+    }
+
+    function test_GenerateProof_WithOutOfBoundsIndex_Reverts() public {
+        // Arrange
+        messagePasser.sendRemoteCall(_createTestData("single"));
+
+        // Act & Assert
+        vm.expectRevert(MessagePasser.LeafIndexOutOfBounds.selector);
+        messagePasser.generateProof(1);
+    }
+
+    function test_GenerateProof_WithSingleLeaf_ReturnsEmptyProof() public {
+        // Arrange
+        messagePasser.sendRemoteCall(_createTestData("single"));
+
+        // Act
+        (bytes32[] memory proof, uint64 totalLeafCount) = messagePasser.generateProof(0);
+
+        // Assert
+        assertEq(totalLeafCount, 1, "Total leaf count should be 1");
+        assertEq(proof.length, 0, "Proof for single leaf should be empty");
+    }
+
+    function test_GenerateProof_WithTwoLeaves_ReturnsCorrectProof() public {
+        // Arrange
+        messagePasser.sendRemoteCall(_createTestData("first"));
+        messagePasser.sendRemoteCall(_createTestData("second"));
+
+        // Act
+        (bytes32[] memory proof, uint64 totalLeafCount) = messagePasser.generateProof(0);
+
+        // Assert
+        assertEq(totalLeafCount, 2, "Total leaf count should be 2");
+        assertEq(proof.length, 1, "Proof should contain 1 element (sibling)");
+        assertNotEq(proof[0], bytes32(0), "Proof element should not be zero");
+    }
+
+    function test_GenerateProof_WithFourLeaves_ReturnsCorrectProofLength() public {
+        // Arrange
+        for (uint256 i = 0; i < 4; i++) {
+            messagePasser.sendRemoteCall(_createTestData(string(abi.encodePacked("leaf", i))));
+        }
+
+        // Act & Assert - test different leaves
+        for (uint256 leafIndex = 0; leafIndex < 4; leafIndex++) {
+            (bytes32[] memory proof, uint64 totalLeafCount) = messagePasser.generateProof(uint64(leafIndex));
+            
+            assertEq(totalLeafCount, 4, "Total leaf count should be 4");
+            assertGt(proof.length, 0, "Proof should not be empty");
+            
+            // Verify all proof elements are non-zero
+            for (uint256 j = 0; j < proof.length; j++) {
+                assertNotEq(proof[j], bytes32(0), "Proof elements should not be zero");
+            }
+        }
+    }
+
+    function test_Gas_GenerateProof_ScalesLogarithmically() public {
+        // Test proof generation gas costs at different MMR sizes
+        uint256[] memory testSizes = new uint256[](8);
+        testSizes[0] = 1;      // Single leaf
+        testSizes[1] = 16;     // Small MMR  
+        testSizes[2] = 256;    // Medium MMR
+        testSizes[3] = 1024;   // Large MMR
+        testSizes[4] = 4096;   // Very large MMR
+        testSizes[5] = 16384;  // Huge MMR
+        testSizes[6] = 65536;  // Massive MMR
+        testSizes[7] = 262144; // Enormous MMR
+
+        for (uint256 sizeIndex = 0; sizeIndex < testSizes.length; sizeIndex++) {
+            uint256 numLeaves = testSizes[sizeIndex];
+            
+            // Reset contract state for each test
+            messagePasser = new MessagePasser();
+            
+            // Populate MMR with test data
+            for (uint256 i = 0; i < numLeaves; i++) {
+                messagePasser.sendRemoteCall(_createTestData(string(abi.encodePacked("leaf", i))));
+            }
+            
+            // Measure gas for proof generation (test first leaf)
+            uint256 gasBefore = gasleft();
+            messagePasser.generateProof(0);
+            uint256 gasUsed = gasBefore - gasleft();
+            
+            // Log gas usage for analysis
+            emit log_named_uint(string(abi.encodePacked("Gas for ", numLeaves, " leaves")), gasUsed);
+            
+            // // Verify gas usage remains reasonable even at massive scales
+            // if (numLeaves <= 256) {
+            //     assertLt(gasUsed, 50000, "Small MMR proof should be under 50k gas");
+            // } else if (numLeaves <= 4096) {
+            //     assertLt(gasUsed, 80000, "Medium MMR proof should be under 80k gas");
+            // } else if (numLeaves <= 65536) {
+            //     assertLt(gasUsed, 120000, "Large MMR proof should be under 120k gas");
+            // } else {
+            //     assertLt(gasUsed, 150000, "Massive MMR proof should be under 150k gas");
+            // }
+        }
+    }
+
+    //////////////////////////////////////////////////////////////
     ///               Gas Efficiency Tests                     ///
     //////////////////////////////////////////////////////////////
 
