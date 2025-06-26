@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-#[derive(Debug, Copy, Clone, AnchorSerialize, AnchorDeserialize, InitSpace)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, AnchorSerialize, AnchorDeserialize, InitSpace)]
 #[repr(u8)]
 pub enum CallType {
     Call,
@@ -10,7 +10,7 @@ pub enum CallType {
 }
 
 #[account]
-#[derive(InitSpace)]
+#[derive(Debug, InitSpace)]
 pub struct Call {
     pub nonce: u64,
     pub ty: CallType,

@@ -340,7 +340,7 @@ mod tests {
                 ty,
                 to,
                 gas_limit,
-                data,
+                data: data.clone(),
             }
             .data(),
         };
@@ -352,7 +352,6 @@ mod tests {
             svm.latest_blockhash(),
         );
 
-        // TODO: Check that the correct event is emitted
         svm.send_transaction(tx)
             .expect("Transaction should succeed");
 
@@ -367,6 +366,17 @@ mod tests {
         let portal_account = svm.get_account(&portal_pda).unwrap();
         let portal_data = Portal::try_deserialize(&mut portal_account.data.as_slice()).unwrap();
         assert_eq!(portal_data.nonce, 1);
+
+        // Verify that the call was created
+        let call_account = svm.get_account(&call_pda).unwrap();
+        let call_data = Call::try_deserialize(&mut call_account.data.as_slice()).unwrap();
+        assert_eq!(call_data.nonce, 0);
+        assert_eq!(call_data.ty, ty);
+        assert_eq!(call_data.from, authority_pk);
+        assert_eq!(call_data.to, to);
+        assert_eq!(call_data.gas_limit, gas_limit);
+        assert_eq!(call_data.remote_value, 0);
+        assert_eq!(call_data.data, data);
     }
 
     #[test]
