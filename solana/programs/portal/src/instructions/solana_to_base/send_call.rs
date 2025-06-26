@@ -101,6 +101,7 @@ mod tests {
             &mut svm,
             Portal {
                 nonce: 0,
+                base_block_number: 0,
                 eip1559: Eip1559::new(1000),
             },
         );
@@ -166,6 +167,7 @@ mod tests {
             &mut svm,
             Portal {
                 nonce: 0,
+                base_block_number: 0,
                 eip1559: Eip1559::new(1000),
             },
         );
@@ -231,6 +233,7 @@ mod tests {
             &mut svm,
             Portal {
                 nonce: 0,
+                base_block_number: 0,
                 eip1559: Eip1559::new(1000),
             },
         );
@@ -297,6 +300,7 @@ mod tests {
             &mut svm,
             Portal {
                 nonce: 0,
+                base_block_number: 0,
                 eip1559: Eip1559::new(initial_timestamp),
             },
         );
@@ -365,6 +369,7 @@ mod tests {
             &mut svm,
             Portal {
                 nonce: 0,
+                base_block_number: 0,
                 eip1559: Eip1559::new(initial_timestamp),
             },
         );
@@ -487,7 +492,14 @@ mod tests {
         let high_base_fee = 100u64; // 100 GWEI in wei
         let mut eip1559 = Eip1559::new(initial_timestamp);
         eip1559.current_base_fee = high_base_fee;
-        let portal_pda = mock_portal(&mut svm, Portal { nonce: 0, eip1559 });
+        let portal_pda = mock_portal(
+            &mut svm,
+            Portal {
+                nonce: 0,
+                base_block_number: 0,
+                eip1559,
+            },
+        );
 
         // Mock clock to be 10 time windows later (10 seconds later)
         let windows_passed = window_duration * 10;

@@ -1,8 +1,8 @@
 use anchor_lang::prelude::*;
 
 use crate::{
-    constants::{OUTPUT_ROOT_SEED, TRUSTED_ORACLE},
-    state::OutputRoot,
+    constants::{OUTPUT_ROOT_SEED, PORTAL_SEED, TRUSTED_ORACLE},
+    state::{OutputRoot, Portal},
 };
 
 #[derive(Accounts)]
@@ -20,14 +20,23 @@ pub struct RegisterOutputRoot<'info> {
     )]
     pub root: Account<'info, OutputRoot>,
 
+    #[account(
+        mut,
+        seeds = [PORTAL_SEED],
+        bump,
+    )]
+    pub portal: Account<'info, Portal>,
+
     pub system_program: Program<'info, System>,
 }
 
 pub fn register_output_root_handler(
     ctx: Context<RegisterOutputRoot>,
     output_root: [u8; 32],
+    block_number: u64,
 ) -> Result<()> {
     ctx.accounts.root.root = output_root;
+    ctx.accounts.portal.base_block_number = block_number;
 
     Ok(())
 }
@@ -51,7 +60,10 @@ mod tests {
     use solana_signer::Signer;
     use solana_transaction::Transaction;
 
-    use crate::{constants::TRUSTED_ORACLE_KEYPAIR_BASE58, ID as PORTAL_PROGRAM_ID};
+    use crate::{
+        constants::TRUSTED_ORACLE_KEYPAIR_BASE58, state::Eip1559, test_utils::mock_portal,
+        ID as PORTAL_PROGRAM_ID,
+    };
 
     #[test]
     fn test_register_output_root_fail_unauthorized() {
@@ -68,6 +80,16 @@ mod tests {
         let output_root = [42u8; 32];
         let block_number = 12345u64;
 
+        // Mock the Portal account
+        let portal_pda = mock_portal(
+            &mut svm,
+            Portal {
+                nonce: 0,
+                base_block_number: 0,
+                eip1559: Eip1559::new(1000),
+            },
+        );
+
         // Create PDAs
         let (output_root_pda, _) = Pubkey::find_program_address(
             &[OUTPUT_ROOT_SEED, &block_number.to_le_bytes()],
@@ -78,6 +100,7 @@ mod tests {
         let register_output_root_accounts = crate::accounts::RegisterOutputRoot {
             payer: wrong_payer_pk, // This should fail because it's not TRUSTED_ORACLE
             root: output_root_pda,
+            portal: portal_pda,
             system_program: solana_sdk_ids::system_program::ID,
         }
         .to_account_metas(None);
@@ -87,7 +110,7 @@ mod tests {
             accounts: register_output_root_accounts,
             data: crate::instruction::RegisterOutputRoot {
                 output_root,
-                _block_number: block_number,
+                block_number,
             }
             .data(),
         };
@@ -136,6 +159,16 @@ mod tests {
         let output_root = [42u8; 32];
         let block_number = 12345u64;
 
+        // Mock the Portal account
+        let portal_pda = mock_portal(
+            &mut svm,
+            Portal {
+                nonce: 0,
+                base_block_number: 0,
+                eip1559: Eip1559::new(1000),
+            },
+        );
+
         // Create PDAs
         let (output_root_pda, _) = Pubkey::find_program_address(
             &[OUTPUT_ROOT_SEED, &block_number.to_le_bytes()],
@@ -146,6 +179,7 @@ mod tests {
         let register_output_root_accounts = crate::accounts::RegisterOutputRoot {
             payer: trusted_oracle_pubkey,
             root: output_root_pda,
+            portal: portal_pda,
             system_program: solana_sdk_ids::system_program::ID,
         }
         .to_account_metas(None);
@@ -155,7 +189,7 @@ mod tests {
             accounts: register_output_root_accounts,
             data: crate::instruction::RegisterOutputRoot {
                 output_root,
-                _block_number: block_number,
+                block_number,
             }
             .data(),
         };
