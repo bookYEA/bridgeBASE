@@ -35,6 +35,11 @@ pub fn register_output_root_handler(
     output_root: [u8; 32],
     block_number: u64,
 ) -> Result<()> {
+    require!(
+        block_number - ctx.accounts.portal.base_block_number % 300 == 0,
+        RegisterOutputRootError::InvalidBlockNumber
+    );
+
     ctx.accounts.root.root = output_root;
     ctx.accounts.portal.base_block_number = block_number;
 
@@ -45,6 +50,8 @@ pub fn register_output_root_handler(
 pub enum RegisterOutputRootError {
     #[msg("Unauthorized")]
     Unauthorized,
+    #[msg("InvalidBlockNumber")]
+    InvalidBlockNumber,
 }
 
 #[cfg(all(test, not(any(feature = "devnet", feature = "mainnet"))))]
