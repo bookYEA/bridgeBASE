@@ -108,7 +108,7 @@ contract TokenBridge {
     /// @notice Mapping that stores the scaler exponent for token pairs between local and remote chains.
     ///
     /// @dev Can only be set by the remote bridge when an SPL token is deployed from the Solana factory.
-    mapping(address localToken => mapping(Pubkey remoteToken => uint256 scaler)) public scalerExponents;
+    mapping(address localToken => mapping(Pubkey remoteToken => uint256 scaler)) public scalers;
 
     //////////////////////////////////////////////////////////////
     ///                       Modifiers                        ///
@@ -160,7 +160,7 @@ contract TokenBridge {
 
         if (localToken == ETH_ADDRESS) {
             // Case: Bridging native ETH to Solana
-            uint256 scaler = scalerExponents[localToken][remoteToken];
+            uint256 scaler = scalers[localToken][remoteToken];
             require(scaler != 0, WrappedSplRouteNotRegistered());
 
             localAmount = remoteAmount * scaler;
@@ -201,7 +201,7 @@ contract TokenBridge {
                     });
             } catch {
                 // Case: Bridging native ERC20 to Solana
-                uint256 scaler = scalerExponents[localToken][remoteToken];
+                uint256 scaler = scalers[localToken][remoteToken];
                 require(scaler != 0, WrappedSplRouteNotRegistered());
 
                 localAmount = remoteAmount * scaler;
@@ -263,7 +263,7 @@ contract TokenBridge {
 
         if (localToken == ETH_ADDRESS) {
             // Case: Bridging back native ETH to EVM
-            uint256 scaler = scalerExponents[localToken][remoteToken];
+            uint256 scaler = scalers[localToken][remoteToken];
             require(scaler != 0, WrappedSplRouteNotRegistered());
             localAmount = remoteAmount * scaler;
 
@@ -279,7 +279,7 @@ contract TokenBridge {
                 CrossChainERC20(localToken).mint({to: to, amount: localAmount});
             } catch {
                 // Case: Bridging back native ERC20 to EVM
-                uint256 scaler = scalerExponents[localToken][remoteToken];
+                uint256 scaler = scalers[localToken][remoteToken];
                 require(scaler != 0, WrappedSplRouteNotRegistered());
 
                 localAmount = remoteAmount * scaler;
@@ -308,6 +308,6 @@ contract TokenBridge {
         external
         onlyRemoteBridge
     {
-        scalerExponents[localToken][remoteToken] = 10 ** scalerExponent;
+        scalers[localToken][remoteToken] = 10 ** scalerExponent;
     }
 }

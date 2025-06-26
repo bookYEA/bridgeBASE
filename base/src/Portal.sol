@@ -139,7 +139,7 @@ contract Portal is ReentrancyGuardTransient {
         bytes32 callHash = keccak256(abi.encode(nonce, sender, call.ty, call.to, call.value, call.data));
 
         // Ensures sufficient gas for execution and cleanup.
-        if (!_hasMinGas({minGas: call.gasLimit, reservedGas: _RELAY_CALL_GAS_BUFFER})) {
+        if (!_hasMinGas({minGas: 0, reservedGas: _RELAY_CALL_GAS_BUFFER})) {
             failedCalls[callHash] = true;
             emit FailedRelayedCall(callHash);
 
