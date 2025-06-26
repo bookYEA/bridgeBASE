@@ -1,6 +1,7 @@
 use alloy_primitives::address;
 
 // Common constants (network-agnostic)
+pub const CALL_SEED: &[u8] = b"call";
 pub const REMOTE_CALL_SEED: &[u8] = b"remote_call";
 pub const PORTAL_AUTHORITY_SEED: &[u8] = b"portal_authority";
 pub const OUTPUT_ROOT_SEED: &[u8] = b"output_root";

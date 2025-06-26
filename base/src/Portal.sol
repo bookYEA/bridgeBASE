@@ -87,7 +87,7 @@ contract Portal is ReentrancyGuardTransient {
     uint64 private constant _RELAY_CALL_OVERHEAD_GAS = 40_000;
 
     /// @notice The last nonce used for a call.
-    uint256 public lastNonce;
+    uint64 public lastNonce;
 
     //////////////////////////////////////////////////////////////
     ///                       Storage                          ///
@@ -123,7 +123,7 @@ contract Portal is ReentrancyGuardTransient {
     /// @param sender Solana sender pubkey.
     /// @param call Encoded call to send to the Solana sender's Twin contract.
     /// @param ismData Encoded ISM data used to verify the call.
-    function relayCallEntrypoint(uint256 nonce, bytes32 sender, Call calldata call, bytes calldata ismData) external {
+    function relayCallEntrypoint(uint64 nonce, bytes32 sender, Call calldata call, bytes calldata ismData) external {
         // INVARIANTs for the relay to work properly:
         //      1. The `gasLimit` set on the Solana side must be sufficient to cover the _RELAY_CALL_GAS_BUFFER (+ the
         //         minimum gas to cover the calldata size + tx base gas cost).
@@ -188,7 +188,7 @@ contract Portal is ReentrancyGuardTransient {
     /// @param call Encoded call to send to the Solana sender's Twin contract.
     /// @param isTrustedRelayer Whether the relayer is trusted.
     /// @param callHash Keccak256 hash of the call that was successfully relayed.
-    function relayCall(uint256 nonce, bytes32 sender, Call calldata call, bool isTrustedRelayer, bytes32 callHash)
+    function relayCall(uint64 nonce, bytes32 sender, Call calldata call, bool isTrustedRelayer, bytes32 callHash)
         external
     {
         // Check that the caller is the entrypoint.

@@ -39,6 +39,7 @@ pub fn register_output_root_handler(
         block_number - ctx.accounts.portal.base_block_number % 300 == 0,
         RegisterOutputRootError::InvalidBlockNumber
     );
+    // TODO: Plug some ISM verification here.
 
     ctx.accounts.root.root = output_root;
     ctx.accounts.portal.base_block_number = block_number;

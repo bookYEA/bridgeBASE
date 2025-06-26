@@ -46,6 +46,10 @@ pub struct BridgeBackToken<'info> {
     #[account(mut)]
     pub portal: AccountInfo<'info>,
 
+    /// CHECK: Checked by the Portal program that we CPI into.
+    #[account(mut)]
+    pub call: AccountInfo<'info>,
+
     pub system_program: Program<'info, System>,
 }
 
@@ -85,6 +89,7 @@ pub fn bridge_back_token_handler(
                 mint: ctx.accounts.mint.to_account_info(),
                 from_token_account: ctx.accounts.from_token_account.to_account_info(),
                 token_program: ctx.accounts.token_program.to_account_info(),
+                call: ctx.accounts.call.to_account_info(),
                 system_program: ctx.accounts.system_program.to_account_info(),
             },
             ctx.bumps.bridge_authority,
@@ -120,6 +125,7 @@ pub fn bridge_back_token_handler(
                 authority: ctx.accounts.bridge_authority.to_account_info(),
                 gas_fee_receiver: ctx.accounts.gas_fee_receiver.to_account_info(),
                 portal: ctx.accounts.portal.to_account_info(),
+                call: ctx.accounts.call.to_account_info(),
                 system_program: ctx.accounts.system_program.to_account_info(),
             },
             ctx.bumps.bridge_authority,

@@ -11,6 +11,7 @@ pub mod state;
 
 use instructions::*;
 use internal::Proof;
+use state::CallType;
 
 declare_id!("4jduFi9ShXq258vmY4GroJUYTRQnd9GWZxzK8zTxTmmw");
 
@@ -54,7 +55,7 @@ pub mod portal {
 
     pub fn prove_call(
         ctx: Context<ProveCall>,
-        nonce: [u8; 32],
+        nonce: u64,
         sender: [u8; 20],
         data: Vec<u8>,
         proof: Proof,

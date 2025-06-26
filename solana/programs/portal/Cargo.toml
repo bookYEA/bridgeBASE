@@ -21,7 +21,7 @@ mainnet = []
 [dependencies]
 common = { path = "../../common" }
 
-anchor-lang = "0.31.0"
+anchor-lang = { version = "=0.31.0", features = ["event-cpi"] }
 anchor-spl = "=0.31.0"
 
 alloy-sol-types = "=0.8.13"

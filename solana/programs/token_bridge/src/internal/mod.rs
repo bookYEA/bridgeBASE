@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use portal::{cpi as portal_cpi, instructions::CallType, program::Portal};
+use portal::{cpi as portal_cpi, program::Portal, state::CallType};
 
 use crate::constants::{BRIDGE_AUTHORITY_SEED, REMOTE_BRIDGE};
 

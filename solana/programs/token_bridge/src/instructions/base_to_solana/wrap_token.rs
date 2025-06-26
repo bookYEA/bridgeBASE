@@ -62,6 +62,10 @@ pub struct WrapToken<'info> {
     #[account(mut)]
     pub portal: AccountInfo<'info>,
 
+    /// CHECK: Checked by the Portal program that we CPI into.
+    #[account(mut)]
+    pub call: AccountInfo<'info>,
+
     pub system_program: Program<'info, System>,
 }
 
@@ -182,6 +186,7 @@ fn register_remote_token(
             authority: ctx.accounts.bridge_authority.to_account_info(),
             gas_fee_receiver: ctx.accounts.gas_fee_receiver.to_account_info(),
             portal: ctx.accounts.portal.to_account_info(),
+            call: ctx.accounts.call.to_account_info(),
             system_program: ctx.accounts.system_program.to_account_info(),
         },
         ctx.bumps.bridge_authority,
@@ -225,7 +230,7 @@ mod tests {
     use solana_transaction::Transaction;
 
     use crate::{
-        test_utils::{bridge_authority, mock_clock, mock_portal},
+        test_utils::{bridge_authority, call_pda, mock_clock, mock_portal},
         ID as TOKEN_BRIDGE_PROGRAM_ID,
     };
 
@@ -279,10 +284,10 @@ mod tests {
                 eip1559: Eip1559::new(initial_timestamp),
             },
         );
-        mock_clock(&mut svm, initial_timestamp);
 
-        println!("PORTAL_PROGRAM_ID: {:?}", PORTAL_PROGRAM_ID);
-        println!("portal_pda: {:?}", portal_pda);
+        let call_pda = call_pda(0);
+
+        mock_clock(&mut svm, initial_timestamp);
 
         // Build the wrap_token instruction
         let wrap_token_accounts = crate::accounts::WrapToken {
@@ -293,6 +298,7 @@ mod tests {
             portal_program: PORTAL_PROGRAM_ID,
             gas_fee_receiver: GAS_FEE_RECEIVER,
             portal: portal_pda,
+            call: call_pda,
             system_program: solana_sdk_ids::system_program::ID,
         };
 

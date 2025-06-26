@@ -1,10 +1,8 @@
 use anchor_lang::prelude::*;
 
-use crate::constants::{GAS_FEE_RECEIVER, PORTAL_SEED};
+use crate::constants::{CALL_SEED, GAS_FEE_RECEIVER, PORTAL_SEED};
 use crate::internal::send_call_internal;
-use crate::state::Portal;
-
-use super::{Call, CallType};
+use crate::state::{Call, CallType, Portal};
 
 #[derive(Accounts)]
 pub struct SendCall<'info> {
@@ -24,6 +22,15 @@ pub struct SendCall<'info> {
     )]
     pub portal: Account<'info, Portal>,
 
+    #[account(
+        init,
+        seeds = [CALL_SEED, portal.nonce.to_le_bytes().as_ref()],
+        bump,
+        payer = payer,
+        space = 8 + Call::INIT_SPACE,
+    )]
+    pub call: Account<'info, Call>,
+
     pub system_program: Program<'info, System>,
 }
 
@@ -37,17 +44,18 @@ pub fn send_call_handler(
     send_call_internal(
         &ctx.accounts.system_program,
         &ctx.accounts.payer,
+        &ctx.accounts.authority,
         &ctx.accounts.gas_fee_receiver,
         &mut ctx.accounts.portal,
-        ctx.accounts.authority.key(),
-        Call {
-            ty,
-            to,
-            gas_limit,
-            remote_value: 0,
-            data,
-        },
-    )
+        &mut ctx.accounts.call,
+        ty,
+        to,
+        gas_limit,
+        0,
+        data,
+    )?;
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -67,9 +75,8 @@ mod tests {
             EIP1559_DEFAULT_ADJUSTMENT_DENOMINATOR, EIP1559_DEFAULT_GAS_TARGET_PER_WINDOW,
             EIP1559_DEFAULT_WINDOW_DURATION_SECONDS, EIP1559_MINIMUM_BASE_FEE,
         },
-        instructions::CallType,
         state::Eip1559,
-        test_utils::{mock_clock, mock_portal},
+        test_utils::{call_pda, mock_clock, mock_portal},
         ID as PORTAL_PROGRAM_ID,
     };
 
@@ -106,12 +113,15 @@ mod tests {
             },
         );
 
+        let call_pda = call_pda(0);
+
         // Build the instruction with wrong gas fee receiver
         let send_calls_accounts = crate::accounts::SendCall {
             payer: payer_pk,
             authority: authority_pk,
             gas_fee_receiver: wrong_gas_fee_receiver, // This should fail
             portal: portal_pda,
+            call: call_pda,
             system_program: solana_sdk_ids::system_program::ID,
         }
         .to_account_metas(None);
@@ -172,12 +182,15 @@ mod tests {
             },
         );
 
+        let call_pda = call_pda(0);
+
         // Build the instruction
         let send_calls_accounts = crate::accounts::SendCall {
             payer: payer_pk,
             authority: authority_pk,
             gas_fee_receiver: GAS_FEE_RECEIVER,
             portal: portal_pda,
+            call: call_pda,
             system_program: solana_sdk_ids::system_program::ID,
         }
         .to_account_metas(None);
@@ -238,12 +251,15 @@ mod tests {
             },
         );
 
+        let call_pda = call_pda(0);
+
         // Build the instruction
         let send_calls_accounts = crate::accounts::SendCall {
             payer: payer_pk,
             authority: authority_pk,
             gas_fee_receiver: GAS_FEE_RECEIVER,
             portal: portal_pda,
+            call: call_pda,
             system_program: solana_sdk_ids::system_program::ID,
         }
         .to_account_metas(None);
@@ -308,12 +324,15 @@ mod tests {
         // Mock clock with initial timestamp
         mock_clock(&mut svm, initial_timestamp);
 
+        let call_pda = call_pda(0);
+
         // Build the instruction
         let send_calls_accounts = crate::accounts::SendCall {
             payer: payer_pk,
             authority: authority_pk,
             gas_fee_receiver: GAS_FEE_RECEIVER,
             portal: portal_pda,
+            call: call_pda,
             system_program: solana_sdk_ids::system_program::ID,
         }
         .to_account_metas(None);
@@ -325,7 +344,7 @@ mod tests {
                 ty,
                 to,
                 gas_limit,
-                data,
+                data: data.clone(),
             }
             .data(),
         };
@@ -337,7 +356,6 @@ mod tests {
             svm.latest_blockhash(),
         );
 
-        // TODO: Check that the correct event is emitted
         svm.send_transaction(tx)
             .expect("Transaction should succeed");
 
@@ -352,6 +370,17 @@ mod tests {
         let portal_account = svm.get_account(&portal_pda).unwrap();
         let portal_data = Portal::try_deserialize(&mut portal_account.data.as_slice()).unwrap();
         assert_eq!(portal_data.nonce, 1);
+
+        // Verify that the call was created
+        let call_account = svm.get_account(&call_pda).unwrap();
+        let call_data = Call::try_deserialize(&mut call_account.data.as_slice()).unwrap();
+        assert_eq!(call_data.nonce, 0);
+        assert_eq!(call_data.ty, ty);
+        assert_eq!(call_data.from, authority_pk);
+        assert_eq!(call_data.to, to);
+        assert_eq!(call_data.gas_limit, gas_limit);
+        assert_eq!(call_data.remote_value, 0);
+        assert_eq!(call_data.data, data);
     }
 
     #[test]
@@ -365,10 +394,11 @@ mod tests {
         mock_clock(&mut svm, initial_timestamp);
 
         // Mock Portal account with this timestamp
+        let start_nonce = 0;
         let portal_pda = mock_portal(
             &mut svm,
             Portal {
-                nonce: 0,
+                nonce: start_nonce,
                 base_block_number: 0,
                 eip1559: Eip1559::new(initial_timestamp),
             },
@@ -401,6 +431,7 @@ mod tests {
                 authority: authority_pk,
                 gas_fee_receiver: GAS_FEE_RECEIVER,
                 portal: portal_pda,
+                call: call_pda(start_nonce + i),
                 system_program: solana_sdk_ids::system_program::ID,
             };
 
@@ -435,6 +466,7 @@ mod tests {
             authority: authority_pk,
             gas_fee_receiver: GAS_FEE_RECEIVER,
             portal: portal_pda,
+            call: call_pda(start_nonce + num_transactions),
             system_program: solana_sdk_ids::system_program::ID,
         };
 
@@ -501,6 +533,8 @@ mod tests {
             },
         );
 
+        let call_pda = call_pda(0);
+
         // Mock clock to be 10 time windows later (10 seconds later)
         let windows_passed = window_duration * 10;
         let new_timestamp = initial_timestamp + windows_passed as i64;
@@ -520,6 +554,7 @@ mod tests {
             authority: authority_pk,
             gas_fee_receiver: GAS_FEE_RECEIVER,
             portal: portal_pda,
+            call: call_pda,
             system_program: solana_sdk_ids::system_program::ID,
         };
 

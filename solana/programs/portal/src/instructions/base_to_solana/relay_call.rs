@@ -65,6 +65,4 @@ pub fn relay_call_handler<'a, 'info>(
 pub enum RelayCallError {
     #[msg("Already executed")]
     AlreadyExecuted,
-    #[msg("Invalid sender")]
-    InvalidSender,
 }
