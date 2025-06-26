@@ -19,7 +19,7 @@ enum CallType {
 struct Call {
     CallType ty;
     address to;
-    uint256 value;
+    uint128 value;
     bytes data;
 }
 
@@ -50,14 +50,14 @@ library CallLib {
                 revert(string(result));
             }
         } else if (call.ty == CallType.Create) {
-            uint256 value = call.value;
+            uint128 value = call.value;
             bytes memory data = call.data;
             assembly {
                 let result := create(value, add(data, 0x20), mload(data))
                 if iszero(result) { revert(0, 0) }
             }
         } else if (call.ty == CallType.Create2) {
-            uint256 value = call.value;
+            uint128 value = call.value;
             (bytes32 salt, bytes memory data) = abi.decode(call.data, (bytes32, bytes));
             assembly {
                 let result := create2(value, add(data, 0x20), mload(data), salt)

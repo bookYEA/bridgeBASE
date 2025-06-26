@@ -71,10 +71,10 @@ contract Bridge is ReentrancyGuardTransient {
         Call
     }
 
-    /// @notice Messages sent from Solana to Base.
+    /// @notice Message sent from Solana to Base.
     ///
     /// @custom:field nonce Unique nonce for the message.
-    /// @custom:field remoteSender The Solana sender's pubkey.
+    /// @custom:field sender The Solana sender's pubkey.
     /// @custom:field gasLimit The gas limit for the message execution.
     /// @custom:field msgType The type of the message.
     /// @custom:field data The abi encoded data for the message.
@@ -82,7 +82,7 @@ contract Bridge is ReentrancyGuardTransient {
     ///                    Call => abi.encode(Call)
     struct Message {
         uint64 nonce;
-        Pubkey remoteSender;
+        Pubkey sender;
         uint64 gasLimit;
         MessageType messageType;
         bytes data;
@@ -164,7 +164,7 @@ contract Bridge is ReentrancyGuardTransient {
 
             // NOTE: Intentionally not including the gas limit in the hash to allow for replays with higher gas limits.
             bytes32 messageHash =
-                keccak256(abi.encode(message.nonce, message.remoteSender, message.messageType, message.data));
+                keccak256(abi.encode(message.nonce, message.sender, message.messageType, message.data));
 
             // Ensures sufficient gas for execution and cleanup.
             uint256 reservedGas = _CALL_OVERHEAD_GAS + _RELAY_MESSAGES_ENTRYPOINT_GAS_BUFFER;
@@ -239,13 +239,13 @@ contract Bridge is ReentrancyGuardTransient {
         }
 
         // Get (and deploy if needed) the Twin contract.
-        address twinAddress = twins[message.remoteSender];
+        address twinAddress = twins[message.sender];
         if (twinAddress == address(0)) {
             twinAddress = LibClone.deployDeterministicERC1967BeaconProxy({
                 beacon: TWIN_BEACON,
-                salt: Pubkey.unwrap(message.remoteSender)
+                salt: Pubkey.unwrap(message.sender)
             });
-            twins[message.remoteSender] = twinAddress;
+            twins[message.sender] = twinAddress;
         }
 
         if (message.messageType == MessageType.Transfer) {
