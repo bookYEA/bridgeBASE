@@ -9,26 +9,26 @@ import {MessageStorageLib} from "./MessageStorageLib.sol";
 import {Ix, Pubkey, SVMLib} from "./SVMLib.sol";
 import {SVMTokenBridgeLib} from "./SVMTokenBridgeLib.sol";
 
-/// @notice Struct representing a transfer payload.
+/// @notice Struct representing a token transfer.
 ///
 /// @custom:field localToken Address of the ERC20 token on this chain.
 /// @custom:field remoteToken Pubkey of the remote token on Solana.
 /// @custom:field to Address of the recipient on the target chain. EVM address on Base, Solana pubkey on Solana.
 /// @custom:field remoteAmount Amount of tokens being bridged (expressed in Solana units).
-struct TransferPayload {
+struct Transfer {
     address localToken;
     Pubkey remoteToken;
     bytes32 to;
     uint64 remoteAmount;
 }
 
-/// @notice Storage layout used by this contract.
+/// @notice Storage layout used by this library.
 ///
 /// @custom:storage-location erc7201:coinbase.storage.TokenLib
 ///
 /// @custom:field deposits Mapping that stores deposit balances for token pairs between Base and Solana.
 /// @custom:field scalars Mapping that stores the scalars to use to scale Solana amounts to Base amounts.
-///                               Only used when bridging native ETH or ERC20 tokens to or back from Solana.
+///                               Only used when bridging native ETH or ERC20 tokens to (or back from) Solana.
 struct TokenLibStorage {
     mapping(address localToken => mapping(Pubkey remoteToken => uint256 amount)) deposits;
     mapping(address localToken => mapping(Pubkey remoteToken => uint256 scaler)) scalars;
@@ -55,13 +55,13 @@ library TokenLib {
     ///                       Events                           ///
     //////////////////////////////////////////////////////////////
 
-    /// @notice Emitted when a token bridge transaction is finalized.
+    /// @notice Emitted when a token transfer is finalized.
     ///
-    /// @param localToken Address of the ERC20 token.
+    /// @param localToken Address of the local token on Base.
     /// @param remoteToken Pubkey of the remote token on Solana.
-    /// @param to Address of the recipient on.
-    /// @param amount Amount of tokens transferred to the recipient (expressed in EVM units).
-    event TokenBridgeFinalized(address localToken, Pubkey remoteToken, address to, uint256 amount);
+    /// @param to Address of the recipient.
+    /// @param amount Amount of tokens transferred to the recipient (expressed in local units).
+    event TransferFinalized(address localToken, Pubkey remoteToken, address to, uint256 amount);
 
     //////////////////////////////////////////////////////////////
     ///                       Constants                        ///
@@ -99,75 +99,76 @@ library TokenLib {
         }
     }
 
-    function initiateTransfer(TransferPayload memory payload) internal {
-        Pubkey to = Pubkey.wrap(payload.to);
+    // TODO: Update this once the Solana side is refactored.
+    function initiateTransfer(Transfer memory transfer) internal {
+        Pubkey to = Pubkey.wrap(transfer.to);
         TokenLibStorage storage $ = getTokenLibStorage();
 
         uint256 localAmount;
         Ix memory ix;
 
-        if (payload.localToken == ETH_ADDRESS) {
+        if (transfer.localToken == ETH_ADDRESS) {
             // Case: Bridging native ETH to Solana
-            uint256 scaler = $.scalars[payload.localToken][payload.remoteToken];
+            uint256 scaler = $.scalars[transfer.localToken][transfer.remoteToken];
             require(scaler != 0, WrappedSplRouteNotRegistered());
 
-            localAmount = payload.remoteAmount * scaler;
+            localAmount = transfer.remoteAmount * scaler;
             require(msg.value == localAmount, InvalidMsgValue());
 
             ix = SVMTokenBridgeLib.finalizeBridgeTokenIx({
                 remoteBridge: REMOTE_TOKEN_BRIDGE,
-                localToken: payload.localToken,
-                remoteToken: payload.remoteToken,
+                localToken: transfer.localToken,
+                remoteToken: transfer.remoteToken,
                 to: to,
-                remoteAmount: payload.remoteAmount
+                remoteAmount: transfer.remoteAmount
             });
         } else {
             // Prevent sending ETH when bridging ERC20 tokens
             require(msg.value == 0, InvalidMsgValue());
 
-            try CrossChainERC20(payload.localToken).remoteToken() returns (bytes32 remoteToken_) {
+            try CrossChainERC20(transfer.localToken).remoteToken() returns (bytes32 remoteToken_) {
                 // Case: Bridging back native SOL or SPL token to Solana
-                require(Pubkey.wrap(remoteToken_) == payload.remoteToken, IncorrectRemoteToken());
+                require(Pubkey.wrap(remoteToken_) == transfer.remoteToken, IncorrectRemoteToken());
 
-                localAmount = payload.remoteAmount;
-                CrossChainERC20(payload.localToken).burn({from: msg.sender, amount: localAmount});
+                localAmount = transfer.remoteAmount;
+                CrossChainERC20(transfer.localToken).burn({from: msg.sender, amount: localAmount});
 
-                ix = payload.remoteToken == NATIVE_SOL_PUBKEY
+                ix = transfer.remoteToken == NATIVE_SOL_PUBKEY
                     ? SVMTokenBridgeLib.finalizeBridgeSolIx({
                         remoteBridge: REMOTE_TOKEN_BRIDGE,
-                        localToken: payload.localToken,
+                        localToken: transfer.localToken,
                         to: to,
-                        remoteAmount: payload.remoteAmount
+                        remoteAmount: transfer.remoteAmount
                     })
                     : SVMTokenBridgeLib.finalizeBridgeSplIx({
                         remoteBridge: REMOTE_TOKEN_BRIDGE,
-                        localToken: payload.localToken,
-                        remoteToken: payload.remoteToken,
+                        localToken: transfer.localToken,
+                        remoteToken: transfer.remoteToken,
                         to: to,
-                        remoteAmount: payload.remoteAmount
+                        remoteAmount: transfer.remoteAmount
                     });
             } catch {
                 // Case: Bridging native ERC20 to Solana
-                uint256 scaler = $.scalars[payload.localToken][payload.remoteToken];
+                uint256 scaler = $.scalars[transfer.localToken][transfer.remoteToken];
                 require(scaler != 0, WrappedSplRouteNotRegistered());
 
-                localAmount = payload.remoteAmount * scaler;
+                localAmount = transfer.remoteAmount * scaler;
 
                 SafeTransferLib.safeTransferFrom({
-                    token: payload.localToken,
+                    token: transfer.localToken,
                     from: msg.sender,
                     to: address(this),
                     amount: localAmount
                 });
 
-                $.deposits[payload.localToken][payload.remoteToken] += localAmount;
+                $.deposits[transfer.localToken][transfer.remoteToken] += localAmount;
 
                 ix = SVMTokenBridgeLib.finalizeBridgeTokenIx({
                     remoteBridge: REMOTE_TOKEN_BRIDGE,
-                    localToken: payload.localToken,
-                    remoteToken: payload.remoteToken,
+                    localToken: transfer.localToken,
+                    remoteToken: transfer.remoteToken,
                     to: to,
-                    remoteAmount: payload.remoteAmount
+                    remoteAmount: transfer.remoteAmount
                 });
             }
         }
@@ -177,48 +178,46 @@ library TokenLib {
         MessageStorageLib.sendMessage({sender: msg.sender, data: SVMLib.serializeAnchorIxs(ixs)});
     }
 
-    function finalizeTransfer(TransferPayload memory payload) internal {
-        // TODO: Rather this or shift right?
-        address to = address(bytes20(payload.to));
-
-        uint256 localAmount;
-
+    /// @notice Finalizes a token transfer.
+    ///
+    /// @param transfer The transfer to finalize.
+    function finalizeTransfer(Transfer memory transfer) internal {
         TokenLibStorage storage $ = getTokenLibStorage();
 
-        if (payload.localToken == ETH_ADDRESS) {
+        // TODO: Rather this or shift right?
+        address to = address(bytes20(transfer.to));
+        uint256 localAmount;
+
+        if (transfer.localToken == ETH_ADDRESS) {
             // Case: Bridging back native ETH to EVM
-            uint256 scaler = $.scalars[payload.localToken][payload.remoteToken];
+            uint256 scaler = $.scalars[transfer.localToken][transfer.remoteToken];
             require(scaler != 0, WrappedSplRouteNotRegistered());
-            localAmount = payload.remoteAmount * scaler;
+            localAmount = transfer.remoteAmount * scaler;
 
             SafeTransferLib.safeTransferETH({to: to, amount: localAmount});
         } else {
-            try CrossChainERC20(payload.localToken).remoteToken() returns (bytes32 remoteToken_) {
+            try CrossChainERC20(transfer.localToken).remoteToken() returns (bytes32 remoteToken_) {
                 // Case: Bridging native SOL or SPL token to EVM
-                require(Pubkey.wrap(remoteToken_) == payload.remoteToken, IncorrectRemoteToken());
-                localAmount = payload.remoteAmount;
-                CrossChainERC20(payload.localToken).mint({to: to, amount: localAmount});
+                require(Pubkey.wrap(remoteToken_) == transfer.remoteToken, IncorrectRemoteToken());
+                localAmount = transfer.remoteAmount;
+                CrossChainERC20(transfer.localToken).mint({to: to, amount: localAmount});
             } catch {
                 // Case: Bridging back native ERC20 to EVM
-                uint256 scaler = $.scalars[payload.localToken][payload.remoteToken];
+                uint256 scaler = $.scalars[transfer.localToken][transfer.remoteToken];
                 require(scaler != 0, WrappedSplRouteNotRegistered());
 
-                localAmount = payload.remoteAmount * scaler;
-                $.deposits[payload.localToken][payload.remoteToken] -= localAmount;
+                localAmount = transfer.remoteAmount * scaler;
+                $.deposits[transfer.localToken][transfer.remoteToken] -= localAmount;
 
-                SafeTransferLib.safeTransfer({token: payload.localToken, to: to, amount: localAmount});
+                SafeTransferLib.safeTransfer({token: transfer.localToken, to: to, amount: localAmount});
             }
         }
 
-        emit TokenBridgeFinalized({
-            localToken: payload.localToken,
-            remoteToken: payload.remoteToken,
+        emit TransferFinalized({
+            localToken: transfer.localToken,
+            remoteToken: transfer.remoteToken,
             to: to,
             amount: localAmount
         });
     }
-
-    //////////////////////////////////////////////////////////////
-    ///                       Private Functions                ///
-    //////////////////////////////////////////////////////////////
 }

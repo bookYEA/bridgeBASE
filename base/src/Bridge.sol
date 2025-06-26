@@ -7,7 +7,7 @@ import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.so
 import {Call, CallLib} from "./libraries/CallLib.sol";
 import {MessageStorageLib} from "./libraries/MessageStorageLib.sol";
 import {Pubkey} from "./libraries/SVMLib.sol";
-import {TokenLib, TransferPayload} from "./libraries/TokenLib.sol";
+import {TokenLib, Transfer} from "./libraries/TokenLib.sol";
 
 import {Twin} from "./Twin.sol";
 
@@ -21,15 +21,15 @@ contract Bridge is ReentrancyGuardTransient {
     ///                       Events                           ///
     //////////////////////////////////////////////////////////////
 
-    /// @notice Emitted whenever a bridge payload is successfully relayed and executed.
+    /// @notice Emitted whenever a message is successfully relayed and executed.
     ///
-    /// @param payloadHash Keccak256 hash of the payload that was successfully relayed.
-    event BridgeFinalized(bytes32 indexed payloadHash);
+    /// @param messageHash Keccak256 hash of the message that was successfully relayed.
+    event MessageSuccessfullyRelayed(bytes32 indexed messageHash);
 
-    /// @notice Emitted whenever a bridge payload fails to be relayed.
+    /// @notice Emitted whenever a message fails to be relayed.
     ///
-    /// @param payloadHash Keccak256 hash of the payload that failed to be relayed.
-    event BridgeFailed(bytes32 indexed payloadHash);
+    /// @param messageHash Keccak256 hash of the message that failed to be relayed.
+    event FailedToRelayMessage(bytes32 indexed messageHash);
 
     //////////////////////////////////////////////////////////////
     ///                       Errors                           ///
@@ -51,40 +51,40 @@ contract Bridge is ReentrancyGuardTransient {
     /// @notice Thrown when the nonce is not incremental.
     error NonceNotIncremental();
 
-    /// @notice Thrown when a bridge payload has already been finalized but is attempted to be relayed again.
-    error BridgeAlreadyFinalized();
+    /// @notice Thrown when a message has already been successfully relayed.
+    error MessageAlreadySuccessfullyRelayed();
 
-    /// @notice Thrown when a bridge payload has already failed and the relayer tries to relay it again.
-    error BridgeAlreadyFailed();
+    /// @notice Thrown when a message has already failed to relay.
+    error MessageAlreadyFailedToRelay();
 
-    /// @notice Thrown when a bridge payload has not been marked as failed by the relayer but a user tries to relay it
-    ///         manually.
-    error BridgeNotAlreadyFailed();
+    /// @notice Thrown when a message has not been marked as failed by the relayer but a user tries to relay it
+    /// manually.
+    error MessageNotAlreadyFailedToRelay();
 
     //////////////////////////////////////////////////////////////
     ///                       Structs                          ///
     //////////////////////////////////////////////////////////////
 
-    /// @notice Enum containing bridge types.
-    enum BridgeType {
+    /// @notice Enum containing message types.
+    enum MessageType {
         Transfer,
         Call
     }
 
-    /// @notice Struct containing the data for a bridge.
+    /// @notice Messages sent from Solana to Base.
     ///
-    /// @custom:field nonce Unique nonce for the bridge.
+    /// @custom:field nonce Unique nonce for the message.
     /// @custom:field remoteSender The Solana sender's pubkey.
-    /// @custom:field gasLimit The gas limit of the bridge.
-    /// @custom:field bridgeType The type of bridge.
-    /// @custom:field data The abi encoded data for the bridge.
-    ///                    Transfer => abi.encode(TransferPayload)
+    /// @custom:field gasLimit The gas limit for the message execution.
+    /// @custom:field msgType The type of the message.
+    /// @custom:field data The abi encoded data for the message.
+    ///                    Transfer => abi.encode(Transfer)
     ///                    Call => abi.encode(Call)
-    struct BridgePayload {
+    struct Message {
         uint64 nonce;
         Pubkey remoteSender;
-        uint256 gasLimit;
-        BridgeType bridgeType;
+        uint64 gasLimit;
+        MessageType messageType;
         bytes data;
     }
 
@@ -106,29 +106,29 @@ contract Bridge is ReentrancyGuardTransient {
     /// @notice Address of the Twin beacon.
     address public immutable TWIN_BEACON;
 
-    /// @notice Additional gas buffer reserved to ensure the correct execution of `finalizeBridgeEntrypoint`.
-    uint64 private constant _FINALIZE_BRIDGE_GAS_BUFFER = 40_000;
+    /// @notice Additional gas buffer reserved to ensure the correct execution of `relayMessagesEntrypoint`.
+    uint64 private constant _RELAY_MESSAGES_ENTRYPOINT_GAS_BUFFER = 40_000;
 
     /// @notice Gas reserved for the dynamic parts of the `CALL` opcode.
-    uint64 private constant _FINALIZE_BRIDGE_OVERHEAD_GAS = 40_000;
+    uint64 private constant _CALL_OVERHEAD_GAS = 40_000;
 
     //////////////////////////////////////////////////////////////
     ///                       Storage                          ///
     //////////////////////////////////////////////////////////////
 
-    /// @notice Mapping of payload hashes to boolean values indicating successful execution. A payload will only be
+    /// @notice Mapping of message hashes to boolean values indicating successful execution. A message will only be
     ///         present in this mapping if it has successfully been executed, and therefore cannot be executed again.
-    mapping(bytes32 payloadHash => bool success) public successes;
+    mapping(bytes32 messageHash => bool success) public successes;
 
-    /// @notice Mapping of payload hashes to boolean values indicating failed execution attempts. A payload will be
+    /// @notice Mapping of message hashes to boolean values indicating failed execution attempts. A message will be
     ///         present in this mapping if and only if it has failed to execute at least once. Successfully executed
-    ///         payloads on first attempt won't appear here.
-    mapping(bytes32 payloadHash => bool failure) public failures;
+    ///         messages on first attempt won't appear here.
+    mapping(bytes32 messageHash => bool failure) public failures;
 
     /// @notice Mapping of Solana owner pubkeys to their Twin contract addresses.
     mapping(Pubkey owner => address twinAddress) public twins;
 
-    /// @notice The last bridge payload's nonce that has been attempted to finalize by the trusted relayer.
+    /// @notice The last message's nonce relayed by the trusted relayer.
     uint64 public lastNonce;
 
     //////////////////////////////////////////////////////////////
@@ -142,33 +142,35 @@ contract Bridge is ReentrancyGuardTransient {
         TWIN_BEACON = twinBeacon;
     }
 
-    // TODO: Better naming convention for Solana-to-Base vs Base-to-Solana messages.
-    // TODO: Re-implement the initiateXXX functions here once the interface on Solana is defined.
-
-    /// @notice Finalizes a bridge initiated from Solana.
+    /// @notice Sends a message to the Solana bridge.
     ///
-    /// @param payloads The bridge payloads to finalize.
-    /// @param ismData Encoded ISM data used to verify the bridge payloads.
-    function finalizeBridgeEntrypoint(BridgePayload[] calldata payloads, bytes calldata ismData)
-        external
-        nonReentrant
-    {
+    /// @param data The message data to be passed to the Solana bridge.
+    function sendMessage(bytes calldata data) external {
+        MessageStorageLib.sendMessage({sender: msg.sender, data: data});
+    }
+
+    /// @notice Relays messages sent from Solana to Base.
+    ///
+    /// @param messages The messages to relay.
+    /// @param ismData Encoded ISM data used to verify the messages.
+    function relayMessagesEntrypoint(Message[] calldata messages, bytes calldata ismData) external nonReentrant {
         bool isTrustedRelayer = msg.sender == TRUSTED_RELAYER;
         if (isTrustedRelayer) {
-            _ismVerify({payloads: payloads, ismData: ismData});
+            _ismVerify({messages: messages, ismData: ismData});
         }
 
-        for (uint256 i; i < payloads.length; i++) {
-            BridgePayload memory payload = payloads[i];
+        for (uint256 i; i < messages.length; i++) {
+            Message memory message = messages[i];
 
             // NOTE: Intentionally not including the gas limit in the hash to allow for replays with higher gas limits.
-            bytes32 payloadHash =
-                keccak256(abi.encode(payload.nonce, payload.remoteSender, payload.bridgeType, payload.data));
+            bytes32 messageHash =
+                keccak256(abi.encode(message.nonce, message.remoteSender, message.messageType, message.data));
 
             // Ensures sufficient gas for execution and cleanup.
-            if (!_hasMinGas({minGas: payload.gasLimit, reservedGas: _FINALIZE_BRIDGE_GAS_BUFFER})) {
-                failures[payloadHash] = true;
-                emit BridgeFailed(payloadHash);
+            uint256 reservedGas = _CALL_OVERHEAD_GAS + _RELAY_MESSAGES_ENTRYPOINT_GAS_BUFFER;
+            if (message.gasLimit < reservedGas) {
+                failures[messageHash] = true;
+                emit FailedToRelayMessage(messageHash);
 
                 // Revert for gas estimation.
                 if (tx.origin == ESTIMATION_ADDRESS) {
@@ -178,18 +180,18 @@ contract Bridge is ReentrancyGuardTransient {
                 return;
             }
 
-            try this.finalizeBridge{gas: gasleft() - _FINALIZE_BRIDGE_GAS_BUFFER}({
-                payload: payload,
-                payloadHash: payloadHash,
+            try this.relayMessage{gas: message.gasLimit - _RELAY_MESSAGES_ENTRYPOINT_GAS_BUFFER}({
+                message: message,
+                messageHash: messageHash,
                 isTrustedRelayer: isTrustedRelayer
             }) {
                 // Register the call as successful.
-                successes[payloadHash] = true;
-                if (failures[payloadHash]) {
-                    delete failures[payloadHash];
+                successes[messageHash] = true;
+                if (failures[messageHash]) {
+                    delete failures[messageHash];
                 }
 
-                emit BridgeFinalized(payloadHash);
+                emit MessageSuccessfullyRelayed(messageHash);
             } catch (bytes memory reason) {
                 // Some mandatory invariant has been violated, we should revert.
                 if (bytes4(reason) != ExecutionFailed.selector) {
@@ -199,8 +201,8 @@ contract Bridge is ReentrancyGuardTransient {
                 }
 
                 // Otherwise the user call itself reverted, register the call as failed.
-                failures[payloadHash] = true;
-                emit BridgeFailed(payloadHash);
+                failures[messageHash] = true;
+                emit FailedToRelayMessage(messageHash);
 
                 // Revert for gas estimation.
                 if (tx.origin == ESTIMATION_ADDRESS) {
@@ -212,48 +214,48 @@ contract Bridge is ReentrancyGuardTransient {
         }
     }
 
-    /// @notice Finalizes a bridge initiated from Solana.
+    /// @notice Relays a message sent from Solana to Base.
     ///
-    /// @dev This function is called by the entrypoint.
+    /// @dev This function can only be called by the entrypoint.
     ///
-    /// @param payload The bridge payload to finalize.
-    /// @param payloadHash The hash of the bridge payload.
+    /// @param message The message to relay.
+    /// @param messageHash The hash of the message.
     /// @param isTrustedRelayer Whether the caller was the trusted relayer.
-    function finalizeBridge(BridgePayload calldata payload, bytes32 payloadHash, bool isTrustedRelayer) external {
+    function relayMessage(Message calldata message, bytes32 messageHash, bool isTrustedRelayer) external {
         // Check that the caller is the entrypoint.
         require(msg.sender == address(this), SenderIsNotEntrypoint());
 
-        // Check that the payload has not already been finalized.
-        require(!successes[payloadHash], BridgeAlreadyFinalized());
+        // Check that the message has not already been relayed.
+        require(!successes[messageHash], MessageAlreadySuccessfullyRelayed());
 
         // Check that the relay is allowed.
         if (isTrustedRelayer) {
-            require(payload.nonce == lastNonce + 1, NonceNotIncremental());
-            lastNonce = payload.nonce;
+            require(message.nonce == lastNonce + 1, NonceNotIncremental());
+            lastNonce = message.nonce;
 
-            require(!failures[payloadHash], BridgeAlreadyFailed());
+            require(!failures[messageHash], MessageAlreadyFailedToRelay());
         } else {
-            require(failures[payloadHash], BridgeNotAlreadyFailed());
+            require(failures[messageHash], MessageNotAlreadyFailedToRelay());
         }
 
         // Get (and deploy if needed) the Twin contract.
-        address twinAddress = twins[payload.remoteSender];
+        address twinAddress = twins[message.remoteSender];
         if (twinAddress == address(0)) {
             twinAddress = LibClone.deployDeterministicERC1967BeaconProxy({
                 beacon: TWIN_BEACON,
-                salt: Pubkey.unwrap(payload.remoteSender)
+                salt: Pubkey.unwrap(message.remoteSender)
             });
-            twins[payload.remoteSender] = twinAddress;
+            twins[message.remoteSender] = twinAddress;
         }
 
-        if (payload.bridgeType == BridgeType.Transfer) {
-            TransferPayload memory transferPayload = abi.decode(payload.data, (TransferPayload));
+        if (message.messageType == MessageType.Transfer) {
+            Transfer memory transfer = abi.decode(message.data, (Transfer));
 
-            // TODO: Do I need to wrap this in a try/catch with ExecutionFailed?
-            TokenLib.finalizeTransfer(transferPayload);
-        } else if (payload.bridgeType == BridgeType.Call) {
-            Call memory callPayload = abi.decode(payload.data, (Call));
-            try Twin(payable(twinAddress)).execute{value: callPayload.value}(callPayload) {}
+            // TODO: Do I need to wrap the token transfer in a try/catch with ExecutionFailed?
+            TokenLib.finalizeTransfer(transfer);
+        } else if (message.messageType == MessageType.Call) {
+            Call memory call = abi.decode(message.data, (Call));
+            try Twin(payable(twinAddress)).execute{value: call.value}(call) {}
             catch {
                 revert ExecutionFailed();
             }
@@ -275,44 +277,12 @@ contract Bridge is ReentrancyGuardTransient {
     ///                       Private Functions                ///
     //////////////////////////////////////////////////////////////
 
-    /// @notice Checks whether the call's gas left is sufficient to cover the `minGas` plus the `reservedGas`.
-    ///
-    /// @dev Copied from:
-    ///      https://github.com/ethereum-optimism/optimism/blob/4e9ef1aeffd2afd7a2378e2dc5efffa71f04207d/packages/contracts-bedrock/src/libraries/SafeCall.sol#L100
-    ///
-    /// @dev !!!!! FOOTGUN ALERT !!!!!
-    ///      1.) The _FINALIZE_BRIDGE_OVERHEAD_GAS base buffer is to account for the worst case of the dynamic cost of
-    ///          the `CALL` opcode's `address_access_cost`, `positive_value_cost`, and `value_to_empty_account_cost`
-    ///          factors with an added buffer of 5,700 gas. It is still possible to self-rekt by initiating a withdrawal
-    ///          with a minimum gas limit that does not account for the `memory_expansion_cost` & `code_execution_cost`
-    ///          factors of the dynamic cost of the `CALL` opcode.
-    ///      2.) This function should *directly* precede the external call if possible. There is an added buffer to
-    ///          account for gas consumed between this check and the call, but it is only 5,700 gas.
-    ///      3.) Because EIP-150 ensures that a maximum of 63/64ths of the remaining gas in the call frame may be passed
-    ///          to a subcontext, we need to ensure that the gas will not be truncated.
-    ///      4.) Use wisely. This function is not a silver bullet.
-    ///
-    /// @param minGas Minimum amount of gas that is forwarded to the Solana sender's Twin contract.
-    /// @param reservedGas Amount of gas that is reserved for the caller after the execution of the target context.
-    ///
-    /// @return hasMinGas `true` if there is enough gas remaining to safely supply `minGas` to the target
-    ///                    context as well as reserve `reservedGas` for the caller after the execution of
-    ///                    the target context.
-    function _hasMinGas(uint256 minGas, uint256 reservedGas) private view returns (bool hasMinGas) {
-        assembly {
-            // Equation: gas × 63 - 63(40_000 + reservedGas) ≥ minGas × 64
-            //       =>  gas × 63 ≥ minGas × 64 + 63(40_000 + reservedGas)
-            hasMinGas :=
-                iszero(lt(mul(gas(), 63), add(mul(minGas, 64), mul(add(_FINALIZE_BRIDGE_OVERHEAD_GAS, reservedGas), 63))))
-        }
-    }
-
     /// @notice Checks whether the ISM verification is successful.
     ///
-    /// @param payloads The payloads to verify.
+    /// @param messages The messages to verify.
     /// @param ismData Encoded ISM data used to verify the call.
-    function _ismVerify(BridgePayload[] calldata payloads, bytes calldata ismData) private pure {
-        payloads; // Silence unused variable warning.
+    function _ismVerify(Message[] calldata messages, bytes calldata ismData) private pure {
+        messages; // Silence unused variable warning.
         ismData; // Silence unused variable warning.
 
         // TODO: Plug some ISM verification here.

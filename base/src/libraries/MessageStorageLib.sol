@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-/// @notice Storage layout used by this contract.
+/// @notice Storage layout used by this library.
 ///
 /// @custom:storage-location erc7201:coinbase.storage.MessageStorageLib
 ///
-/// @custom:field messages Mapping of existing message hashes.
+/// @custom:field messages Mapping of registered message hashes.
 /// @custom:field nonce Incremental nonce used per message.
 struct MessageStorageLibStorage {
-    mapping(bytes32 messageHash => bool exists) messages;
+    mapping(bytes32 messageHash => bool registered) messages;
     uint64 nonce;
 }
 
@@ -17,11 +17,11 @@ library MessageStorageLib {
     ///                       Structs                          ///
     //////////////////////////////////////////////////////////////
 
-    /// @notice Struct representing a message to a Solana program.
+    /// @notice Struct representing a message to the Solana bridge.
     ///
-    /// @custom:field nonce Unique identifier for this message.
-    /// @custom:field sender Ethereum address that initiated the message.
-    /// @custom:field data Data to be passed to the Solana program.
+    /// @custom:field nonce Unique nonce for the message.
+    /// @custom:field sender Sender address.
+    /// @custom:field data Message data to be passed to the Solana bridge.
     struct Message {
         uint64 nonce;
         address sender;
@@ -64,15 +64,14 @@ library MessageStorageLib {
         }
     }
 
-    /// @notice Sends a message to a Solana program.
+    /// @notice Sends a message to the Solana bridge.
     ///
     /// @param sender The message's sender address.
-    /// @param data Data to be passed to the Solana program.
+    /// @param data Message data to be passed to the Solana bridge.
     function sendMessage(address sender, bytes memory data) internal {
         MessageStorageLibStorage storage $ = getMessageStorageLibStorage();
 
         Message memory message = Message({nonce: $.nonce, sender: sender, data: data});
-
         bytes32 messageHash = _hashMessage(message);
         $.messages[messageHash] = true;
 
@@ -80,7 +79,7 @@ library MessageStorageLib {
             ++$.nonce;
         }
 
-        emit MessageRegistered(messageHash, message);
+        emit MessageRegistered({messageHash: messageHash, message: message});
     }
 
     //////////////////////////////////////////////////////////////
