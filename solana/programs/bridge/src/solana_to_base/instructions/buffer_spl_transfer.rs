@@ -11,7 +11,7 @@ use crate::{
 
 #[derive(Accounts)]
 #[instruction(id: u64, remote_token: [u8; 20])]
-pub struct CreateSplTransferOperation<'info> {
+pub struct BufferSplTransfer<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
 
@@ -43,6 +43,7 @@ pub struct CreateSplTransferOperation<'info> {
         init,
         seeds = [
             OPERATION_SEED,
+            from.key().as_ref(), 
             id.to_le_bytes().as_ref(),
             outgoing_message_header.operation_count.to_le_bytes().as_ref(),
         ],
@@ -57,8 +58,8 @@ pub struct CreateSplTransferOperation<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn create_spl_transfer_operation_handler(
-    ctx: Context<CreateSplTransferOperation>,
+pub fn buffer_spl_transfer_handler(
+    ctx: Context<BufferSplTransfer>,
     _id: u64,
     gas_limit: u64,
     to: [u8; 20],

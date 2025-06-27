@@ -1,28 +1,27 @@
 use anchor_lang::prelude::*;
+use anchor_spl::{
+    token_2022::Token2022,
+    token_interface::{Mint, TokenAccount},
+};
 
-use crate::{
-    common::SOL_VAULT_SEED,
-    solana_to_base::{
-        process_sol_transfer_operation, Operation, OutgoingMessageHeader, Transfer as TransferOp,
-        MESSAGE_HEADER_SEED, NATIVE_SOL_PUBKEY, OPERATION_SEED,
-    },
+use crate::solana_to_base::{
+    process_wrapped_token_transfer_operation, Operation, OutgoingMessageHeader,
+    Transfer as TransferOp, MESSAGE_HEADER_SEED, OPERATION_SEED,
 };
 
 #[derive(Accounts)]
-#[instruction(id: u64, remote_token: [u8; 20])]
-pub struct CreateSolTransferOperation<'info> {
+#[instruction(id: u64)]
+pub struct BufferWrappedTokenTransfer<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
 
     pub from: Signer<'info>,
 
-    /// CHECK: This is the SOL vault account.
-    #[account(
-        mut,
-        seeds = [SOL_VAULT_SEED, remote_token.as_ref()],
-        bump,
-    )]
-    pub sol_vault: AccountInfo<'info>,
+    #[account(mut)]
+    pub mint: InterfaceAccount<'info, Mint>,
+
+    #[account(mut)]
+    pub from_token_account: InterfaceAccount<'info, TokenAccount>,
 
     #[account(
         init_if_needed,
@@ -37,38 +36,41 @@ pub struct CreateSolTransferOperation<'info> {
         init,
         seeds = [
             OPERATION_SEED,
-            outgoing_message_header.key().as_ref(),
+            from.key().as_ref(), 
+            id.to_le_bytes().as_ref(),
             outgoing_message_header.operation_count.to_le_bytes().as_ref(),
         ],
         bump,
         payer = payer,
         space = 8 + Operation::transfer_space(),
     )]
-    pub sol_transfer_operation: Account<'info, Operation>,
+    pub transfer_spl_operation: Account<'info, Operation>,
+
+    pub token_program: Program<'info, Token2022>,
 
     pub system_program: Program<'info, System>,
 }
 
-pub fn create_sol_transfer_operation_handler(
-    ctx: Context<CreateSolTransferOperation>,
+pub fn buffer_wrapped_token_transfer_handler(
+    ctx: Context<BufferWrappedTokenTransfer>,
     _id: u64,
     gas_limit: u64,
     to: [u8; 20],
-    remote_token: [u8; 20],
     amount: u64,
 ) -> Result<()> {
-    process_sol_transfer_operation(
-        ctx.accounts.sol_vault.to_account_info(),
-        ctx.accounts.from.to_account_info(),
-        &ctx.accounts.system_program,
+    let remote_token = process_wrapped_token_transfer_operation(
+        &ctx.accounts.mint,
+        &ctx.accounts.from_token_account,
+        &ctx.accounts.from,
+        &ctx.accounts.token_program,
         ctx.accounts.outgoing_message_header.gas_limit + gas_limit,
         amount,
     )?;
 
     // Create the transfer operation.
-    *ctx.accounts.sol_transfer_operation = Operation::new_transfer(TransferOp {
+    *ctx.accounts.transfer_spl_operation = Operation::new_transfer(TransferOp {
         to,
-        local_token: NATIVE_SOL_PUBKEY,
+        local_token: ctx.accounts.mint.key(),
         remote_token,
         amount,
     });

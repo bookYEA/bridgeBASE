@@ -7,21 +7,22 @@ use crate::base_to_solana::{
 };
 
 #[derive(Accounts)]
+#[instruction(_nonce: u64, _sender: [u8; 20], data: Vec<u8>)]
 pub struct ProveMessage<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
 
+    pub output_root: Account<'info, OutputRoot>,
+
     #[account(
         init,
         payer = payer,
-        space = 8 + IncomingMessage::INIT_SPACE,
+        space = 8 + IncomingMessage::space(data.len()),
         // // NOTE: We check that the PDA derivation is correct in the handler to optimize the CPI.
         // seeds = [MESSAGE_FROM_BASE_SEED, &message_hash],
         // bump
     )]
     pub message: Account<'info, IncomingMessage>,
-
-    pub output_root: Account<'info, OutputRoot>,
 
     pub system_program: Program<'info, System>,
 }
@@ -47,9 +48,11 @@ pub fn prove_message_handler(
     // Verify the merkle proof to ensure the transaction exists on the source chain
     mmr::verify_proof(&ctx.accounts.output_root.root, &message_hash, &proof)?;
 
-    ctx.accounts.message.executed = false;
-    ctx.accounts.message.sender = sender;
-    ctx.accounts.message.data = data;
+    *ctx.accounts.message = IncomingMessage {
+        executed: false,
+        sender,
+        data,
+    };
 
     Ok(())
 }

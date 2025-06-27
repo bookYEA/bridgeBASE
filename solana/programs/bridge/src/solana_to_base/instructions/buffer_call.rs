@@ -7,7 +7,7 @@ use crate::solana_to_base::{
 
 #[derive(Accounts)]
 #[instruction(id: u64, data: Vec<u8>)]
-pub struct CreateCallOperation<'info> {
+pub struct BufferCall<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
 
@@ -26,7 +26,8 @@ pub struct CreateCallOperation<'info> {
         init,
         seeds = [
             OPERATION_SEED,
-            outgoing_message_header.key().as_ref(),
+            from.key().as_ref(), 
+            id.to_le_bytes().as_ref(),
             outgoing_message_header.operation_count.to_le_bytes().as_ref(),
         ],
         bump,
@@ -38,8 +39,8 @@ pub struct CreateCallOperation<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn create_call_operation_handler(
-    ctx: Context<CreateCallOperation>,
+pub fn buffer_call_handler(
+    ctx: Context<BufferCall>,
     _id: u64,
     ty: CallType,
     gas_limit: u64,

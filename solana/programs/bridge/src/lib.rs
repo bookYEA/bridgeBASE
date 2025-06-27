@@ -50,8 +50,8 @@ pub mod bridge {
 
     // Solana -> Base
 
-    pub fn create_call_operation(
-        ctx: Context<CreateCallOperation>,
+    pub fn buffer_call(
+        ctx: Context<BufferCall>,
         id: u64,
         call_type: CallType,
         gas_limit: u64,
@@ -59,22 +59,22 @@ pub mod bridge {
         value: u128,
         data: Vec<u8>,
     ) -> Result<()> {
-        create_call_operation_handler(ctx, id, call_type, gas_limit, to, value, data)
+        buffer_call_handler(ctx, id, call_type, gas_limit, to, value, data)
     }
 
     pub fn oneshot_call(ctx: Context<OneshotCall>, gas_limit: u64, call: Call) -> Result<()> {
         oneshot_call_handler(ctx, gas_limit, call)
     }
 
-    pub fn create_sol_transfer_operation(
-        ctx: Context<CreateSolTransferOperation>,
+    pub fn buffer_sol_transfer(
+        ctx: Context<BufferSolTransfer>,
         id: u64,
         gas_limit: u64,
         to: [u8; 20],
         remote_token: [u8; 20],
         amount: u64,
     ) -> Result<()> {
-        create_sol_transfer_operation_handler(ctx, id, gas_limit, to, remote_token, amount)
+        buffer_sol_transfer_handler(ctx, id, gas_limit, to, remote_token, amount)
     }
 
     pub fn oneshot_sol_transfer(
@@ -87,15 +87,15 @@ pub mod bridge {
         oneshot_sol_transfer_handler(ctx, gas_limit, to, remote_token, amount)
     }
 
-    pub fn create_spl_transfer_operation(
-        ctx: Context<CreateSplTransferOperation>,
+    pub fn buffer_spl_transfer(
+        ctx: Context<BufferSplTransfer>,
         id: u64,
         gas_limit: u64,
         to: [u8; 20],
         remote_token: [u8; 20],
         amount: u64,
     ) -> Result<()> {
-        create_spl_transfer_operation_handler(ctx, id, gas_limit, to, remote_token, amount)
+        buffer_spl_transfer_handler(ctx, id, gas_limit, to, remote_token, amount)
     }
 
     pub fn oneshot_spl_transfer(
@@ -108,14 +108,14 @@ pub mod bridge {
         oneshot_spl_transfer_handler(ctx, gas_limit, to, remote_token, amount)
     }
 
-    pub fn create_wrapped_token_transfer_operation(
-        ctx: Context<CreateWrappedTokenTransferOperation>,
+    pub fn buffer_wrapped_token_transfer(
+        ctx: Context<BufferWrappedTokenTransfer>,
         id: u64,
         gas_limit: u64,
         to: [u8; 20],
         amount: u64,
     ) -> Result<()> {
-        create_wrapped_token_transfer_operation_handler(ctx, id, gas_limit, to, amount)
+        buffer_wrapped_token_transfer_handler(ctx, id, gas_limit, to, amount)
     }
 
     pub fn oneshot_wrapped_token_transfer(

@@ -2,21 +2,19 @@ use anchor_lang::{prelude::*, solana_program::instruction::Instruction};
 
 /// Instruction to be executed by the wallet.
 /// Functionally equivalent to a Solana Instruction.
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, InitSpace)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct Ix {
     /// Program that will process this instruction.
     pub program_id: Pubkey,
     /// Accounts required for this instruction.
-    #[max_len(10)]
     pub accounts: Vec<IxAccount>,
     /// Instruction data.
-    #[max_len(256)]
     pub data: Vec<u8>,
 }
 
 /// Account used in an instruction.
 /// Identical to Solana's AccountMeta but implements AnchorSerialize and AnchorDeserialize.
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, InitSpace)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct IxAccount {
     /// Public key of the account.
     pub pubkey_or_pda: PubkeyOrPda,
@@ -26,11 +24,10 @@ pub struct IxAccount {
     pub is_signer: bool,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, InitSpace)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub enum PubkeyOrPda {
     Pubkey(Pubkey),
     PDA {
-        #[max_len(10, 32)]
         seeds: Vec<Vec<u8>>,
         program_id: Pubkey,
     },
