@@ -871,6 +871,8 @@ dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
  "anchor-lang",
+ "anchor-spl",
+ "hex",
 ]
 
 [[package]]

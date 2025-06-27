@@ -65,26 +65,33 @@ contract Bridge is ReentrancyGuardTransient {
     ///                       Structs                          ///
     //////////////////////////////////////////////////////////////
 
-    /// @notice Enum containing message types.
-    enum MessageType {
-        Transfer,
-        Call
-    }
-
     /// @notice Message sent from Solana to Base.
     ///
     /// @custom:field nonce Unique nonce for the message.
     /// @custom:field sender The Solana sender's pubkey.
     /// @custom:field gasLimit The gas limit for the message execution.
-    /// @custom:field msgType The type of the message.
-    /// @custom:field data The abi encoded data for the message.
-    ///                    Transfer => abi.encode(Transfer)
-    ///                    Call => abi.encode(Call)
+    /// @custom:field operations The operations to be executed.
     struct Message {
         uint64 nonce;
         Pubkey sender;
         uint64 gasLimit;
-        MessageType messageType;
+        Operation[] operations;
+    }
+
+    /// @notice Enum containing operation types.
+    enum OperationType {
+        Transfer,
+        Call
+    }
+
+    /// @notice Operation to be executed.
+    ///
+    /// @custom:field operationType The type of the operation.
+    /// @custom:field data The abi encoded data of the operation.
+    ///                    Transfer => abi.encode(Transfer)
+    ///                    Call => abi.encode(Call)
+    struct Operation {
+        OperationType operationType;
         bytes data;
     }
 
@@ -100,11 +107,19 @@ contract Bridge is ReentrancyGuardTransient {
     ///      chain.
     address public constant ESTIMATION_ADDRESS = address(1);
 
+    /// @notice Special pubkey used as the sender to represent the Solana bridge
+    ///         Pubkey("111111111111111111111111111bridge")
+    Pubkey public constant REMOTE_BRIDGE =
+        Pubkey.wrap(0x0000000000000000000000000000000000000000000000000000000553ae31c3);
+
     /// @notice Address of the trusted relayer.
     address public immutable TRUSTED_RELAYER;
 
     /// @notice Address of the Twin beacon.
     address public immutable TWIN_BEACON;
+
+    /// @notice Address of the Bridge Twin contract on Base.
+    address public immutable BRIDGE_TWIN;
 
     /// @notice Additional gas buffer reserved to ensure the correct execution of `relayMessagesEntrypoint`.
     uint64 private constant _RELAY_MESSAGES_ENTRYPOINT_GAS_BUFFER = 40_000;
@@ -137,9 +152,10 @@ contract Bridge is ReentrancyGuardTransient {
 
     /// @notice Constructs the Portal contract with immutable references.
     ///
-    constructor(address trustedRelayer, address twinBeacon) {
+    constructor(address trustedRelayer, address twinBeacon, address bridgeTwin) {
         TRUSTED_RELAYER = trustedRelayer;
         TWIN_BEACON = twinBeacon;
+        BRIDGE_TWIN = bridgeTwin;
     }
 
     /// @notice Sends a message to the Solana bridge.
@@ -163,8 +179,7 @@ contract Bridge is ReentrancyGuardTransient {
             Message memory message = messages[i];
 
             // NOTE: Intentionally not including the gas limit in the hash to allow for replays with higher gas limits.
-            bytes32 messageHash =
-                keccak256(abi.encode(message.nonce, message.sender, message.messageType, message.data));
+            bytes32 messageHash = keccak256(abi.encode(message.nonce, message.sender, message.operations));
 
             // Ensures sufficient gas for execution and cleanup.
             uint256 reservedGas = _CALL_OVERHEAD_GAS + _RELAY_MESSAGES_ENTRYPOINT_GAS_BUFFER;
@@ -230,12 +245,27 @@ contract Bridge is ReentrancyGuardTransient {
 
         // Check that the relay is allowed.
         if (isTrustedRelayer) {
+            // TODO:Should the nonce be cached and only SSTOREd once?
             require(message.nonce == lastNonce + 1, NonceNotIncremental());
             lastNonce = message.nonce;
 
             require(!failures[messageHash], MessageAlreadyFailedToRelay());
         } else {
             require(failures[messageHash], MessageNotAlreadyFailedToRelay());
+        }
+
+        // Special case where the message sneder is directly the Solana bridge.
+        // For now this is only the case when a Wrapped Token is deployed on Solana and is being registered on Base.
+        if (message.sender == REMOTE_BRIDGE) {
+            Operation memory operation = message.operations[0];
+            (address localToken, Pubkey remoteToken, uint8 scalerExponent) =
+                abi.decode(operation.data, (address, Pubkey, uint8));
+            TokenLib.registerRemoteToken({
+                localToken: localToken,
+                remoteToken: remoteToken,
+                scalerExponent: scalerExponent
+            });
+            return;
         }
 
         // Get (and deploy if needed) the Twin contract.
@@ -248,18 +278,31 @@ contract Bridge is ReentrancyGuardTransient {
             twins[message.sender] = twinAddress;
         }
 
-        if (message.messageType == MessageType.Transfer) {
-            Transfer memory transfer = abi.decode(message.data, (Transfer));
+        for (uint256 i; i < message.operations.length; i++) {
+            Operation memory operation = message.operations[i];
 
-            // TODO: Do I need to wrap the token transfer in a try/catch with ExecutionFailed?
-            TokenLib.finalizeTransfer(transfer);
-        } else if (message.messageType == MessageType.Call) {
-            Call memory call = abi.decode(message.data, (Call));
-            try Twin(payable(twinAddress)).execute{value: call.value}(call) {}
-            catch {
-                revert ExecutionFailed();
+            if (operation.operationType == OperationType.Transfer) {
+                Transfer memory transfer = abi.decode(operation.data, (Transfer));
+
+                // TODO: Do I need to wrap the token transfer in a try/catch with ExecutionFailed?
+                TokenLib.finalizeTransfer(transfer);
+            } else if (operation.operationType == OperationType.Call) {
+                Call memory call = abi.decode(operation.data, (Call));
+                try Twin(payable(twinAddress)).execute{value: call.value}(call) {}
+                catch {
+                    revert ExecutionFailed();
+                }
             }
         }
+    }
+
+    /// @notice Registers a remote token that was deployed from the Solana factory.
+    ///
+    /// @param localToken Address of the ERC20 token on this chain.
+    /// @param remoteToken Pubkey of the remote token on Solana.
+    /// @param scalerExponent Exponent to be used to convert local to remote amounts.
+    function registerRemoteToken(address localToken, Pubkey remoteToken, uint8 scalerExponent) external {
+        TokenLib.registerRemoteToken({localToken: localToken, remoteToken: remoteToken, scalerExponent: scalerExponent});
     }
 
     //////////////////////////////////////////////////////////////

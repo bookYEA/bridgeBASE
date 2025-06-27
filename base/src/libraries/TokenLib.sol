@@ -220,4 +220,14 @@ library TokenLib {
             amount: localAmount
         });
     }
+
+    /// @notice Registers a remote token that was deployed from the Solana factory.
+    ///
+    /// @param localToken Address of the ERC20 token on this chain.
+    /// @param remoteToken Pubkey of the remote token on Solana.
+    /// @param scalerExponent Exponent to be used to convert local to remote amounts.
+    function registerRemoteToken(address localToken, Pubkey remoteToken, uint8 scalerExponent) internal {
+        TokenLibStorage storage $ = getTokenLibStorage();
+        $.scalars[localToken][remoteToken] = 10 ** scalerExponent;
+    }
 }

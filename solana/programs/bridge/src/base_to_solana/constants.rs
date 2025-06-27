@@ -1,9 +1,16 @@
+use anchor_lang::prelude::*;
+
 pub const INCOMING_MESSAGE_SEED: &[u8] = b"incoming_message";
 pub const OUTPUT_ROOT_SEED: &[u8] = b"output_root";
 pub const BRIDGE_AUTHORITY_SEED: &[u8] = b"bridge_authority";
+pub const WRAPPED_TOKEN_SEED: &[u8] = b"wrapped_token";
+pub const BRIDGE_SENDER: Pubkey = pubkey!("111111111111111111111111111bridge");
+
+pub const REMOTE_TOKEN_METADATA_KEY: &str = "remote_token";
+pub const SCALER_EXPONENT_METADATA_KEY: &str = "scaler_exponent";
 
 mod private {
-    use anchor_lang::prelude::*;
+    use super::*;
 
     #[cfg(feature = "devnet")]
     pub mod config {

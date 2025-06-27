@@ -1,47 +1,51 @@
 use anchor_lang::prelude::*;
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, AnchorSerialize, AnchorDeserialize)]
-pub enum CallType {
-    Call,
-    DelegateCall,
-    Create,
-    Create2,
-}
+use crate::solana_to_base::{Operation, OutgoingMessageHeader};
 
 #[derive(Debug, Clone, Eq, PartialEq, AnchorSerialize, AnchorDeserialize)]
-pub enum OutgoingMessagePayload {
-    Transfer {
-        to: [u8; 20],
-        local_token: Pubkey,
-        remote_token: [u8; 20],
-        local_amount: u64,
-    },
-    Call {
-        call_type: CallType,
-        to: [u8; 20],
-        value: u128,
-        data: Vec<u8>,
+pub enum OutgoingMessageType {
+    Composite(OutgoingMessageHeader),
+    Oneshot {
+        gas_limit: u64,
+        operation: Operation,
     },
 }
 
 #[account]
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct OutgoingMessage {
-    pub nonce: u64,
-    pub sender: Pubkey,
-    pub gas_limit: u64,
-    pub payload: OutgoingMessagePayload,
+    pub from: Pubkey,
+    pub message: OutgoingMessageType,
 }
 
 impl OutgoingMessage {
-    pub fn space(data_len: Option<usize>) -> usize {
-        let payload_space = match data_len {
-            // Transfer
-            None => 32 + 20 + 20 + 8,
-            // Call
-            Some(data_len) => (1 + 1) + 20 + 8 + 16 + (4 + data_len),
-        };
+    pub fn new_composite(from: Pubkey, outgoing_message_header: OutgoingMessageHeader) -> Self {
+        Self {
+            from,
+            message: OutgoingMessageType::Composite(outgoing_message_header),
+        }
+    }
 
-        8 + 32 + 8 + 1 + payload_space
+    pub fn new_oneshot(from: Pubkey, gas_limit: u64, operation: Operation) -> Self {
+        Self {
+            from,
+            message: OutgoingMessageType::Oneshot {
+                gas_limit,
+                operation,
+            },
+        }
+    }
+
+    pub fn composite_space() -> usize {
+        // The space for a Oneshot message is always larger than the space for a Composite message.
+        32 + (1 + Self::oneshot_transfer_space())
+    }
+
+    pub fn oneshot_call_space(data_len: usize) -> usize {
+        32 + (1 + Operation::call_space(data_len))
+    }
+
+    pub fn oneshot_transfer_space() -> usize {
+        32 + (1 + Operation::transfer_space())
     }
 }
