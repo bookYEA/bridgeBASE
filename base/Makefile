@@ -19,7 +19,7 @@ REMOTE_ETH = 0x51ed5f7171ba6789605bbaf67beee412038532f616679f21be97867d95113ab8
 USER_REMOTE_ETH_ATA = 0x08933bf64da91e85dcaaac6e5a8593e7c8556d93b60162cf0e2e9d60e50c9314
 
 .PHONY: deps
-deps: clean-lib forge-deps checkout-op-commit
+deps: clean-lib forge-deps
 
 .PHONY: clean-lib
 clean-lib:
@@ -28,20 +28,7 @@ clean-lib:
 .PHONY: forge-deps
 forge-deps:
 	forge install --no-git github.com/foundry-rs/forge-std \
-		github.com/Vectorized/solady@92e647bb2b387e952480a5a37800e9b4d54f7a06 \
-		github.com/OpenZeppelin/openzeppelin-contracts@v4.9.3 \
-		github.com/OpenZeppelin/openzeppelin-contracts-upgradeable@v4.7.3
-
-.PHONY: checkout-op-commit
-checkout-op-commit:
-	[ -n "$(OP_COMMIT)" ] || (echo "OP_COMMIT must be set in .env" && exit 1)
-	rm -rf lib/optimism
-	mkdir -p lib/optimism
-	cd lib/optimism; \
-	git init; \
-	git remote add origin https://github.com/ethereum-optimism/optimism.git; \
-	git fetch --depth=1 origin $(OP_COMMIT); \
-	git reset --hard FETCH_HEAD
+		github.com/Vectorized/solady@92e647bb2b387e952480a5a37800e9b4d54f7a06
 
 .PHONY: dev-deploy
 dev-deploy: deploy create-wrapped-sol create-token

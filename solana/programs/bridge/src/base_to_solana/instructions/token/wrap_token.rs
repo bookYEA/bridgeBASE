@@ -12,13 +12,14 @@ use anchor_spl::token_interface::{
 };
 
 use crate::base_to_solana::{
-    BRIDGE_SENDER, GAS_LIMIT_REGISTER_REMOTE_TOKEN, REMOTE_TOKEN_METADATA_KEY,
-    SCALER_EXPONENT_METADATA_KEY, WRAPPED_TOKEN_SEED,
+    GAS_LIMIT_REGISTER_REMOTE_TOKEN, REMOTE_TOKEN_METADATA_KEY, SCALER_EXPONENT_METADATA_KEY,
+    WRAPPED_TOKEN_SEED,
 };
 use crate::common::{bridge::Bridge, PartialTokenMetadata, BRIDGE_SEED};
 use crate::solana_to_base::{
     check_and_pay_for_gas, Call, CallType, OutgoingMessage, GAS_FEE_RECEIVER, OUTGOING_MESSAGE_SEED,
 };
+use crate::ID;
 
 #[derive(Accounts)]
 #[instruction(decimals: u8, metadata: PartialTokenMetadata)]
@@ -195,7 +196,7 @@ fn register_remote_token(
         data: (address, local_token, scaler_exponent).abi_encode(),
     };
 
-    *ctx.accounts.outgoing_message = OutgoingMessage::new_call(BRIDGE_SENDER, gas_limit, call);
+    *ctx.accounts.outgoing_message = OutgoingMessage::new_call(ID, gas_limit, call);
     ctx.accounts.bridge.nonce += 1;
 
     Ok(())

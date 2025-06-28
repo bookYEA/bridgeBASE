@@ -3,7 +3,7 @@ pragma solidity ^0.8.28;
 
 import {Ix, Pda, Pubkey, SVMLib} from "./SVMLib.sol";
 
-library SVMTokenBridgeLib {
+library SVMBridgeLib {
     //////////////////////////////////////////////////////////////
     ///                       Constants                        ///
     //////////////////////////////////////////////////////////////
@@ -24,7 +24,41 @@ library SVMTokenBridgeLib {
     ///                     Internal Functions                 ///
     //////////////////////////////////////////////////////////////
 
-    /// @notice Builds the TokenBridge's FinalizeBridgeToken instruction.
+    /// @notice Serializes a Message::Call variant to Borsh-compatible bytes.
+    ///
+    /// @param ixs The Solana instructions.
+    ///
+    /// @return Serialized Message::Call bytes ready for Solana deserialization
+    function serializeCall(Ix[] memory ixs) internal pure returns (bytes memory) {
+        // Variant discriminator for Call (0)
+        bytes memory result = abi.encodePacked(uint8(0));
+
+        // Serialize the Anchor instructions bytes.
+        result = abi.encodePacked(result, SVMLib.serializeIxs(ixs));
+
+        return result;
+    }
+
+    /// @notice Serializes a Message::Transfer variant to Borsh-compatible bytes.
+    ///
+    /// @param transfer The transfer instruction
+    /// @param ixs The Solana instructions.
+    ///
+    /// @return Serialized Message::Transfer bytes ready for Solana deserialization
+    function serializeTransfer(Ix memory transfer, Ix[] memory ixs) internal pure returns (bytes memory) {
+        // Variant discriminator for Transfer (1)
+        bytes memory result = abi.encodePacked(uint8(1));
+
+        // Serialize the transfer instruction
+        result = abi.encodePacked(result, SVMLib.serializeIx(transfer));
+
+        // Serialize the instructions array
+        result = abi.encodePacked(result, SVMLib.serializeIxs(ixs));
+
+        return result;
+    }
+
+    /// @notice Builds the Bridge's FinalizeBridgeToken instruction.
     ///
     /// @param remoteBridge Pubkey of the remote bridge on Solana.
     /// @param localToken Address of the ERC20 token on this chain.
@@ -46,15 +80,16 @@ library SVMTokenBridgeLib {
         serializedAccounts[2] =
             SVMLib.serializePubkeyAccount({pubkey: _TOKEN_PROGRAM_2022_ID, isWritable: false, isSigner: false}); // token_program
 
-        return Ix({
-            programId: remoteBridge,
-            name: "finalize_bridge_token",
-            serializedAccounts: serializedAccounts,
-            data: abi.encodePacked(localToken, SVMLib.toU64LittleEndian(remoteAmount)) // (remote_token, amount)
-        });
+        // (remote_token, amount)
+        bytes memory ixData = abi.encodePacked(localToken, SVMLib.toU64LittleEndian(remoteAmount));
+
+        bytes32 ixDiscriminator = sha256("global:finalize_bridge_token");
+        ixData = abi.encodePacked(bytes8(ixDiscriminator), ixData);
+
+        return Ix({programId: remoteBridge, serializedAccounts: serializedAccounts, data: ixData});
     }
 
-    /// @notice Builds the TokenBridge's FinalizeBridgeSol instruction.
+    /// @notice Builds the Bridge's FinalizeBridgeSol instruction.
     ///
     /// @param remoteBridge Pubkey of the remote bridge on Solana.
     /// @param localToken Address of the ERC20 token on this chain.
@@ -73,15 +108,15 @@ library SVMTokenBridgeLib {
         serializedAccounts[2] =
             SVMLib.serializePubkeyAccount({pubkey: _SYSTEM_PROGRAM_ID, isWritable: false, isSigner: false}); // system_program
 
-        return Ix({
-            programId: remoteBridge,
-            name: "finalize_bridge_sol",
-            serializedAccounts: serializedAccounts,
-            data: abi.encodePacked(localToken, SVMLib.toU64LittleEndian(remoteAmount)) // (remote_token, amount)
-        });
+        // (remote_token, amount)
+        bytes memory ixData = abi.encodePacked(localToken, SVMLib.toU64LittleEndian(remoteAmount));
+        bytes32 ixDiscriminator = sha256("global:finalize_bridge_sol");
+        ixData = abi.encodePacked(bytes8(ixDiscriminator), ixData);
+
+        return Ix({programId: remoteBridge, serializedAccounts: serializedAccounts, data: ixData});
     }
 
-    /// @notice Builds the TokenBridge's FinalizeBridgeSpl instruction.
+    /// @notice Builds the Bridge's FinalizeBridgeSpl instruction.
     ///
     /// @param remoteBridge Pubkey of the remote bridge on Solana.
     /// @param localToken Address of the ERC20 token on this chain.
@@ -107,19 +142,19 @@ library SVMTokenBridgeLib {
         serializedAccounts[4] =
             SVMLib.serializePubkeyAccount({pubkey: _TOKEN_PROGRAM_2022_ID, isWritable: false, isSigner: false}); // token_program_2022
 
-        return Ix({
-            programId: remoteBridge,
-            name: "finalize_bridge_spl",
-            serializedAccounts: serializedAccounts,
-            data: abi.encodePacked(localToken, SVMLib.toU64LittleEndian(remoteAmount)) // (remote_token, amount)
-        });
+        // (remote_token, amount)
+        bytes memory ixData = abi.encodePacked(localToken, SVMLib.toU64LittleEndian(remoteAmount));
+        bytes32 ixDiscriminator = sha256("global:finalize_bridge_spl");
+        ixData = abi.encodePacked(bytes8(ixDiscriminator), ixData);
+
+        return Ix({programId: remoteBridge, serializedAccounts: serializedAccounts, data: ixData});
     }
 
     //////////////////////////////////////////////////////////////
     ///                     Private Functions                  ///
     //////////////////////////////////////////////////////////////
 
-    /// @notice Builds the TokenBridge's sol vault PDA.
+    /// @notice Builds the Bridge's sol vault PDA.
     ///
     /// @param remoteBridge Pubkey of the remote bridge on Solana.
     /// @param localToken Address of the ERC20 token on this chain.
@@ -143,7 +178,7 @@ library SVMTokenBridgeLib {
         });
     }
 
-    /// @notice Builds the TokenBridge's token vault PDA.
+    /// @notice Builds the Bridge's token vault PDA.
     ///
     /// @param remoteBridge Pubkey of the remote bridge on Solana.
     /// @param localToken Address of the ERC20 token on this chain.

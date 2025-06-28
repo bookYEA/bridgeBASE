@@ -5,9 +5,8 @@ import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 
 import {CrossChainERC20} from "../CrossChainERC20.sol";
 
-import {MessageStorageLib} from "./MessageStorageLib.sol";
-import {Ix, Pubkey, SVMLib} from "./SVMLib.sol";
-import {SVMTokenBridgeLib} from "./SVMTokenBridgeLib.sol";
+import {SVMBridgeLib} from "./SVMBridgeLib.sol";
+import {Ix, Pubkey} from "./SVMLib.sol";
 
 /// @notice Struct representing a token transfer.
 ///
@@ -45,9 +44,6 @@ library TokenLib {
     /// @notice Thrown when the remote token is not the expected token.
     error IncorrectRemoteToken();
 
-    /// @notice Thrown when the token pair is not correct.
-    error NotRemoteBridge();
-
     /// @notice Thrown when the token pair is not registered.
     error WrappedSplRouteNotRegistered();
 
@@ -74,10 +70,6 @@ library TokenLib {
     Pubkey public constant NATIVE_SOL_PUBKEY =
         Pubkey.wrap(0x069be72ab836d4eacc02525b7350a78a395da2f1253a40ebafd6630000000000);
 
-    /// @notice Pubkey of the token bridge contract on Solana.
-    Pubkey public constant REMOTE_TOKEN_BRIDGE =
-        Pubkey.wrap(0x0000000000000000000000000000000000000000000000000000000000000000);
-
     /// @dev Slot for the `TokenLibStorage` struct in storage.
     ///      Computed from:
     ///         keccak256(abi.encode(uint256(keccak256("coinbase.storage.TokenLib")) - 1)) & ~bytes32(uint256(0xff))
@@ -99,13 +91,17 @@ library TokenLib {
         }
     }
 
-    // TODO: Update this once the Solana side is refactored.
-    function initiateTransfer(Transfer memory transfer) internal {
+    /// @notice Initializes a token transfer and returns the Anchor instruction to execute on the Solana bridge.
+    ///
+    /// @param transfer The token transfer to bridge.
+    /// @param remoteBridge Pubkey of the remote bridge on Solana.
+    ///
+    /// @return ix The Anchor instruction to execute on the Solana bridge.
+    function initializeTransfer(Transfer memory transfer, Pubkey remoteBridge) internal returns (Ix memory ix) {
         Pubkey to = Pubkey.wrap(transfer.to);
         TokenLibStorage storage $ = getTokenLibStorage();
 
         uint256 localAmount;
-        Ix memory ix;
 
         if (transfer.localToken == ETH_ADDRESS) {
             // Case: Bridging native ETH to Solana
@@ -115,8 +111,8 @@ library TokenLib {
             localAmount = transfer.remoteAmount * scaler;
             require(msg.value == localAmount, InvalidMsgValue());
 
-            ix = SVMTokenBridgeLib.finalizeBridgeTokenIx({
-                remoteBridge: REMOTE_TOKEN_BRIDGE,
+            ix = SVMBridgeLib.finalizeBridgeTokenIx({
+                remoteBridge: remoteBridge,
                 localToken: transfer.localToken,
                 remoteToken: transfer.remoteToken,
                 to: to,
@@ -134,14 +130,14 @@ library TokenLib {
                 CrossChainERC20(transfer.localToken).burn({from: msg.sender, amount: localAmount});
 
                 ix = transfer.remoteToken == NATIVE_SOL_PUBKEY
-                    ? SVMTokenBridgeLib.finalizeBridgeSolIx({
-                        remoteBridge: REMOTE_TOKEN_BRIDGE,
+                    ? SVMBridgeLib.finalizeBridgeSolIx({
+                        remoteBridge: remoteBridge,
                         localToken: transfer.localToken,
                         to: to,
                         remoteAmount: transfer.remoteAmount
                     })
-                    : SVMTokenBridgeLib.finalizeBridgeSplIx({
-                        remoteBridge: REMOTE_TOKEN_BRIDGE,
+                    : SVMBridgeLib.finalizeBridgeSplIx({
+                        remoteBridge: remoteBridge,
                         localToken: transfer.localToken,
                         remoteToken: transfer.remoteToken,
                         to: to,
@@ -163,8 +159,8 @@ library TokenLib {
 
                 $.deposits[transfer.localToken][transfer.remoteToken] += localAmount;
 
-                ix = SVMTokenBridgeLib.finalizeBridgeTokenIx({
-                    remoteBridge: REMOTE_TOKEN_BRIDGE,
+                ix = SVMBridgeLib.finalizeBridgeTokenIx({
+                    remoteBridge: remoteBridge,
                     localToken: transfer.localToken,
                     remoteToken: transfer.remoteToken,
                     to: to,
@@ -172,10 +168,6 @@ library TokenLib {
                 });
             }
         }
-
-        Ix[] memory ixs = new Ix[](1);
-        ixs[0] = ix;
-        MessageStorageLib.sendMessage({sender: msg.sender, data: SVMLib.serializeAnchorIxs(ixs)});
     }
 
     /// @notice Finalizes a token transfer.

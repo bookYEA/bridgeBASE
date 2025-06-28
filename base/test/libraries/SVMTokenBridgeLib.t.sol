@@ -4,8 +4,8 @@ pragma solidity 0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {console} from "forge-std/console.sol";
 
-import {Ix, Pubkey, SVMLib} from "../../src/libraries/SVMLib.sol";
-import {SVMTokenBridgeLib} from "../../src/libraries/SVMTokenBridgeLib.sol";
+import {SVMBridgeLib} from "../../src/libraries/SVMBridgeLib.sol";
+import {Pubkey, SVMLib} from "../../src/libraries/SVMLib.sol";
 
 contract SVMTokenBridgeLibTest is Test {
     //////////////////////////////////////////////////////////////
@@ -109,8 +109,8 @@ contract SVMTokenBridgeLibTest is Test {
         // Build, serialize, and verify each test case
         for (uint256 i = 0; i < testCases.length; i++) {
             // Build and serialize the instruction
-            bytes memory serializedIx = SVMLib.serializeAnchorIx(
-                SVMTokenBridgeLib.finalizeBridgeTokenIx({
+            bytes memory serializedIx = SVMLib.serializeIx(
+                SVMBridgeLib.finalizeBridgeTokenIx({
                     remoteBridge: testCases[i].remoteBridge,
                     localToken: testCases[i].localToken,
                     remoteToken: testCases[i].remoteToken,
@@ -178,8 +178,8 @@ contract SVMTokenBridgeLibTest is Test {
         // Build, serialize, and verify each test case
         for (uint256 i = 0; i < testCases.length; i++) {
             // Build and serialize the instruction
-            bytes memory serializedIx = SVMLib.serializeAnchorIx(
-                SVMTokenBridgeLib.finalizeBridgeSolIx({
+            bytes memory serializedIx = SVMLib.serializeIx(
+                SVMBridgeLib.finalizeBridgeSolIx({
                     remoteBridge: testCases[i].remoteBridge,
                     localToken: testCases[i].localToken,
                     to: testCases[i].to,
@@ -250,8 +250,8 @@ contract SVMTokenBridgeLibTest is Test {
         // Build, serialize, and verify each test case
         for (uint256 i = 0; i < testCases.length; i++) {
             // Build and serialize the instruction
-            bytes memory serializedIx = SVMLib.serializeAnchorIx(
-                SVMTokenBridgeLib.finalizeBridgeSplIx({
+            bytes memory serializedIx = SVMLib.serializeIx(
+                SVMBridgeLib.finalizeBridgeSplIx({
                     remoteBridge: testCases[i].remoteBridge,
                     localToken: testCases[i].localToken,
                     remoteToken: testCases[i].remoteToken,

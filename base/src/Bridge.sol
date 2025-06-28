@@ -4,16 +4,17 @@ pragma solidity 0.8.28;
 import {LibClone} from "solady/utils/LibClone.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 
-import {Call, CallLib} from "./libraries/CallLib.sol";
+import {Call} from "./libraries/CallLib.sol";
 import {MessageStorageLib} from "./libraries/MessageStorageLib.sol";
-import {Pubkey} from "./libraries/SVMLib.sol";
+import {SVMBridgeLib} from "./libraries/SVMBridgeLib.sol";
+import {Ix, Pubkey} from "./libraries/SVMLib.sol";
 import {TokenLib, Transfer} from "./libraries/TokenLib.sol";
 
 import {Twin} from "./Twin.sol";
 
-/// @title Portal
+/// @title Bridge
 ///
-/// @notice The Portal enables sending calls from Solana to Base.
+/// @notice The Bridge enables sending calls from Solana to Base.
 ///
 /// @dev Calls sent from Solana to Base are relayed via a Twin contract that is specific per Solana sender pubkey.
 contract Bridge is ReentrancyGuardTransient {
@@ -61,6 +62,9 @@ contract Bridge is ReentrancyGuardTransient {
     /// manually.
     error MessageNotAlreadyFailedToRelay();
 
+    /// @notice Thrown when an Anchor instruction is invalid.
+    error UnsafeIxTarget();
+
     //////////////////////////////////////////////////////////////
     ///                       Structs                          ///
     //////////////////////////////////////////////////////////////
@@ -98,10 +102,8 @@ contract Bridge is ReentrancyGuardTransient {
     ///      chain.
     address public constant ESTIMATION_ADDRESS = address(1);
 
-    /// @notice Special pubkey used as the sender to represent the Solana bridge
-    ///         Pubkey("111111111111111111111111111bridge")
-    Pubkey public constant REMOTE_BRIDGE =
-        Pubkey.wrap(0x0000000000000000000000000000000000000000000000000000000553ae31c3);
+    /// @notice Pubkey of the remote bridge on Solana.
+    Pubkey public immutable REMOTE_BRIDGE;
 
     /// @notice Address of the trusted relayer.
     address public immutable TRUSTED_RELAYER;
@@ -109,12 +111,9 @@ contract Bridge is ReentrancyGuardTransient {
     /// @notice Address of the Twin beacon.
     address public immutable TWIN_BEACON;
 
-    /// @notice Address of the Bridge Twin contract on Base.
-    address public immutable BRIDGE_TWIN;
-
     // TODO: Better estimate.
-    /// @notice Additional gas buffer reserved to ensure the correct execution of `relayMessagesEntrypoint`.
-    uint64 private constant _RELAY_MESSAGES_ENTRYPOINT_GAS_BUFFER = 40_000;
+    /// @notice Additional gas buffer reserved to ensure the correct execution of `relayMessages`.
+    uint64 private constant _RELAY_MESSAGES_GAS_BUFFER = 40_000;
 
     //////////////////////////////////////////////////////////////
     ///                       Storage                          ///
@@ -139,29 +138,41 @@ contract Bridge is ReentrancyGuardTransient {
     ///                       Public Functions                 ///
     //////////////////////////////////////////////////////////////
 
-    /// @notice Constructs the Portal contract with immutable references.
+    /// @notice Constructs the Bridge contract.
     ///
-    constructor(address trustedRelayer, address twinBeacon, address bridgeTwin) {
+    /// @param remoteBridge The pubkey of the remote bridge on Solana.
+    /// @param trustedRelayer The address of the trusted relayer.
+    /// @param twinBeacon The address of the Twin beacon.
+    constructor(Pubkey remoteBridge, address trustedRelayer, address twinBeacon) {
+        REMOTE_BRIDGE = remoteBridge;
         TRUSTED_RELAYER = trustedRelayer;
         TWIN_BEACON = twinBeacon;
-        BRIDGE_TWIN = bridgeTwin;
     }
 
-    /// @notice Sends a message to the Solana bridge.
+    /// @notice Bridges a call to the Solana bridge.
     ///
-    /// @param data The message data to be passed to the Solana bridge.
-    function sendMessage(bytes calldata data) external {
-        MessageStorageLib.sendMessage({sender: msg.sender, data: data});
+    /// @param ixs The Solana instructions.
+    function bridgeCall(Ix[] memory ixs) external {
+        MessageStorageLib.sendMessage({sender: msg.sender, data: SVMBridgeLib.serializeCall(ixs)});
+    }
+
+    /// @notice Bridges a transfer with optional an optional list of instructions to the Solana bridge.
+    ///
+    /// @param transfer The token transfer to execute.
+    /// @param ixs The optional Solana instructions.
+    function bridgeToken(Transfer calldata transfer, Ix[] memory ixs) external {
+        Ix memory transferIx = TokenLib.initializeTransfer({transfer: transfer, remoteBridge: REMOTE_BRIDGE});
+        MessageStorageLib.sendMessage({
+            sender: msg.sender,
+            data: SVMBridgeLib.serializeTransfer({transfer: transferIx, ixs: ixs})
+        });
     }
 
     /// @notice Relays messages sent from Solana to Base.
     ///
     /// @param messages The messages to relay.
     /// @param ismData Encoded ISM data used to verify the messages.
-    function relayMessagesEntrypoint(IncomingMessage[] calldata messages, bytes calldata ismData)
-        external
-        nonReentrant
-    {
+    function relayMessages(IncomingMessage[] calldata messages, bytes calldata ismData) external nonReentrant {
         bool isTrustedRelayer = msg.sender == TRUSTED_RELAYER;
         if (isTrustedRelayer) {
             _ismVerify({messages: messages, ismData: ismData});
@@ -169,19 +180,18 @@ contract Bridge is ReentrancyGuardTransient {
 
         for (uint256 i; i < messages.length; i++) {
             IncomingMessage memory message = messages[i];
-            this.validateAndExcute{gas: message.gasLimit}({message: message, isTrustedRelayer: isTrustedRelayer});
+            this.__validateAndRelay{gas: message.gasLimit}({message: message, isTrustedRelayer: isTrustedRelayer});
         }
     }
 
-    /// @notice Validates and executes a message sent from Solana to Base.
+    /// @notice Validates and relays a message sent from Solana to Base.
     ///
-    /// @dev This function can only be called by the entrypoint.
+    /// @dev This function can only be called from `relayMessages`.
     ///
     /// @param message The message to relay.
     /// @param isTrustedRelayer Whether the caller was the trusted relayer.
-    function validateAndExcute(IncomingMessage calldata message, bool isTrustedRelayer) external {
-        // Check that the caller is the entrypoint.
-        require(msg.sender == address(this), SenderIsNotEntrypoint());
+    function __validateAndRelay(IncomingMessage calldata message, bool isTrustedRelayer) external {
+        _assertSenderIsEntrypoint();
 
         // NOTE: Intentionally not including the gas limit in the hash to allow for replays with higher gas limits.
         bytes32 messageHash = keccak256(abi.encode(message.nonce, message.sender, message.ty, message.data));
@@ -203,7 +213,7 @@ contract Bridge is ReentrancyGuardTransient {
         // Cover the gas cost upfront.
         failures[messageHash] = true;
 
-        try this.relayMessage{gas: gasleft() - _RELAY_MESSAGES_ENTRYPOINT_GAS_BUFFER}({message: message}) {
+        try this.__relayMessage{gas: gasleft() - _RELAY_MESSAGES_GAS_BUFFER}({message: message}) {
             // Register the call as successful.
             delete failures[messageHash];
             successes[messageHash] = true;
@@ -221,12 +231,11 @@ contract Bridge is ReentrancyGuardTransient {
 
     /// @notice Relays a message sent from Solana to Base.
     ///
-    /// @dev This function can only be called by the entrypoint.
+    /// @dev This function can only be called from `__validateAndRelay`.
     ///
     /// @param message The message to relay.
-    function relayMessage(IncomingMessage calldata message) external {
-        // Check that the caller is the entrypoint.
-        require(msg.sender == address(this), SenderIsNotEntrypoint());
+    function __relayMessage(IncomingMessage calldata message) external {
+        _assertSenderIsEntrypoint();
 
         // // Special case where the message sneder is directly the Solana bridge.
         // // For now this is only the case when a Wrapped Token is deployed on Solana and is being registered on Base.
@@ -256,14 +265,14 @@ contract Bridge is ReentrancyGuardTransient {
 
         if (message.ty == MessageType.Call) {
             Call memory call = abi.decode(message.data, (Call));
-            Twin(payable(twins[message.sender])).execute{value: call.value}(call);
+            Twin(payable(twins[message.sender])).execute(call);
         } else if (message.ty == MessageType.Transfer) {
             Transfer memory transfer = abi.decode(message.data, (Transfer));
             TokenLib.finalizeTransfer(transfer);
         } else if (message.ty == MessageType.TransferAndCall) {
             (Transfer memory transfer, Call memory call) = abi.decode(message.data, (Transfer, Call));
             TokenLib.finalizeTransfer(transfer);
-            Twin(payable(twins[message.sender])).execute{value: call.value}(call);
+            Twin(payable(twins[message.sender])).execute(call);
         }
     }
 
@@ -281,6 +290,18 @@ contract Bridge is ReentrancyGuardTransient {
     //////////////////////////////////////////////////////////////
     ///                       Private Functions                ///
     //////////////////////////////////////////////////////////////
+
+    /// @notice Asserts that the Anchor instruction is safe.
+    ///
+    /// @param ix The Anchor instruction to assert.
+    function _assertSafeIx(Ix memory ix) private view {
+        require(ix.programId != REMOTE_BRIDGE, UnsafeIxTarget());
+    }
+
+    /// @notice Asserts that the caller is the entrypoint.
+    function _assertSenderIsEntrypoint() private view {
+        require(msg.sender == address(this), SenderIsNotEntrypoint());
+    }
 
     /// @notice Checks whether the ISM verification is successful.
     ///
