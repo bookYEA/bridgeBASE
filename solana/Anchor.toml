@@ -4,7 +4,9 @@ anchor_version = "0.31.0"
 [features]
 resolution = false
 skip-lint = false
-# seeds = false
+
+[programs.devnet]
+bridge = "EF3xsxZGWWJX9T7vCPb7hEgyJQKEj1mgSNLMNvF8a7cj"
 
 [programs.localnet]
 portal = "4jduFi9ShXq258vmY4GroJUYTRQnd9GWZxzK8zTxTmmw"
@@ -15,8 +17,6 @@ url = "https://api.apr.dev"
 
 [provider]
 cluster = "devnet"
-# cluster = "localnet"
-
 wallet = "~/.config/solana/id.json"
 
 [scripts]

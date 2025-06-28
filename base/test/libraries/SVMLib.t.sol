@@ -147,13 +147,13 @@ contract SVMLibTest is Test {
     /// forge-config: default.fuzz.runs = 1000
     function testFuzz_serializeAnchorIx(Ix memory ix) public pure {
         // Serialize the instruction
-        bytes memory serializedIx = SVMLib.serializeAnchorIx(ix);
+        bytes memory serializedIx = SVMLib.serializeIx(ix);
 
         uint256 offset = 0;
 
         // Verify the program ID (first 32 bytes)
         bytes32 serializedProgramId = bytes32(LibBytes.slice(serializedIx, offset, offset + 32));
-        assertEq(serializedProgramId, Pubkey.unwrap(ix.programId), "serializeAnchorIx programId should match input");
+        assertEq(serializedProgramId, Pubkey.unwrap(ix.programId), "serializeIx programId should match input");
         offset += 32;
 
         // Verify the accounts count
@@ -161,7 +161,7 @@ contract SVMLibTest is Test {
         assertEq(
             serializedAccountsCount,
             SVMLib.toU32LittleEndian(ix.serializedAccounts.length),
-            "serializeAnchorIx accounts count should match input"
+            "serializeIx accounts count should match input"
         );
         offset += 4;
 
@@ -169,30 +169,26 @@ contract SVMLibTest is Test {
         for (uint256 i = 0; i < ix.serializedAccounts.length; i++) {
             bytes memory expectedAccount = ix.serializedAccounts[i];
             bytes memory serializedAccount = LibBytes.slice(serializedIx, offset, offset + expectedAccount.length);
-            assertEq(serializedAccount, expectedAccount, "serializeAnchorIx account should match input");
+            assertEq(serializedAccount, expectedAccount, "serializeIx account should match input");
             offset += expectedAccount.length;
         }
-
-        // Verify instruction discriminator and data
-        bytes32 expectedDiscriminator = sha256(abi.encodePacked("global:", ix.name));
-        bytes memory expectedIxData = abi.encodePacked(bytes8(expectedDiscriminator), ix.data);
 
         // Verify instruction data length
         uint32 serializedIxDataLength = uint32(bytes4(LibBytes.slice(serializedIx, offset, offset + 4)));
         assertEq(
             serializedIxDataLength,
-            SVMLib.toU32LittleEndian(expectedIxData.length),
-            "serializeAnchorIx instruction data length should match expected"
+            SVMLib.toU32LittleEndian(ix.data.length),
+            "serializeIx instruction data length should match expected"
         );
         offset += 4;
 
-        // Verify instruction data (discriminator + data)
-        bytes memory serializedIxData = LibBytes.slice(serializedIx, offset, offset + expectedIxData.length);
-        assertEq(serializedIxData, expectedIxData, "serializeAnchorIx instruction data should match expected");
-        offset += expectedIxData.length;
+        // Verify instruction data
+        bytes memory serializedIxData = LibBytes.slice(serializedIx, offset, offset + ix.data.length);
+        assertEq(serializedIxData, ix.data, "serializeIx instruction data should match expected");
+        offset += ix.data.length;
 
         // Verify we've consumed the entire serialized data
-        assertEq(offset, serializedIx.length, "serializeAnchorIx should consume entire serialized data");
+        assertEq(offset, serializedIx.length, "serializeIx should consume entire serialized data");
     }
 
     //////////////////////////////////////////////////////////////
@@ -206,7 +202,7 @@ contract SVMLibTest is Test {
         for (uint256 i = 0; i < ixs.length; i++) {
             ixs_[i] = ixs[i];
         }
-        bytes memory serializedIxs = SVMLib.serializeAnchorIxs(ixs_);
+        bytes memory serializedIxs = SVMLib.serializeIxs(ixs_);
 
         uint256 offset = 0;
 
@@ -215,14 +211,14 @@ contract SVMLibTest is Test {
         assertEq(
             serializedIxsCount,
             SVMLib.toU32LittleEndian(ixs.length),
-            "serializeAnchorIxs instructions count should match input"
+            "serializeIxs instructions count should match input"
         );
         offset += 4;
 
         // Verify each instruction
         for (uint256 i = 0; i < ixs.length; i++) {
             // Get the expected serialized instruction
-            bytes memory expectedIx = SVMLib.serializeAnchorIx(ixs[i]);
+            bytes memory expectedIx = SVMLib.serializeIx(ixs[i]);
 
             // Extract the actual serialized instruction from the array
             bytes memory actualIx = LibBytes.slice(serializedIxs, offset, offset + expectedIx.length);

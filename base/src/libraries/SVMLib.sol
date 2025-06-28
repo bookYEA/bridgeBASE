@@ -12,6 +12,12 @@ function eq(Pubkey a, Pubkey b) pure returns (bool) {
 
 using {eq as ==} for Pubkey global;
 
+function neq(Pubkey a, Pubkey b) pure returns (bool) {
+    return Pubkey.unwrap(a) != Pubkey.unwrap(b);
+}
+
+using {neq as !=} for Pubkey global;
+
 /// @notice Program Derived Address specification.
 ///
 /// @param seeds Array of seed bytes for PDA generation
@@ -43,7 +49,6 @@ struct PubkeyOrPda {
 /// @param data Instruction data payload
 struct Ix {
     Pubkey programId;
-    string name;
     bytes[] serializedAccounts;
     bytes data;
 }
@@ -105,7 +110,7 @@ library SVMLib {
     /// @param ix The instruction to serialize
     ///
     /// @return Serialized instruction bytes ready for Solana deserialization
-    function serializeAnchorIx(Ix memory ix) internal pure returns (bytes memory) {
+    function serializeIx(Ix memory ix) internal pure returns (bytes memory) {
         bytes memory result = abi.encodePacked(ix.programId);
 
         // Serialize accounts array
@@ -115,9 +120,7 @@ library SVMLib {
         }
 
         // Serialize instruction data
-        bytes32 ixDiscriminator = sha256(abi.encodePacked("global:", ix.name));
-        bytes memory ixData = abi.encodePacked(bytes8(ixDiscriminator), ix.data);
-        result = abi.encodePacked(result, _serializeBytes(ixData));
+        result = abi.encodePacked(result, _serializeBytes(ix.data));
 
         return result;
     }
@@ -127,10 +130,10 @@ library SVMLib {
     /// @param ixs The list of instructions to serialize
     ///
     /// @return Serialized instruction bytes ready for Solana deserialization
-    function serializeAnchorIxs(Ix[] memory ixs) internal pure returns (bytes memory) {
+    function serializeIxs(Ix[] memory ixs) internal pure returns (bytes memory) {
         bytes memory result = abi.encodePacked(toU32LittleEndian(ixs.length));
         for (uint256 i; i < ixs.length; i++) {
-            result = abi.encodePacked(result, serializeAnchorIx(ixs[i]));
+            result = abi.encodePacked(result, serializeIx(ixs[i]));
         }
 
         return result;
