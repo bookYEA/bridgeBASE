@@ -8,7 +8,7 @@ import {Call} from "./libraries/CallLib.sol";
 import {MessageStorageLib} from "./libraries/MessageStorageLib.sol";
 import {SVMBridgeLib} from "./libraries/SVMBridgeLib.sol";
 import {Ix, Pubkey} from "./libraries/SVMLib.sol";
-import {TokenLib, Transfer} from "./libraries/TokenLib.sol";
+import {SolanaTokenType, TokenLib, Transfer} from "./libraries/TokenLib.sol";
 
 import {Twin} from "./Twin.sol";
 
@@ -132,7 +132,7 @@ contract Bridge is ReentrancyGuardTransient {
     mapping(Pubkey owner => address twinAddress) public twins;
 
     /// @notice The last message's nonce relayed by the trusted relayer.
-    uint64 public lastNonce;
+    uint64 public lastIncomingNonce;
 
     //////////////////////////////////////////////////////////////
     ///                       Public Functions                 ///
@@ -149,6 +149,32 @@ contract Bridge is ReentrancyGuardTransient {
         TWIN_BEACON = twinBeacon;
     }
 
+    /// @notice Get the current root of the MMR.
+    ///
+    /// @return The current root of the MMR.
+    function getRoot() external view returns (bytes32) {
+        return MessageStorageLib.getMessageStorageLibStorage().root;
+    }
+
+    /// @notice Get the last outgoing Message nonce.
+    ///
+    /// @return The last outgoing Message nonce.
+    function getLastOutgoingNonce() external view returns (uint64) {
+        return MessageStorageLib.getMessageStorageLibStorage().lastOutgoingNonce;
+    }
+
+    /// @notice Generates a Merkle proof for a specific leaf in the MMR.
+    ///
+    /// @dev This function may consume significant gas for large MMRs (O(log N) storage reads).
+    ///
+    /// @param leafIndex The 0-indexed position of the leaf to prove.
+    ///
+    /// @return proof Array of sibling hashes for the proof.
+    /// @return totalLeafCount The total number of leaves when proof was generated.
+    function generateProof(uint64 leafIndex) external view returns (bytes32[] memory proof, uint64 totalLeafCount) {
+        return MessageStorageLib.generateProof(leafIndex);
+    }
+
     /// @notice Bridges a call to the Solana bridge.
     ///
     /// @param ixs The Solana instructions.
@@ -161,10 +187,10 @@ contract Bridge is ReentrancyGuardTransient {
     /// @param transfer The token transfer to execute.
     /// @param ixs The optional Solana instructions.
     function bridgeToken(Transfer calldata transfer, Ix[] memory ixs) external {
-        Ix memory transferIx = TokenLib.initializeTransfer({transfer: transfer, remoteBridge: REMOTE_BRIDGE});
+        SolanaTokenType transferType = TokenLib.initializeTransfer({transfer: transfer});
         MessageStorageLib.sendMessage({
             sender: msg.sender,
-            data: SVMBridgeLib.serializeTransfer({transfer: transferIx, ixs: ixs})
+            data: SVMBridgeLib.serializeTransfer({transfer: transfer, tokenType: transferType, ixs: ixs})
         });
     }
 
@@ -202,8 +228,8 @@ contract Bridge is ReentrancyGuardTransient {
         // Check that the relay is allowed.
         if (isTrustedRelayer) {
             // TODO:Should the nonce be cached and only SSTOREd once?
-            require(message.nonce == lastNonce + 1, NonceNotIncremental());
-            lastNonce = message.nonce;
+            require(message.nonce == lastIncomingNonce + 1, NonceNotIncremental());
+            lastIncomingNonce = message.nonce;
 
             require(!failures[messageHash], MessageAlreadyFailedToRelay());
         } else {
@@ -237,21 +263,21 @@ contract Bridge is ReentrancyGuardTransient {
     function __relayMessage(IncomingMessage calldata message) external {
         _assertSenderIsEntrypoint();
 
-        // // Special case where the message sneder is directly the Solana bridge.
-        // // For now this is only the case when a Wrapped Token is deployed on Solana and is being registered on Base.
-        // // When this happens the message is guaranteed to be a single operation that encode the parameters of the
-        // // `registerRemoteToken` function.
-        // if (message.sender == REMOTE_BRIDGE) {
-        //     Operation memory operation = message.operations[0];
-        //     (address localToken, Pubkey remoteToken, uint8 scalerExponent) =
-        //         abi.decode(operation.data, (address, Pubkey, uint8));
-        //     TokenLib.registerRemoteToken({
-        //         localToken: localToken,
-        //         remoteToken: remoteToken,
-        //         scalerExponent: scalerExponent
-        //     });
-        //     return;
-        // }
+        // Special case where the message sneder is directly the Solana bridge.
+        // For now this is only the case when a Wrapped Token is deployed on Solana and is being registered on Base.
+        // When this happens the message is guaranteed to be a single operation that encode the parameters of the
+        // `registerRemoteToken` function.
+        if (message.sender == REMOTE_BRIDGE) {
+            (address localToken, Pubkey remoteToken, uint8 scalerExponent) =
+                abi.decode(message.data, (address, Pubkey, uint8));
+
+            TokenLib.registerRemoteToken({
+                localToken: localToken,
+                remoteToken: remoteToken,
+                scalerExponent: scalerExponent
+            });
+            return;
+        }
 
         // Get (and deploy if needed) the Twin contract.
         address twinAddress = twins[message.sender];

@@ -2,7 +2,7 @@ use anchor_lang::{prelude::*, solana_program::instruction::Instruction};
 
 /// Instruction to be executed by the wallet.
 /// Functionally equivalent to a Solana Instruction.
-#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+#[derive(Debug, Clone, AnchorSerialize, AnchorDeserialize)]
 pub struct Ix {
     /// Program that will process this instruction.
     pub program_id: Pubkey,
@@ -14,7 +14,7 @@ pub struct Ix {
 
 /// Account used in an instruction.
 /// Identical to Solana's AccountMeta but implements AnchorSerialize and AnchorDeserialize.
-#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+#[derive(Debug, Clone, AnchorSerialize, AnchorDeserialize)]
 pub struct IxAccount {
     /// Public key of the account.
     pub pubkey_or_pda: PubkeyOrPda,
@@ -24,7 +24,7 @@ pub struct IxAccount {
     pub is_signer: bool,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+#[derive(Debug, Clone, AnchorSerialize, AnchorDeserialize)]
 pub enum PubkeyOrPda {
     Pubkey(Pubkey),
     PDA {

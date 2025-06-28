@@ -5,7 +5,7 @@ use crate::{
         constants::{OUTPUT_ROOT_SEED, TRUSTED_ORACLE},
         state::OutputRoot,
     },
-    common::{constants::BRIDGE_SEED, state::bridge::Bridge},
+    common::{bridge::Bridge, BRIDGE_SEED},
 };
 
 #[derive(Accounts)]
@@ -39,7 +39,7 @@ pub fn register_output_root_handler(
     block_number: u64,
 ) -> Result<()> {
     require!(
-        block_number - ctx.accounts.bridge.base_block_number % 300 == 0,
+        block_number % 300 == 0,
         RegisterOutputRootError::InvalidBlockNumber
     );
 

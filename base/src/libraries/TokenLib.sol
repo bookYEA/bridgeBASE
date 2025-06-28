@@ -5,7 +5,6 @@ import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 
 import {CrossChainERC20} from "../CrossChainERC20.sol";
 
-import {SVMBridgeLib} from "./SVMBridgeLib.sol";
 import {Ix, Pubkey} from "./SVMLib.sol";
 
 /// @notice Struct representing a token transfer.
@@ -19,6 +18,13 @@ struct Transfer {
     Pubkey remoteToken;
     bytes32 to;
     uint64 remoteAmount;
+}
+
+/// @notice Enum representing the Solana token type.
+enum SolanaTokenType {
+    Sol,
+    Spl,
+    WrappedToken
 }
 
 /// @notice Storage layout used by this library.
@@ -51,12 +57,20 @@ library TokenLib {
     ///                       Events                           ///
     //////////////////////////////////////////////////////////////
 
+    /// @notice Emitted when a token transfer is initialized.
+    ///
+    /// @param localToken Address of the local token on Base.
+    /// @param remoteToken Pubkey of the remote token on Solana.
+    /// @param to Pubkey of the recipient on Solana.
+    /// @param amount Amount of tokens bridged to the recipient (expressed in local units).
+    event TransferInitialized(address localToken, Pubkey remoteToken, Pubkey to, uint256 amount);
+
     /// @notice Emitted when a token transfer is finalized.
     ///
     /// @param localToken Address of the local token on Base.
     /// @param remoteToken Pubkey of the remote token on Solana.
-    /// @param to Address of the recipient.
-    /// @param amount Amount of tokens transferred to the recipient (expressed in local units).
+    /// @param to Address of the recipient on Base.
+    /// @param amount Amount of tokens bridged to the recipient (expressed in local units).
     event TransferFinalized(address localToken, Pubkey remoteToken, address to, uint256 amount);
 
     //////////////////////////////////////////////////////////////
@@ -91,14 +105,12 @@ library TokenLib {
         }
     }
 
-    /// @notice Initializes a token transfer and returns the Anchor instruction to execute on the Solana bridge.
+    /// @notice Initializes a token transfer.
     ///
-    /// @param transfer The token transfer to bridge.
-    /// @param remoteBridge Pubkey of the remote bridge on Solana.
+    /// @param transfer The token transfer to initialize.
     ///
-    /// @return ix The Anchor instruction to execute on the Solana bridge.
-    function initializeTransfer(Transfer memory transfer, Pubkey remoteBridge) internal returns (Ix memory ix) {
-        Pubkey to = Pubkey.wrap(transfer.to);
+    /// @return tokenType The Solana token type.
+    function initializeTransfer(Transfer memory transfer) internal returns (SolanaTokenType tokenType) {
         TokenLibStorage storage $ = getTokenLibStorage();
 
         uint256 localAmount;
@@ -111,13 +123,7 @@ library TokenLib {
             localAmount = transfer.remoteAmount * scaler;
             require(msg.value == localAmount, InvalidMsgValue());
 
-            ix = SVMBridgeLib.finalizeBridgeTokenIx({
-                remoteBridge: remoteBridge,
-                localToken: transfer.localToken,
-                remoteToken: transfer.remoteToken,
-                to: to,
-                remoteAmount: transfer.remoteAmount
-            });
+            tokenType = SolanaTokenType.Sol;
         } else {
             // Prevent sending ETH when bridging ERC20 tokens
             require(msg.value == 0, InvalidMsgValue());
@@ -129,20 +135,7 @@ library TokenLib {
                 localAmount = transfer.remoteAmount;
                 CrossChainERC20(transfer.localToken).burn({from: msg.sender, amount: localAmount});
 
-                ix = transfer.remoteToken == NATIVE_SOL_PUBKEY
-                    ? SVMBridgeLib.finalizeBridgeSolIx({
-                        remoteBridge: remoteBridge,
-                        localToken: transfer.localToken,
-                        to: to,
-                        remoteAmount: transfer.remoteAmount
-                    })
-                    : SVMBridgeLib.finalizeBridgeSplIx({
-                        remoteBridge: remoteBridge,
-                        localToken: transfer.localToken,
-                        remoteToken: transfer.remoteToken,
-                        to: to,
-                        remoteAmount: transfer.remoteAmount
-                    });
+                tokenType = transfer.remoteToken == NATIVE_SOL_PUBKEY ? SolanaTokenType.Sol : SolanaTokenType.Spl;
             } catch {
                 // Case: Bridging native ERC20 to Solana
                 uint256 scaler = $.scalars[transfer.localToken][transfer.remoteToken];
@@ -159,20 +152,21 @@ library TokenLib {
 
                 $.deposits[transfer.localToken][transfer.remoteToken] += localAmount;
 
-                ix = SVMBridgeLib.finalizeBridgeTokenIx({
-                    remoteBridge: remoteBridge,
-                    localToken: transfer.localToken,
-                    remoteToken: transfer.remoteToken,
-                    to: to,
-                    remoteAmount: transfer.remoteAmount
-                });
+                tokenType = SolanaTokenType.WrappedToken;
             }
         }
+
+        emit TransferInitialized({
+            localToken: transfer.localToken,
+            remoteToken: transfer.remoteToken,
+            to: Pubkey.wrap(transfer.to),
+            amount: transfer.remoteAmount
+        });
     }
 
     /// @notice Finalizes a token transfer.
     ///
-    /// @param transfer The transfer to finalize.
+    /// @param transfer The token transfer to finalize.
     function finalizeTransfer(Transfer memory transfer) internal {
         TokenLibStorage storage $ = getTokenLibStorage();
 

@@ -11,7 +11,7 @@ use crate::common::{
 #[account]
 #[derive(Default, InitSpace)]
 pub struct Bridge {
-    /// Latest Base block number represented on Solana
+    /// The Base block number associated with the latest registered output root.
     pub base_block_number: u64,
     /// Incremental nonce assigned to each message.
     pub nonce: u64,

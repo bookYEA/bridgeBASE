@@ -26,8 +26,8 @@ pub fn initialize_handler(ctx: Context<Initialize>) -> Result<()> {
     let current_timestamp = Clock::get()?.unix_timestamp;
 
     *ctx.accounts.bridge = Bridge {
-        nonce: 0,
         base_block_number: 0,
+        nonce: 0,
         eip1559: Eip1559::new(current_timestamp),
     };
 
