@@ -147,20 +147,16 @@ contract MessagePasser {
         }
 
         // Use optimized single-pass algorithm
-        (
-            uint256 leafNodePos,
-            uint256 mountainHeight,
-            uint64 leafIdxInMountain,
-            bytes32[] memory otherPeaks
-        ) = _generateProofData(leafIndex);
-        
+        (uint256 leafNodePos, uint256 mountainHeight, uint64 leafIdxInMountain, bytes32[] memory otherPeaks) =
+            _generateProofData(leafIndex);
+
         // Generate intra-mountain proof directly
         bytes32[] memory intraMountainProof = new bytes32[](mountainHeight);
         uint256 currentPathNodePos = leafNodePos;
-        
+
         for (uint256 hClimb = 0; hClimb < mountainHeight; hClimb++) {
             bool isRightChildInSubtree = (leafIdxInMountain >> hClimb) & 1 == 1;
-            
+
             uint256 siblingNodePos;
             uint256 parentNodePos;
 
@@ -179,19 +175,19 @@ contract MessagePasser {
             intraMountainProof[hClimb] = _nodes[siblingNodePos];
             currentPathNodePos = parentNodePos;
         }
-        
+
         // Combine proof elements
         proof = new bytes32[](intraMountainProof.length + otherPeaks.length);
         uint256 proofIndex = 0;
-        
+
         for (uint256 i = 0; i < intraMountainProof.length; i++) {
             proof[proofIndex++] = intraMountainProof[i];
         }
-        
+
         for (uint256 i = 0; i < otherPeaks.length; i++) {
             proof[proofIndex++] = otherPeaks[i];
         }
-        
+
         totalLeafCount = _remoteCallNonce;
     }
 
@@ -266,15 +262,14 @@ contract MessagePasser {
     /// @return mountainHeight Height of the mountain containing the leaf
     /// @return leafIdxInMountain Position of leaf within its mountain
     /// @return otherPeaks Hashes of other mountain peaks
-    function _generateProofData(uint64 leafIndex) private view returns (
-        uint256 leafNodePos,
-        uint256 mountainHeight,
-        uint64 leafIdxInMountain,
-        bytes32[] memory otherPeaks
-    ) {
+    function _generateProofData(uint64 leafIndex)
+        private
+        view
+        returns (uint256 leafNodePos, uint256 mountainHeight, uint64 leafIdxInMountain, bytes32[] memory otherPeaks)
+    {
         // First pass: find the leaf mountain
         (leafNodePos, mountainHeight, leafIdxInMountain) = _findLeafMountain(leafIndex);
-        
+
         // Second pass: collect other peaks
         otherPeaks = _collectOtherPeaks(leafIndex);
     }
@@ -287,22 +282,22 @@ contract MessagePasser {
 
         for (uint256 h = maxHeight + 1; h > 0; h--) {
             uint256 height = h - 1;
-            
+
             if ((_remoteCallNonce >> height) & 1 == 1) {
                 uint64 mountainLeaves = uint64(1 << height);
-                
+
                 if (leafIndex >= leafOffset && leafIndex < leafOffset + mountainLeaves) {
                     // Found the mountain
                     uint64 localLeafIdx = leafIndex - leafOffset;
                     uint256 localNodePos = 2 * uint256(localLeafIdx) - _popcount(localLeafIdx);
                     return (nodeOffset + localNodePos, height, localLeafIdx);
                 }
-                
+
                 nodeOffset += (1 << (height + 1)) - 1;
                 leafOffset += mountainLeaves;
             }
         }
-        
+
         revert LeafNotFound();
     }
 
@@ -316,21 +311,21 @@ contract MessagePasser {
 
         for (uint256 h = maxHeight + 1; h > 0; h--) {
             uint256 height = h - 1;
-            
+
             if ((_remoteCallNonce >> height) & 1 == 1) {
                 uint64 mountainLeaves = uint64(1 << height);
                 bool isLeafMountain = (leafIndex >= leafOffset && leafIndex < leafOffset + mountainLeaves);
-                
+
                 if (!isLeafMountain) {
                     uint256 peakPos = nodeOffset + (1 << (height + 1)) - 2;
                     tempPeaks[peakCount++] = _nodes[peakPos];
                 }
-                
+
                 nodeOffset += (1 << (height + 1)) - 1;
                 leafOffset += mountainLeaves;
             }
         }
-        
+
         // Copy to exact size array
         bytes32[] memory peaks = new bytes32[](peakCount);
         for (uint256 i = 0; i < peakCount; i++) {
