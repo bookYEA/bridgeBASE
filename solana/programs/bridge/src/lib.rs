@@ -50,84 +50,39 @@ pub mod bridge {
 
     // Solana -> Base
 
-    pub fn buffer_call(
-        ctx: Context<BufferCall>,
-        id: u64,
-        call_type: CallType,
-        gas_limit: u64,
-        to: [u8; 20],
-        value: u128,
-        data: Vec<u8>,
-    ) -> Result<()> {
-        buffer_call_handler(ctx, id, call_type, gas_limit, to, value, data)
+    pub fn bridge_call(ctx: Context<BridgeCall>, gas_limit: u64, call: Call) -> Result<()> {
+        bridge_call_handler(ctx, gas_limit, call)
     }
 
-    pub fn oneshot_call(ctx: Context<OneshotCall>, gas_limit: u64, call: Call) -> Result<()> {
-        oneshot_call_handler(ctx, gas_limit, call)
-    }
-
-    pub fn buffer_sol_transfer(
-        ctx: Context<BufferSolTransfer>,
-        id: u64,
+    pub fn bridge_sol(
+        ctx: Context<BridgeSol>,
         gas_limit: u64,
         to: [u8; 20],
         remote_token: [u8; 20],
         amount: u64,
+        call: Option<Call>,
     ) -> Result<()> {
-        buffer_sol_transfer_handler(ctx, id, gas_limit, to, remote_token, amount)
+        bridge_sol_handler(ctx, gas_limit, to, remote_token, amount, call)
     }
 
-    pub fn oneshot_sol_transfer(
-        ctx: Context<OneshotSolTransfer>,
+    pub fn bridge_spl(
+        ctx: Context<BridgeSpl>,
         gas_limit: u64,
         to: [u8; 20],
         remote_token: [u8; 20],
         amount: u64,
+        call: Option<Call>,
     ) -> Result<()> {
-        oneshot_sol_transfer_handler(ctx, gas_limit, to, remote_token, amount)
+        bridge_spl_handler(ctx, gas_limit, to, remote_token, amount, call)
     }
 
-    pub fn buffer_spl_transfer(
-        ctx: Context<BufferSplTransfer>,
-        id: u64,
-        gas_limit: u64,
-        to: [u8; 20],
-        remote_token: [u8; 20],
-        amount: u64,
-    ) -> Result<()> {
-        buffer_spl_transfer_handler(ctx, id, gas_limit, to, remote_token, amount)
-    }
-
-    pub fn oneshot_spl_transfer(
-        ctx: Context<OneshotSplTransfer>,
-        gas_limit: u64,
-        to: [u8; 20],
-        remote_token: [u8; 20],
-        amount: u64,
-    ) -> Result<()> {
-        oneshot_spl_transfer_handler(ctx, gas_limit, to, remote_token, amount)
-    }
-
-    pub fn buffer_wrapped_token_transfer(
-        ctx: Context<BufferWrappedTokenTransfer>,
-        id: u64,
+    pub fn bridge_wrapped_token(
+        ctx: Context<BridgeWrappedToken>,
         gas_limit: u64,
         to: [u8; 20],
         amount: u64,
+        call: Option<Call>,
     ) -> Result<()> {
-        buffer_wrapped_token_transfer_handler(ctx, id, gas_limit, to, amount)
-    }
-
-    pub fn oneshot_wrapped_token_transfer(
-        ctx: Context<OneshotWrappedTokenTransfer>,
-        gas_limit: u64,
-        to: [u8; 20],
-        amount: u64,
-    ) -> Result<()> {
-        oneshot_wrapped_token_transfer_handler(ctx, gas_limit, to, amount)
-    }
-
-    pub fn send_message(ctx: Context<SendMessage>, id: u64) -> Result<()> {
-        send_message_handler(ctx, id)
+        bridge_wrapped_token_handler(ctx, gas_limit, to, amount, call)
     }
 }

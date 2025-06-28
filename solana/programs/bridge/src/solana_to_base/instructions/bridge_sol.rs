@@ -1,23 +1,26 @@
-use anchor_lang::prelude::*;
+use anchor_lang::{
+    prelude::*,
+    system_program::{self, Transfer},
+};
 
 use crate::{
     common::{bridge::Bridge, BRIDGE_SEED, SOL_VAULT_SEED},
     solana_to_base::{
-        pay_for_gas, process_sol_transfer_operation, Operation, OutgoingMessage,
-        Transfer as TransferOp, GAS_FEE_RECEIVER, NATIVE_SOL_PUBKEY, OUTGOING_MESSAGE_SEED,
+        check_and_pay_for_gas, check_call, Call, OutgoingMessage, Transfer as TransferOp,
+        GAS_FEE_RECEIVER, NATIVE_SOL_PUBKEY, OUTGOING_MESSAGE_SEED,
     },
 };
 
 #[derive(Accounts)]
-#[instruction(_gas_limit: u64, _to: [u8; 20], remote_token: [u8; 20], _amount: u64)]
-pub struct OneshotSolTransfer<'info> {
+#[instruction(_gas_limit: u64, _to: [u8; 20], remote_token: [u8; 20], _amount: u64, call: Option<Call>)]
+pub struct BridgeSol<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
 
     pub from: Signer<'info>,
 
     /// CHECK: This is the hardcoded gas fee receiver account.
-    #[account(mut, address = GAS_FEE_RECEIVER @ OneshotSolTransferError::IncorrectGasFeeReceiver)]
+    #[account(mut, address = GAS_FEE_RECEIVER @ BridgeSolError::IncorrectGasFeeReceiver)]
     pub gas_fee_receiver: AccountInfo<'info>,
 
     /// CHECK: This is the SOL vault account.
@@ -36,45 +39,55 @@ pub struct OneshotSolTransfer<'info> {
         seeds = [OUTGOING_MESSAGE_SEED, bridge.nonce.to_le_bytes().as_ref()],
         bump,
         payer = payer,
-        space = 8 + OutgoingMessage::oneshot_transfer_space(),
+        space = 8 + OutgoingMessage::space(call.map(|c| c.data.len())),
     )]
     pub outgoing_message: Account<'info, OutgoingMessage>,
 
     pub system_program: Program<'info, System>,
 }
 
-pub fn oneshot_sol_transfer_handler(
-    ctx: Context<OneshotSolTransfer>,
+pub fn bridge_sol_handler(
+    ctx: Context<BridgeSol>,
     gas_limit: u64,
     to: [u8; 20],
     remote_token: [u8; 20],
     amount: u64,
+    call: Option<Call>,
 ) -> Result<()> {
-    process_sol_transfer_operation(
-        ctx.accounts.sol_vault.to_account_info(),
-        ctx.accounts.from.to_account_info(),
-        &ctx.accounts.system_program,
-        gas_limit,
-        amount,
-    )?;
+    if let Some(call) = &call {
+        check_call(call)?;
+    }
 
-    pay_for_gas(
+    check_and_pay_for_gas(
         &ctx.accounts.system_program,
         &ctx.accounts.payer,
         &ctx.accounts.gas_fee_receiver,
         &mut ctx.accounts.bridge.eip1559,
         gas_limit,
+        call.as_ref().map(|c| c.data.len()).unwrap_or_default(),
     )?;
 
-    *ctx.accounts.outgoing_message = OutgoingMessage::new_oneshot(
+    // Lock the sol from the user into the SOL vault.
+    let cpi_ctx = CpiContext::new(
+        ctx.accounts.system_program.to_account_info(),
+        Transfer {
+            from: ctx.accounts.from.to_account_info(),
+            to: ctx.accounts.sol_vault.to_account_info(),
+        },
+    );
+
+    system_program::transfer(cpi_ctx, amount)?;
+
+    *ctx.accounts.outgoing_message = OutgoingMessage::new_transfer(
         ctx.accounts.from.key(),
         gas_limit,
-        Operation::new_transfer(TransferOp {
+        TransferOp {
             to,
             local_token: NATIVE_SOL_PUBKEY,
             remote_token,
             amount,
-        }),
+            call,
+        },
     );
     ctx.accounts.bridge.nonce += 1;
 
@@ -82,9 +95,11 @@ pub fn oneshot_sol_transfer_handler(
 }
 
 #[error_code]
-pub enum OneshotSolTransferError {
+pub enum BridgeSolError {
     #[msg("Incorrect gas fee receiver")]
     IncorrectGasFeeReceiver,
+    #[msg("Creation with non-zero target")]
+    CreationWithNonZeroTarget,
     #[msg("Gas limit too low")]
     GasLimitTooLow,
     #[msg("Gas limit exceeded")]

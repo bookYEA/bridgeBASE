@@ -12,12 +12,12 @@ use anchor_spl::token_interface::{
 };
 
 use crate::base_to_solana::{
-    BRIDGE_SENDER, REMOTE_TOKEN_METADATA_KEY, SCALER_EXPONENT_METADATA_KEY, WRAPPED_TOKEN_SEED,
+    BRIDGE_SENDER, GAS_LIMIT_REGISTER_REMOTE_TOKEN, REMOTE_TOKEN_METADATA_KEY,
+    SCALER_EXPONENT_METADATA_KEY, WRAPPED_TOKEN_SEED,
 };
 use crate::common::{bridge::Bridge, PartialTokenMetadata, BRIDGE_SEED};
 use crate::solana_to_base::{
-    pay_for_gas, Call, CallType, Operation, OutgoingMessage, GAS_FEE_RECEIVER,
-    OUTGOING_MESSAGE_SEED,
+    check_and_pay_for_gas, Call, CallType, OutgoingMessage, GAS_FEE_RECEIVER, OUTGOING_MESSAGE_SEED,
 };
 
 #[derive(Accounts)]
@@ -56,7 +56,7 @@ pub struct WrapToken<'info> {
         seeds = [OUTGOING_MESSAGE_SEED, bridge.nonce.to_le_bytes().as_ref()],
         bump,
         payer = payer,
-        space = 8 + OutgoingMessage::oneshot_call_space(100),
+        space = 8 + OutgoingMessage::space(Some(GAS_LIMIT_REGISTER_REMOTE_TOKEN)),
     )]
     pub outgoing_message: Account<'info, OutgoingMessage>,
 
@@ -175,12 +175,13 @@ fn register_remote_token(
     scaler_exponent: u8,
     gas_limit: u64,
 ) -> Result<()> {
-    pay_for_gas(
+    check_and_pay_for_gas(
         &ctx.accounts.system_program,
         &ctx.accounts.payer,
         &ctx.accounts.gas_fee_receiver,
         &mut ctx.accounts.bridge.eip1559,
         gas_limit,
+        GAS_LIMIT_REGISTER_REMOTE_TOKEN,
     )?;
 
     let address = Address::from(remote_token);
@@ -194,8 +195,7 @@ fn register_remote_token(
         data: (address, local_token, scaler_exponent).abi_encode(),
     };
 
-    *ctx.accounts.outgoing_message =
-        OutgoingMessage::new_oneshot(BRIDGE_SENDER, gas_limit, Operation::new_call(call));
+    *ctx.accounts.outgoing_message = OutgoingMessage::new_call(BRIDGE_SENDER, gas_limit, call);
     ctx.accounts.bridge.nonce += 1;
 
     Ok(())

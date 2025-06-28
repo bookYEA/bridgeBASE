@@ -9,6 +9,9 @@ pub const BRIDGE_SENDER: Pubkey = pubkey!("111111111111111111111111111bridge");
 pub const REMOTE_TOKEN_METADATA_KEY: &str = "remote_token";
 pub const SCALER_EXPONENT_METADATA_KEY: &str = "scaler_exponent";
 
+// TODO: Re-estimate this constant.
+pub const GAS_LIMIT_REGISTER_REMOTE_TOKEN: usize = 388;
+
 mod private {
     use super::*;
 

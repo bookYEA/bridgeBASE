@@ -1,51 +1,75 @@
 use anchor_lang::prelude::*;
 
-use crate::solana_to_base::{Operation, OutgoingMessageHeader};
+#[derive(Debug, Clone, Eq, PartialEq, AnchorSerialize, AnchorDeserialize)]
+pub struct Transfer {
+    pub to: [u8; 20],
+    pub local_token: Pubkey,
+    pub remote_token: [u8; 20],
+    pub amount: u64,
+    pub call: Option<Call>,
+}
+
+impl Transfer {
+    pub fn space(data_len: Option<usize>) -> usize {
+        20 + 32 + 20 + 8 + 1 + Call::space(data_len.unwrap_or_default())
+    }
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, AnchorSerialize, AnchorDeserialize, InitSpace)]
+pub enum CallType {
+    Call,
+    DelegateCall,
+    Create,
+    Create2,
+}
 
 #[derive(Debug, Clone, Eq, PartialEq, AnchorSerialize, AnchorDeserialize)]
-pub enum OutgoingMessageType {
-    Composite(OutgoingMessageHeader),
-    Oneshot {
-        gas_limit: u64,
-        operation: Operation,
-    },
+pub struct Call {
+    pub ty: CallType,
+    pub to: [u8; 20],
+    pub value: u128,
+    pub data: Vec<u8>,
+}
+
+impl Call {
+    pub fn space(data_len: usize) -> usize {
+        CallType::INIT_SPACE + 20 + 16 + (4 + data_len)
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, AnchorSerialize, AnchorDeserialize)]
+pub enum Message {
+    Call(Call),
+    Transfer(Transfer),
 }
 
 #[account]
 #[derive(Debug, Eq, PartialEq)]
 pub struct OutgoingMessage {
-    pub from: Pubkey,
-    pub message: OutgoingMessageType,
+    pub sender: Pubkey,
+    pub gas_limit: u64,
+    pub message: Message,
 }
 
 impl OutgoingMessage {
-    pub fn new_composite(from: Pubkey, outgoing_message_header: OutgoingMessageHeader) -> Self {
+    pub fn new_call(sender: Pubkey, gas_limit: u64, call: Call) -> Self {
         Self {
-            from,
-            message: OutgoingMessageType::Composite(outgoing_message_header),
+            sender,
+            gas_limit,
+            message: Message::Call(call),
         }
     }
 
-    pub fn new_oneshot(from: Pubkey, gas_limit: u64, operation: Operation) -> Self {
+    pub fn new_transfer(sender: Pubkey, gas_limit: u64, transfer: Transfer) -> Self {
         Self {
-            from,
-            message: OutgoingMessageType::Oneshot {
-                gas_limit,
-                operation,
-            },
+            sender,
+            gas_limit,
+            message: Message::Transfer(transfer),
         }
     }
 
-    pub fn composite_space() -> usize {
-        // The space for a Oneshot message is always larger than the space for a Composite message.
-        32 + (1 + Self::oneshot_transfer_space())
-    }
-
-    pub fn oneshot_call_space(data_len: usize) -> usize {
-        32 + (1 + Operation::call_space(data_len))
-    }
-
-    pub fn oneshot_transfer_space() -> usize {
-        32 + (1 + Operation::transfer_space())
+    pub fn space(data_len: Option<usize>) -> usize {
+        // The transfer variant is always bigger than the call variant (as it embeds an optional call)
+        32 + 8 + (1 + Transfer::space(data_len))
     }
 }
