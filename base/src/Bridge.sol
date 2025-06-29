@@ -110,7 +110,7 @@ contract Bridge is ReentrancyGuardTransient, Initializable {
     /// @notice Address of the trusted relayer.
     address public immutable TRUSTED_RELAYER;
 
-    /// @notice Gas required to run the execution section of `__validateAndRelay`..
+    /// @notice Gas required to run the execution prologue section of `__validateAndRelay`.
     ///
     /// @dev Simulated via a forge test performing a call to `relayMessages` with a single message where:
     ///      - The execution and the execution epilogue sections were commented out to isolate the execution section.
@@ -253,7 +253,7 @@ contract Bridge is ReentrancyGuardTransient, Initializable {
     /// @param message The message to relay.
     /// @param isTrustedRelayer Whether the caller was the trusted relayer.
     function __validateAndRelay(IncomingMessage calldata message, bool isTrustedRelayer) external {
-        // // ==================== METERED GAS SECTION: Execution Prologue ==================== //
+        // ==================== METERED GAS SECTION: Execution Prologue ==================== //
         _assertSenderIsEntrypoint();
 
         // NOTE: Intentionally not including the gas limit in the hash to allow for replays with higher gas limits.
