@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {LibClone} from "solady/utils/LibClone.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 import {UpgradeableBeacon} from "solady/utils/UpgradeableBeacon.sol";
+import {Initializable} from "solady/utils/Initializable.sol";
 
 import {Call} from "./libraries/CallLib.sol";
 import {MessageStorageLib} from "./libraries/MessageStorageLib.sol";
@@ -18,7 +19,7 @@ import {Twin} from "./Twin.sol";
 /// @notice The Bridge enables sending calls from Solana to Base.
 ///
 /// @dev Calls sent from Solana to Base are relayed via a Twin contract that is specific per Solana sender pubkey.
-contract Bridge is ReentrancyGuardTransient {
+contract Bridge is ReentrancyGuardTransient, Initializable {
     //////////////////////////////////////////////////////////////
     ///                       Events                           ///
     //////////////////////////////////////////////////////////////
@@ -109,9 +110,6 @@ contract Bridge is ReentrancyGuardTransient {
     /// @notice Address of the trusted relayer.
     address public immutable TRUSTED_RELAYER;
 
-    /// @notice Address of the Twin beacon.
-    address public immutable TWIN_BEACON;
-
     // TODO: Better estimate.
     /// @notice Additional gas buffer reserved to ensure the correct execution of `relayMessages`.
     uint64 private constant _RELAY_MESSAGES_GAS_BUFFER = 40_000;
@@ -135,6 +133,9 @@ contract Bridge is ReentrancyGuardTransient {
     /// @notice The last message's nonce relayed by the trusted relayer.
     uint64 public nextIncomingNonce;
 
+    /// @notice Address of the Twin beacon.
+    address public twinBeacon;
+
     //////////////////////////////////////////////////////////////
     ///                       Public Functions                 ///
     //////////////////////////////////////////////////////////////
@@ -143,13 +144,16 @@ contract Bridge is ReentrancyGuardTransient {
     ///
     /// @param remoteBridge The pubkey of the remote bridge on Solana.
     /// @param trustedRelayer The address of the trusted relayer.
-    /// @param initialOwner The initial owner of the Twin beacon proxy.
-    constructor(Pubkey remoteBridge, address trustedRelayer, address initialOwner) {
+    constructor(Pubkey remoteBridge, address trustedRelayer) {
         REMOTE_BRIDGE = remoteBridge;
         TRUSTED_RELAYER = trustedRelayer;
+        _disableInitializers();
+    }
 
+    /// @param initialOwner The initial owner of the Twin beacon proxy.
+    function initialize(address initialOwner) external reinitializer(1) {
         address twinImpl = address(new Twin());
-        TWIN_BEACON = address(new UpgradeableBeacon(initialOwner, twinImpl));
+        twinBeacon = address(new UpgradeableBeacon(initialOwner, twinImpl));
     }
 
     /// @notice Get the current root of the MMR.
@@ -296,7 +300,7 @@ contract Bridge is ReentrancyGuardTransient {
         address twinAddress = twins[message.sender];
         if (twinAddress == address(0)) {
             twinAddress = LibClone.deployDeterministicERC1967BeaconProxy({
-                beacon: TWIN_BEACON,
+                beacon: twinBeacon,
                 salt: Pubkey.unwrap(message.sender)
             });
             twins[message.sender] = twinAddress;

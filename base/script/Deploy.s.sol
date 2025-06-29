@@ -49,11 +49,12 @@ contract DeployScript is Script {
     }
 
     function _deployBridge() private returns (address) {
-        Bridge bridgeImpl = new Bridge(REMOTE_BRIDGE, ORACLE, PROXY_ADMIN);
+        Bridge bridgeImpl = new Bridge(REMOTE_BRIDGE, ORACLE);
         Bridge bridgeProxy = Bridge(
-            ERC1967Factory(ERC1967FactoryConstants.ADDRESS).deploy({
+            ERC1967Factory(ERC1967FactoryConstants.ADDRESS).deployAndCall({
                 implementation: address(bridgeImpl),
-                admin: PROXY_ADMIN
+                admin: PROXY_ADMIN,
+                data: abi.encodeCall(Bridge.initialize, (PROXY_ADMIN))
             })
         );
 

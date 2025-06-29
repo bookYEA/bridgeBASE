@@ -532,7 +532,7 @@ contract BridgeTest is Test {
 
         vm.expectRevert(Bridge.SenderIsNotEntrypoint.selector);
         vm.prank(user);
-        bridge.__validateAndRelay(message, true);
+        bridge.__validateAndRelay(message, true, 0);
     }
 
     function test_relayMessage_revertsOnDirectCall() public {
