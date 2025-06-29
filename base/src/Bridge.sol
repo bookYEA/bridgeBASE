@@ -104,13 +104,14 @@ contract Bridge is ReentrancyGuardTransient {
     address public constant ESTIMATION_ADDRESS = address(1);
 
     /// @notice Pubkey of the remote bridge on Solana.
-    Pubkey public immutable REMOTE_BRIDGE;
+    Pubkey public constant REMOTE_BRIDGE =
+        Pubkey.wrap(0xc4c16980efe2a570c1a7599fd2ebb40ca7f85daf897482b9c85d4b8933a61608);
 
     /// @notice Address of the trusted relayer.
-    address public immutable TRUSTED_RELAYER;
+    address public constant TRUSTED_RELAYER = 0x0e9a877906EBc3b7098DA2404412BF0Ed1A5EFb4;
 
     /// @notice Address of the Twin beacon.
-    address public immutable TWIN_BEACON;
+    address public constant TWIN_BEACON = 0x009A67439B99f4759DCC1b2918156098899cfa4c;
 
     /// @notice Gas required to run the execution prologue section of `__validateAndRelay`.
     ///
@@ -173,9 +174,9 @@ contract Bridge is ReentrancyGuardTransient {
     /// @param trustedRelayer The address of the trusted relayer.
     /// @param twinBeacon The address of the Twin beacon.
     constructor(Pubkey remoteBridge, address trustedRelayer, address twinBeacon) {
-        REMOTE_BRIDGE = remoteBridge;
-        TRUSTED_RELAYER = trustedRelayer;
-        TWIN_BEACON = twinBeacon;
+        // REMOTE_BRIDGE = remoteBridge;
+        // TRUSTED_RELAYER = trustedRelayer;
+        // TWIN_BEACON = twinBeacon;
     }
 
     /// @notice Get the current root of the MMR.
@@ -300,8 +301,9 @@ contract Bridge is ReentrancyGuardTransient {
         // When this happens the message is guaranteed to be a single operation that encode the parameters of the
         // `registerRemoteToken` function.
         if (message.sender == REMOTE_BRIDGE) {
+            Call memory call = abi.decode(message.data, (Call));
             (address localToken, Pubkey remoteToken, uint8 scalerExponent) =
-                abi.decode(message.data, (address, Pubkey, uint8));
+                abi.decode(call.data, (address, Pubkey, uint8));
 
             TokenLib.registerRemoteToken({
                 localToken: localToken,
