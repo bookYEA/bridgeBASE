@@ -38,17 +38,18 @@ pub struct BridgeCall<'info> {
 pub fn bridge_call_handler(ctx: Context<BridgeCall>, gas_limit: u64, call: Call) -> Result<()> {
     check_call(&call)?;
 
+    let message = OutgoingMessage::new_call(ctx.accounts.from.key(), gas_limit, call);
+
     check_and_pay_for_gas(
         &ctx.accounts.system_program,
         &ctx.accounts.payer,
         &ctx.accounts.gas_fee_receiver,
         &mut ctx.accounts.bridge.eip1559,
         gas_limit,
-        call.data.len(),
+        message.relay_messages_tx_size(),
     )?;
 
-    *ctx.accounts.outgoing_message =
-        OutgoingMessage::new_call(ctx.accounts.from.key(), gas_limit, call);
+    *ctx.accounts.outgoing_message = message;
     ctx.accounts.bridge.nonce += 1;
 
     Ok(())
@@ -58,6 +59,4 @@ pub fn bridge_call_handler(ctx: Context<BridgeCall>, gas_limit: u64, call: Call)
 pub enum BridgeCallError {
     #[msg("Incorrect gas fee receiver")]
     IncorrectGasFeeReceiver,
-    #[msg("Creation with non-zero target")]
-    CreationWithNonZeroTarget,
 }

@@ -40,7 +40,7 @@ pub fn register_output_root_handler(
 ) -> Result<()> {
     require!(
         block_number % 300 == 0,
-        RegisterOutputRootError::InvalidBlockNumber
+        RegisterOutputRootError::IncorrectBlockNumber
     );
 
     // TODO: Plug some ISM verification here.
@@ -55,6 +55,6 @@ pub fn register_output_root_handler(
 pub enum RegisterOutputRootError {
     #[msg("Unauthorized")]
     Unauthorized,
-    #[msg("InvalidBlockNumber")]
-    InvalidBlockNumber,
+    #[msg("IncorrectBlockNumber")]
+    IncorrectBlockNumber,
 }

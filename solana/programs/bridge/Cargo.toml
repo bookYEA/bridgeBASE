@@ -22,7 +22,8 @@ devnet = []
 anchor-lang = { version = "=0.31.0", features = ["init-if-needed"] }
 anchor-spl = "=0.31.0"
 
-alloy-sol-types = "=0.8.13"
 alloy-primitives = "=0.8.13"
+alloy-sol-types = { version = "=0.8.13", features = ["json"] }
+alloy-sol-type-parser = "=0.8.13" # Pulled by the json feature above so pin a version that works with the rustc version
 
 hex = "0.4.3"

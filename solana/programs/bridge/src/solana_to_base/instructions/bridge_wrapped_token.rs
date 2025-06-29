@@ -58,18 +58,30 @@ pub fn bridge_wrapped_token_handler(
         check_call(call)?;
     }
 
+    // Get the token metadata from the mint.
+    let partial_token_metadata =
+        PartialTokenMetadata::try_from(&ctx.accounts.mint.to_account_info())?;
+
+    let message = OutgoingMessage::new_transfer(
+        ctx.accounts.from.key(),
+        gas_limit,
+        TransferOp {
+            to,
+            local_token: ctx.accounts.mint.key(),
+            remote_token: partial_token_metadata.remote_token,
+            amount,
+            call,
+        },
+    );
+
     check_and_pay_for_gas(
         &ctx.accounts.system_program,
         &ctx.accounts.payer,
         &ctx.accounts.gas_fee_receiver,
         &mut ctx.accounts.bridge.eip1559,
         gas_limit,
-        call.as_ref().map(|c| c.data.len()).unwrap_or_default(),
+        message.relay_messages_tx_size(),
     )?;
-
-    // Get the token metadata from the mint.
-    let partial_token_metadata =
-        PartialTokenMetadata::try_from(&ctx.accounts.mint.to_account_info())?;
 
     // Burn the token from the user.
     let cpi_ctx = CpiContext::new(
@@ -83,17 +95,7 @@ pub fn bridge_wrapped_token_handler(
 
     token_interface::burn_checked(cpi_ctx, amount, ctx.accounts.mint.decimals)?;
 
-    *ctx.accounts.outgoing_message = OutgoingMessage::new_transfer(
-        ctx.accounts.from.key(),
-        gas_limit,
-        TransferOp {
-            to,
-            local_token: ctx.accounts.mint.key(),
-            remote_token: partial_token_metadata.remote_token,
-            amount,
-            call,
-        },
-    );
+    *ctx.accounts.outgoing_message = message;
     ctx.accounts.bridge.nonce += 1;
 
     Ok(())
@@ -103,12 +105,6 @@ pub fn bridge_wrapped_token_handler(
 pub enum BridgeWrappedTokenError {
     #[msg("Incorrect gas fee receiver")]
     IncorrectGasFeeReceiver,
-    #[msg("Creation with non-zero target")]
-    CreationWithNonZeroTarget,
-    #[msg("Gas limit too low")]
-    GasLimitTooLow,
-    #[msg("Gas limit exceeded")]
-    GasLimitExceeded,
     #[msg("Mint is a wrapped token")]
     MintIsWrappedToken,
 }

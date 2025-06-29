@@ -70,6 +70,4 @@ fn hash_message(nonce: &[u8], sender: &[u8; 20], data: &[u8]) -> [u8; 32] {
 pub enum ProveMessageError {
     #[msg("Invalid PDA derivation")]
     InvalidPda,
-    #[msg("Invalid proof")]
-    InvalidProof,
 }

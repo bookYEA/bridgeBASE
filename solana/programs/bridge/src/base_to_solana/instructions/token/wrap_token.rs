@@ -12,14 +12,17 @@ use anchor_spl::token_interface::{
 };
 
 use crate::base_to_solana::{
-    GAS_LIMIT_REGISTER_REMOTE_TOKEN, REMOTE_TOKEN_METADATA_KEY, SCALER_EXPONENT_METADATA_KEY,
-    WRAPPED_TOKEN_SEED,
+    REMOTE_TOKEN_METADATA_KEY, SCALER_EXPONENT_METADATA_KEY, WRAPPED_TOKEN_SEED,
 };
 use crate::common::{bridge::Bridge, PartialTokenMetadata, BRIDGE_SEED};
 use crate::solana_to_base::{
     check_and_pay_for_gas, Call, CallType, OutgoingMessage, GAS_FEE_RECEIVER, OUTGOING_MESSAGE_SEED,
 };
 use crate::ID;
+
+const REGISTER_REMOTE_TOKEN_DATA_LEN: usize = {
+    32 + 32 + 32 // abi.encode(address, bytes32, uint8) = 96 bytes
+};
 
 #[derive(Accounts)]
 #[instruction(decimals: u8, metadata: PartialTokenMetadata)]
@@ -57,7 +60,7 @@ pub struct WrapToken<'info> {
         seeds = [OUTGOING_MESSAGE_SEED, bridge.nonce.to_le_bytes().as_ref()],
         bump,
         payer = payer,
-        space = 8 + OutgoingMessage::space(Some(GAS_LIMIT_REGISTER_REMOTE_TOKEN)),
+        space = 8 + OutgoingMessage::space(Some(REGISTER_REMOTE_TOKEN_DATA_LEN)),
     )]
     pub outgoing_message: Account<'info, OutgoingMessage>,
 
@@ -176,15 +179,6 @@ fn register_remote_token(
     scaler_exponent: u8,
     gas_limit: u64,
 ) -> Result<()> {
-    check_and_pay_for_gas(
-        &ctx.accounts.system_program,
-        &ctx.accounts.payer,
-        &ctx.accounts.gas_fee_receiver,
-        &mut ctx.accounts.bridge.eip1559,
-        gas_limit,
-        GAS_LIMIT_REGISTER_REMOTE_TOKEN,
-    )?;
-
     let address = Address::from(remote_token);
     let local_token = FixedBytes::from(ctx.accounts.mint.key().to_bytes());
     let scaler_exponent = U256::from(scaler_exponent);
@@ -196,7 +190,18 @@ fn register_remote_token(
         data: (address, local_token, scaler_exponent).abi_encode(),
     };
 
-    *ctx.accounts.outgoing_message = OutgoingMessage::new_call(ID, gas_limit, call);
+    let message = OutgoingMessage::new_call(ID, gas_limit, call);
+
+    check_and_pay_for_gas(
+        &ctx.accounts.system_program,
+        &ctx.accounts.payer,
+        &ctx.accounts.gas_fee_receiver,
+        &mut ctx.accounts.bridge.eip1559,
+        gas_limit,
+        message.relay_messages_tx_size(),
+    )?;
+
+    *ctx.accounts.outgoing_message = message;
     ctx.accounts.bridge.nonce += 1;
 
     Ok(())
@@ -204,8 +209,6 @@ fn register_remote_token(
 
 #[error_code]
 pub enum WrapTokenError {
-    #[msg("Incorrect mint account")]
-    IncorrectMintAccount,
     #[msg("Incorrect gas fee receiver")]
     IncorrectGasFeeReceiver,
 }

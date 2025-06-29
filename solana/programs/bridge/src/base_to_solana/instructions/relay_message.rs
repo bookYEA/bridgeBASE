@@ -4,7 +4,7 @@ use anchor_lang::{
 };
 
 use crate::base_to_solana::{
-    constants::BRIDGE_AUTHORITY_SEED, ix::Ix, state::IncomingMessage, Message, Transfer,
+    constants::BRIDGE_CPI_AUTHORITY_SEED, ix::Ix, state::IncomingMessage, Message, Transfer,
 };
 
 #[derive(Accounts)]
@@ -13,7 +13,7 @@ pub struct RelayMessage<'info> {
     pub payer: Signer<'info>,
 
     /// CHECK: This is the bridge authority account used to sign the external CPIs.
-    #[account(seeds = [BRIDGE_AUTHORITY_SEED, message.sender.as_ref()], bump)]
+    #[account(seeds = [BRIDGE_CPI_AUTHORITY_SEED, message.sender.as_ref()], bump)]
     pub bridge_cpi_authority: Option<AccountInfo<'info>>,
 
     #[account(mut)]
@@ -55,7 +55,7 @@ pub fn relay_message_handler<'a, 'info>(
         .ok_or(RelayMessageError::BridgeCpiAuthorityNotFound)?;
 
     let bridge_cpi_authority_seeds: &[&[u8]] = &[
-        BRIDGE_AUTHORITY_SEED,
+        BRIDGE_CPI_AUTHORITY_SEED,
         ctx.accounts.message.sender.as_ref(),
         &[bump],
     ];
@@ -101,8 +101,6 @@ fn cpi<'info>(
 pub enum RelayMessageError {
     #[msg("Message already executed")]
     AlreadyExecuted,
-    #[msg("Invalid transfer discriminator")]
-    InvalidTransferDiscriminator,
     #[msg("Bridge CPI authority not found")]
     BridgeCpiAuthorityNotFound,
 }

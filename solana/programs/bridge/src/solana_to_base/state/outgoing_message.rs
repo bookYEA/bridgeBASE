@@ -1,5 +1,9 @@
 use anchor_lang::prelude::*;
 
+use crate::solana_to_base::{
+    RELAY_MESSAGES_CALL_ABI_ENCODING_OVERHEAD, RELAY_MESSAGES_TRANSFER_ABI_ENCODING_OVERHEAD,
+};
+
 #[derive(Debug, Clone, Eq, PartialEq, AnchorSerialize, AnchorDeserialize)]
 pub struct Transfer {
     pub to: [u8; 20],
@@ -71,5 +75,21 @@ impl OutgoingMessage {
     pub fn space(data_len: Option<usize>) -> usize {
         // The transfer variant is always bigger than the call variant (as it embeds an optional call)
         32 + 8 + (1 + Transfer::space(data_len))
+    }
+
+    pub fn relay_messages_tx_size(&self) -> usize {
+        match &self.message {
+            Message::Call(call) => {
+                RELAY_MESSAGES_CALL_ABI_ENCODING_OVERHEAD + call.data.len().div_ceil(32) * 32
+            }
+            Message::Transfer(transfer) => {
+                RELAY_MESSAGES_TRANSFER_ABI_ENCODING_OVERHEAD
+                    + transfer
+                        .call
+                        .as_ref()
+                        .map(|call| call.data.len().div_ceil(32) * 32)
+                        .unwrap_or_default()
+            }
+        }
     }
 }

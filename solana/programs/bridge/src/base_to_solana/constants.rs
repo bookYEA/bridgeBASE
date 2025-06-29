@@ -2,14 +2,11 @@ use anchor_lang::prelude::*;
 
 pub const INCOMING_MESSAGE_SEED: &[u8] = b"incoming_message";
 pub const OUTPUT_ROOT_SEED: &[u8] = b"output_root";
-pub const BRIDGE_AUTHORITY_SEED: &[u8] = b"bridge_authority";
+pub const BRIDGE_CPI_AUTHORITY_SEED: &[u8] = b"bridge_cpi_authority";
 pub const WRAPPED_TOKEN_SEED: &[u8] = b"wrapped_token";
 
 pub const REMOTE_TOKEN_METADATA_KEY: &str = "remote_token";
 pub const SCALER_EXPONENT_METADATA_KEY: &str = "scaler_exponent";
-
-// TODO: Re-estimate this constant.
-pub const GAS_LIMIT_REGISTER_REMOTE_TOKEN: usize = 388;
 
 mod private {
     use super::*;

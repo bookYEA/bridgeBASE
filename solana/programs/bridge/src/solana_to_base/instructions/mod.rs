@@ -20,7 +20,7 @@ pub use bridge_wrapped_token::*;
 pub fn check_call(call: &Call) -> Result<()> {
     require!(
         matches!(call.ty, CallType::Call | CallType::DelegateCall) || call.to == [0; 20],
-        BridgeCallError::CreationWithNonZeroTarget
+        SolanaToBaseError::CreationWithNonZeroTarget
     );
     Ok(())
 }
@@ -31,20 +31,20 @@ pub fn check_and_pay_for_gas<'info>(
     gas_fee_receiver: &AccountInfo<'info>,
     eip1559: &mut Eip1559,
     gas_limit: u64,
-    data_len: usize,
+    tx_size: usize,
 ) -> Result<()> {
-    check_gas_limit(gas_limit, data_len)?;
+    check_gas_limit(gas_limit, tx_size)?;
     pay_for_gas(system_program, payer, gas_fee_receiver, eip1559, gas_limit)
 }
 
-fn check_gas_limit(gas_limit: u64, data_len: usize) -> Result<()> {
+fn check_gas_limit(gas_limit: u64, tx_size: usize) -> Result<()> {
     require!(
-        gas_limit >= min_gas_limit(data_len),
-        GasLimitError::GasLimitTooLow
+        gas_limit >= min_gas_limit(tx_size),
+        SolanaToBaseError::GasLimitTooLow
     );
     require!(
         gas_limit <= MAX_GAS_LIMIT_PER_MESSAGE,
-        GasLimitError::GasLimitExceeded
+        SolanaToBaseError::GasLimitExceeded
     );
 
     Ok(())
@@ -78,16 +78,18 @@ fn pay_for_gas<'info>(
     Ok(())
 }
 
-// TODO: Re-estimate those constants.
-fn min_gas_limit(total_data_len: usize) -> u64 {
+fn min_gas_limit(tx_size: usize) -> u64 {
+    // TODO: Re-estimate those constants.
     const RELAY_CALL_GAS_BUFFER: u64 = 40_000;
     const RELAY_CALL_OVERHEAD_GAS: u64 = 40_000;
 
-    total_data_len as u64 * 40 + 21_000 + RELAY_CALL_GAS_BUFFER + RELAY_CALL_OVERHEAD_GAS
+    tx_size as u64 * 40 + 21_000 + RELAY_CALL_GAS_BUFFER + RELAY_CALL_OVERHEAD_GAS
 }
 
 #[error_code]
-pub enum GasLimitError {
+pub enum SolanaToBaseError {
+    #[msg("Creation with non-zero target")]
+    CreationWithNonZeroTarget,
     #[msg("Gas limit too low")]
     GasLimitTooLow,
     #[msg("Gas limit exceeded")]

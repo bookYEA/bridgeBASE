@@ -61,13 +61,25 @@ pub fn bridge_spl_handler(
         check_call(call)?;
     }
 
+    let message = OutgoingMessage::new_transfer(
+        ctx.accounts.from.key(),
+        gas_limit,
+        TransferOp {
+            to,
+            local_token: ctx.accounts.mint.key(),
+            remote_token,
+            amount,
+            call,
+        },
+    );
+
     check_and_pay_for_gas(
         &ctx.accounts.system_program,
         &ctx.accounts.payer,
         &ctx.accounts.gas_fee_receiver,
         &mut ctx.accounts.bridge.eip1559,
         gas_limit,
-        call.as_ref().map(|c| c.data.len()).unwrap_or_default(),
+        message.relay_messages_tx_size(),
     )?;
 
     // Check that the provided mint is not a wrapped token.
@@ -88,17 +100,7 @@ pub fn bridge_spl_handler(
 
     transfer_checked(cpi_ctx, amount, ctx.accounts.mint.decimals)?;
 
-    *ctx.accounts.outgoing_message = OutgoingMessage::new_transfer(
-        ctx.accounts.from.key(),
-        gas_limit,
-        TransferOp {
-            to,
-            local_token: ctx.accounts.mint.key(),
-            remote_token,
-            amount,
-            call,
-        },
-    );
+    *ctx.accounts.outgoing_message = message;
     ctx.accounts.bridge.nonce += 1;
 
     Ok(())
@@ -108,12 +110,6 @@ pub fn bridge_spl_handler(
 pub enum BridgeSplError {
     #[msg("Incorrect gas fee receiver")]
     IncorrectGasFeeReceiver,
-    #[msg("Creation with non-zero target")]
-    CreationWithNonZeroTarget,
-    #[msg("Gas limit too low")]
-    GasLimitTooLow,
-    #[msg("Gas limit exceeded")]
-    GasLimitExceeded,
     #[msg("Mint is a wrapped token")]
     MintIsWrappedToken,
 }
