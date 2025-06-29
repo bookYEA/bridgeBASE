@@ -39,7 +39,7 @@ dev-deploy: deploy create-wrapped-sol create-token
 
 .PHONY: deploy
 deploy:
-	forge script DeployScript --account testnet-admin --rpc-url $(BASE_RPC) --broadcast -vvvv
+	forge script DeployScript --account testnet-admin --rpc-url $(BASE_RPC) --sender $(shell cast wallet address --account testnet-admin) --broadcast -vvvv
 
 .PHONY: create-wrapped-sol
 create-wrapped-sol:
