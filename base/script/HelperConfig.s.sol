@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {Script} from "forge-std/Script.sol";
+
 import {ERC1967Factory} from "solady/utils/ERC1967Factory.sol";
 import {ERC1967FactoryConstants} from "solady/utils/ERC1967FactoryConstants.sol";
 

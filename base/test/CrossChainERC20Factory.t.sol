@@ -2,11 +2,10 @@
 pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
-import {ERC1967Factory} from "solady/utils/ERC1967Factory.sol";
 import {LibClone} from "solady/utils/LibClone.sol";
-import {UpgradeableBeacon} from "solady/utils/UpgradeableBeacon.sol";
 
 import {DeployScript} from "../script/Deploy.s.sol";
+
 import {Bridge} from "../src/Bridge.sol";
 import {CrossChainERC20} from "../src/CrossChainERC20.sol";
 import {CrossChainERC20Factory} from "../src/CrossChainERC20Factory.sol";
@@ -34,7 +33,7 @@ contract CrossChainERC20FactoryTest is Test {
 
     function setUp() public {
         DeployScript deployerScript = new DeployScript();
-        (bridge, factory,) = deployerScript.run();
+        (, bridge, factory,) = deployerScript.run();
 
         // Initialize the beacon and tokenBridge variables
         beacon = factory.BEACON();

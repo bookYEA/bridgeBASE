@@ -7,7 +7,7 @@ import {Test, console} from "forge-std/Test.sol";
 
 contract TwinTest is Test {
     Twin public twin;
-    address public portal;
+    address public bridge;
     address public unauthorized;
 
     // Mock contracts for testing
@@ -18,11 +18,11 @@ contract TwinTest is Test {
     event MockEvent(uint256 value);
 
     function setUp() public {
-        portal = makeAddr("portal");
+        bridge = makeAddr("bridge");
         unauthorized = makeAddr("unauthorized");
 
-        // Deploy Twin with portal address
-        twin = new Twin();
+        // Deploy Twin with bridge address
+        twin = new Twin(bridge);
 
         // Deploy mock contracts for testing
         mockTarget = new MockTarget();
@@ -37,21 +37,12 @@ contract TwinTest is Test {
     ///                   Constructor Tests                    ///
     //////////////////////////////////////////////////////////////
 
-    function test_constructor_setsPortalCorrectly() public {
+    function test_constructor_setsBridgeCorrectly() public {
         // The constructor sets BRIDGE to msg.sender (the deployer)
-        Twin testTwin = new Twin();
+        Twin testTwin = new Twin(bridge);
 
         // Since this test contract deployed it, BRIDGE should be set to this contract's address
-        assertEq(testTwin.BRIDGE(), address(this));
-    }
-
-    function test_constructor_setBridgeToDeployer() public {
-        // Constructor should set BRIDGE to the deployer (msg.sender)
-        Twin testTwin = new Twin();
-        assertEq(testTwin.BRIDGE(), address(this));
-
-        // Verify BRIDGE is immutable and set correctly
-        assertTrue(testTwin.BRIDGE() != address(0));
+        assertEq(testTwin.BRIDGE(), bridge);
     }
 
     //////////////////////////////////////////////////////////////
@@ -89,8 +80,7 @@ contract TwinTest is Test {
             data: abi.encodeWithSelector(MockTarget.setValue.selector, 42)
         });
 
-        // The test contract is the BRIDGE since it deployed the Twin
-        // No need to prank since we're already the authorized caller
+        vm.prank(bridge);
         twin.execute(call);
 
         assertEq(mockTarget.value(), 42);
@@ -113,7 +103,7 @@ contract TwinTest is Test {
             data: abi.encodeWithSelector(Twin.execute.selector, call)
         });
 
-        // Test contract is the authorized caller
+        vm.prank(bridge);
         twin.execute(selfCall);
 
         assertEq(mockTarget.value(), 123);
@@ -144,6 +134,7 @@ contract TwinTest is Test {
             data: abi.encodeWithSelector(MockTarget.setValue.selector, 999)
         });
 
+        vm.prank(bridge);
         twin.execute(call);
 
         assertEq(mockTarget.value(), 999);
@@ -160,6 +151,7 @@ contract TwinTest is Test {
             data: abi.encodeWithSelector(MockTarget.setValue.selector, 555)
         });
 
+        vm.prank(bridge);
         twin.execute(call);
 
         assertEq(mockTarget.value(), 555);
@@ -174,6 +166,7 @@ contract TwinTest is Test {
             data: abi.encodeWithSelector(MockRevertingTarget.alwaysReverts.selector)
         });
 
+        vm.prank(bridge);
         vm.expectRevert();
         twin.execute(call);
     }
@@ -189,6 +182,7 @@ contract TwinTest is Test {
             data: abi.encodeWithSelector(MockDelegateTarget.setStorageSlot.selector, 42)
         });
 
+        vm.prank(bridge);
         twin.execute(call);
 
         // Check that the storage was set in the Twin contract's context
@@ -206,6 +200,7 @@ contract TwinTest is Test {
             data: abi.encodeWithSelector(MockDelegateTarget.setStorageSlot.selector, 42)
         });
 
+        vm.prank(bridge);
         vm.expectRevert(CallLib.DelegateCallCannotHaveValue.selector);
         twin.execute(call);
     }
@@ -222,6 +217,7 @@ contract TwinTest is Test {
             data: bytecode
         });
 
+        vm.prank(bridge);
         twin.execute(call);
 
         // If we reach here, the CREATE was successful
@@ -240,6 +236,7 @@ contract TwinTest is Test {
             data: abi.encode(salt, bytecode)
         });
 
+        vm.prank(bridge);
         twin.execute(call);
 
         // If we reach here, the CREATE2 was successful
@@ -267,6 +264,7 @@ contract TwinTest is Test {
     function test_execute_withEmptyData() public {
         Call memory call = Call({ty: CallType.Call, to: address(mockTarget), value: 0, data: ""});
 
+        vm.prank(bridge);
         twin.execute(call);
 
         // Should succeed (calls fallback/receive)
@@ -278,6 +276,7 @@ contract TwinTest is Test {
 
         Call memory call = Call({ty: CallType.Call, to: nonContract, value: 1 ether, data: ""});
 
+        vm.prank(bridge);
         twin.execute(call);
 
         assertEq(nonContract.balance, 1 ether);
@@ -296,6 +295,7 @@ contract TwinTest is Test {
         });
 
         uint256 gasBefore = gasleft();
+        vm.prank(bridge);
         twin.execute(call);
         uint256 gasUsed = gasBefore - gasleft();
 
@@ -319,16 +319,11 @@ contract TwinTest is Test {
 
         uint256 initialBalance = address(mockTarget).balance;
 
+        vm.prank(bridge);
         twin.execute(call);
 
         assertEq(mockTarget.value(), setValue);
         assertEq(address(mockTarget).balance, initialBalance + value);
-    }
-
-    function testFuzz_constructor_alwaysSetsToBridgeToDeployer(address) public {
-        // Regardless of any input, constructor always sets BRIDGE to msg.sender
-        Twin testTwin = new Twin();
-        assertEq(testTwin.BRIDGE(), address(this));
     }
 }
 

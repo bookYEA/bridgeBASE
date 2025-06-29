@@ -4,10 +4,6 @@ pragma solidity 0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {console2} from "forge-std/console2.sol";
 
-import {ERC1967Factory} from "solady/utils/ERC1967Factory.sol";
-import {LibClone} from "solady/utils/LibClone.sol";
-import {UpgradeableBeacon} from "solady/utils/UpgradeableBeacon.sol";
-
 import {DeployScript} from "../script/Deploy.s.sol";
 import {HelperConfig} from "../script/HelperConfig.s.sol";
 import {Bridge} from "../src/Bridge.sol";
@@ -18,9 +14,10 @@ import {Call, CallType} from "../src/libraries/CallLib.sol";
 import {MessageStorageLib} from "../src/libraries/MessageStorageLib.sol";
 import {SVMBridgeLib} from "../src/libraries/SVMBridgeLib.sol";
 import {Ix, Pubkey} from "../src/libraries/SVMLib.sol";
-import {SolanaTokenType, TokenLib, Transfer} from "../src/libraries/TokenLib.sol";
+import {TokenLib, Transfer} from "../src/libraries/TokenLib.sol";
 
 contract BridgeTest is Test {
+    Twin public twinBeacon;
     Bridge public bridge;
     CrossChainERC20Factory public factory;
     HelperConfig public helperConfig;
@@ -47,7 +44,7 @@ contract BridgeTest is Test {
 
     function setUp() public {
         DeployScript deployer = new DeployScript();
-        (bridge, factory, helperConfig) = deployer.run();
+        (twinBeacon, bridge, factory, helperConfig) = deployer.run();
 
         HelperConfig.NetworkConfig memory cfg = helperConfig.getConfig();
 
@@ -75,26 +72,13 @@ contract BridgeTest is Test {
     //////////////////////////////////////////////////////////////
 
     function test_constructor_setsCorrectValues() public {
-        Bridge testBridge = new Bridge(TEST_SENDER, trustedRelayer);
+        Bridge testBridge =
+            new Bridge({remoteBridge: TEST_SENDER, trustedRelayer: trustedRelayer, twinBeacon: address(twinBeacon)});
 
         assertEq(Pubkey.unwrap(testBridge.REMOTE_BRIDGE()), Pubkey.unwrap(TEST_SENDER));
         assertEq(testBridge.TRUSTED_RELAYER(), trustedRelayer);
+        assertEq(testBridge.TWIN_BEACON(), address(twinBeacon));
         assertEq(testBridge.nextIncomingNonce(), 0);
-    }
-
-    function test_constructor_deploysTwinBeacon() public view {
-        address twinBeacon = bridge.twinBeacon();
-        assertTrue(twinBeacon != address(0));
-
-        UpgradeableBeacon beacon = UpgradeableBeacon(twinBeacon);
-        assertTrue(beacon.implementation() != address(0));
-    }
-
-    function test_constructor_withZeroAddresses() public {
-        Bridge testBridge = new Bridge(Pubkey.wrap(0), address(0));
-
-        assertEq(Pubkey.unwrap(testBridge.REMOTE_BRIDGE()), 0);
-        assertEq(testBridge.TRUSTED_RELAYER(), address(0));
     }
 
     //////////////////////////////////////////////////////////////

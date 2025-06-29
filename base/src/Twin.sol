@@ -22,8 +22,8 @@ contract Twin {
     ///                       Public Functions                 ///
     //////////////////////////////////////////////////////////////
 
-    constructor() {
-        BRIDGE = msg.sender;
+    constructor(address bridge) {
+        BRIDGE = bridge;
     }
 
     receive() external payable {}

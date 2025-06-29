@@ -8,45 +8,61 @@ import {UpgradeableBeacon} from "solady/utils/UpgradeableBeacon.sol";
 import {ERC1967Factory} from "solady/utils/ERC1967Factory.sol";
 
 import {Bridge} from "../src/Bridge.sol";
+
 import {CrossChainERC20} from "../src/CrossChainERC20.sol";
 import {CrossChainERC20Factory} from "../src/CrossChainERC20Factory.sol";
+import {Twin} from "../src/Twin.sol";
 import {HelperConfig} from "./HelperConfig.s.sol";
 
 contract DeployScript is Script {
-    function run() public returns (Bridge, CrossChainERC20Factory, HelperConfig) {
+    function run() public returns (Twin, Bridge, CrossChainERC20Factory, HelperConfig) {
         HelperConfig helperConfig = new HelperConfig();
         HelperConfig.NetworkConfig memory cfg = helperConfig.getConfig();
 
         Chain memory chain = getChain(block.chainid);
         console.log("Deploying on chain: %s", chain.name);
 
-        vm.startBroadcast();
-        address bridge = _deployBridge(cfg);
-        address factory = _deployFactory(cfg, bridge);
+        address precomputedBridgeAddress =
+            ERC1967Factory(cfg.erc1967Factory).predictDeterministicAddress({salt: _salt("bridge")});
+
+        vm.startBroadcast(msg.sender);
+        address twinBeacon = _deployTwinBeacon({cfg: cfg, precomputedBridgeAddress: precomputedBridgeAddress});
+        address bridge = _deployBridge({cfg: cfg, twinBeacon: twinBeacon});
+        address factory = _deployFactory({cfg: cfg, bridge: bridge});
         vm.stopBroadcast();
 
+        require(address(bridge) == precomputedBridgeAddress, "Bridge address mismatch");
+
+        console.log("Deployed TwinBeacon at: %s", twinBeacon);
         console.log("Deployed Bridge at: %s", bridge);
         console.log("Deployed CrossChainERC20Factory at: %s", factory);
 
         string memory obj = "root";
-        string memory json = vm.serializeAddress(obj, "Bridge", bridge);
-        json = vm.serializeAddress(obj, "CrossChainERC20Factory", factory);
+        string memory json = vm.serializeAddress({objectKey: obj, valueKey: "Bridge", value: bridge});
+        json = vm.serializeAddress({objectKey: obj, valueKey: "CrossChainERC20Factory", value: factory});
+        json = vm.serializeAddress({objectKey: obj, valueKey: "Twin", value: twinBeacon});
         vm.writeJson(json, string.concat("deployments/", chain.chainAlias, ".json"));
 
-        return (Bridge(bridge), CrossChainERC20Factory(factory), helperConfig);
+        return (Twin(payable(twinBeacon)), Bridge(bridge), CrossChainERC20Factory(factory), helperConfig);
     }
 
-    function _deployBridge(HelperConfig.NetworkConfig memory cfg) private returns (address) {
-        Bridge bridgeImpl = new Bridge({remoteBridge: cfg.remoteBridge, trustedRelayer: cfg.trustedRelayer});
-        Bridge bridgeProxy = Bridge(
-            ERC1967Factory(cfg.erc1967Factory).deployAndCall({
-                implementation: address(bridgeImpl),
-                admin: cfg.initialOwner,
-                data: abi.encodeCall(Bridge.initialize, (cfg.initialOwner))
-            })
-        );
+    function _deployTwinBeacon(HelperConfig.NetworkConfig memory cfg, address precomputedBridgeAddress)
+        private
+        returns (address)
+    {
+        address twinImpl = address(new Twin(precomputedBridgeAddress));
+        return address(new UpgradeableBeacon({initialOwner: cfg.initialOwner, initialImplementation: twinImpl}));
+    }
 
-        return address(bridgeProxy);
+    function _deployBridge(HelperConfig.NetworkConfig memory cfg, address twinBeacon) private returns (address) {
+        Bridge bridgeImpl =
+            new Bridge({remoteBridge: cfg.remoteBridge, trustedRelayer: cfg.trustedRelayer, twinBeacon: twinBeacon});
+
+        return ERC1967Factory(cfg.erc1967Factory).deployDeterministic({
+            implementation: address(bridgeImpl),
+            admin: cfg.initialOwner,
+            salt: _salt("bridge")
+        });
     }
 
     function _deployFactory(HelperConfig.NetworkConfig memory cfg, address bridge) private returns (address) {
@@ -63,5 +79,11 @@ contract DeployScript is Script {
         );
 
         return address(xChainERC20Factory);
+    }
+
+    function _salt(bytes12 salt) private view returns (bytes32) {
+        // Concat the msg.sender and the salt
+        bytes memory packed = abi.encodePacked(msg.sender, salt);
+        return bytes32(packed);
     }
 }
