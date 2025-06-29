@@ -79,11 +79,21 @@ fn pay_for_gas<'info>(
 }
 
 fn min_gas_limit(tx_size: usize) -> u64 {
-    // TODO: Re-estimate those constants.
-    const RELAY_CALL_GAS_BUFFER: u64 = 40_000;
-    const RELAY_CALL_OVERHEAD_GAS: u64 = 40_000;
+    // Additional buffer to account for the gas used in the `Bridge.relayMessages` function.
+    const EXTRA_BUFFER: u64 = 10_000;
 
-    tx_size as u64 * 40 + 21_000 + RELAY_CALL_GAS_BUFFER + RELAY_CALL_OVERHEAD_GAS
+    // Buffers to account for the gas used in the `Bridge.__validateAndRelay` function.
+    // See `Bridge.sol` for more details.
+    const EXECUTION_PROLOGUE_GAS_BUFFER: u64 = 35_000;
+    const EXECUTION_GAS_BUFFER: u64 = 3_000;
+    const EXECUTION_EPILOGUE_GAS_BUFFER: u64 = 25_000;
+
+    tx_size as u64 * 40
+        + 21_000
+        + EXTRA_BUFFER
+        + EXECUTION_PROLOGUE_GAS_BUFFER
+        + EXECUTION_GAS_BUFFER
+        + EXECUTION_EPILOGUE_GAS_BUFFER
 }
 
 #[error_code]

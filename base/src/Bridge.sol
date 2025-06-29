@@ -110,9 +110,37 @@ contract Bridge is ReentrancyGuardTransient, Initializable {
     /// @notice Address of the trusted relayer.
     address public immutable TRUSTED_RELAYER;
 
-    // TODO: Better estimate.
-    /// @notice Additional gas buffer reserved to ensure the correct execution of `relayMessages`.
-    uint64 private constant _RELAY_MESSAGES_GAS_BUFFER = 40_000;
+    /// @notice Gas required to run the execution section of `__validateAndRelay`..
+    ///
+    /// @dev Simulated via a forge test performing a call to `relayMessages` with a single message where:
+    ///      - The execution and the execution epilogue sections were commented out to isolate the execution section.
+    ///      - `isTrustedRelayer` was true to estimate the worst case scenario of doing an additional SSTORE.
+    ///      - The `message.data` field was 4KB large which is sufficient given that the message has to be built from a
+    ///        single Solana transaction (which currently is 1232 bytes).
+    ///      - The metered gas was 30,252 gas.
+    ///
+    uint256 private constant _EXECUTION_PROLOGUE_GAS_BUFFER = 35_000;
+
+    /// @notice Gas required to run the execution section of `__validateAndRelay`.
+    ///
+    /// @dev Simulated via a forge test performing a single call to `__validateAndRelay` where:
+    ///      - The execution epilogue section was commented out to isolate the execution section.
+    ///      - The `message.data` field was 4KB large which is sufficient given that the message has to be built from a
+    ///        single Solana transaction (which currently is 1232 bytes).
+    ///      - The metered gas (including the execution prologue section) was 32,858 gas thus the isolated
+    ///        execution section was 32,858 - 30,252 = 2,606 gas.
+    ///      - No buffer is strictly needed as the `_EXECUTION_PROLOGUE_GAS_BUFFER` is already rounded up and above
+    ///        that.
+    uint256 private constant _EXECUTION_GAS_BUFFER = 3_000;
+
+    /// @notice Gas required to run the execution epilogue section of `__validateAndRelay`.
+    ///
+    /// @dev Simulated via a forge test performing a single call to `__validateAndRelay` where:
+    ///      - The `message.data` field was 4KB large which is sufficient given that the message has to be built from a
+    ///        single Solana transaction (which currently is 1232 bytes).
+    ///      - The metered gas (including the execution prologue and execution sections) was 54,481 gas thus the
+    ///        isolated execution epilogue section was 54,481 - 32,858 = 21,623 gas.
+    uint256 private constant _EXECUTION_EPILOGUE_GAS_BUFFER = 25_000;
 
     //////////////////////////////////////////////////////////////
     ///                       Storage                          ///
@@ -130,7 +158,7 @@ contract Bridge is ReentrancyGuardTransient, Initializable {
     /// @notice Mapping of Solana owner pubkeys to their Twin contract addresses.
     mapping(Pubkey owner => address twinAddress) public twins;
 
-    /// @notice The last message's nonce relayed by the trusted relayer.
+    /// @notice The nonce used for the next incoming message relayed.
     uint64 public nextIncomingNonce;
 
     /// @notice Address of the Twin beacon.
@@ -147,13 +175,14 @@ contract Bridge is ReentrancyGuardTransient, Initializable {
     constructor(Pubkey remoteBridge, address trustedRelayer) {
         REMOTE_BRIDGE = remoteBridge;
         TRUSTED_RELAYER = trustedRelayer;
+
         _disableInitializers();
     }
 
     /// @param initialOwner The initial owner of the Twin beacon proxy.
     function initialize(address initialOwner) external reinitializer(1) {
         address twinImpl = address(new Twin());
-        twinBeacon = address(new UpgradeableBeacon(initialOwner, twinImpl));
+        twinBeacon = address(new UpgradeableBeacon({initialOwner: initialOwner, initialImplementation: twinImpl}));
     }
 
     /// @notice Get the current root of the MMR.
@@ -212,7 +241,7 @@ contract Bridge is ReentrancyGuardTransient, Initializable {
         }
 
         for (uint256 i; i < messages.length; i++) {
-            IncomingMessage memory message = messages[i];
+            IncomingMessage calldata message = messages[i];
             this.__validateAndRelay{gas: message.gasLimit}({message: message, isTrustedRelayer: isTrustedRelayer});
         }
     }
@@ -224,6 +253,7 @@ contract Bridge is ReentrancyGuardTransient, Initializable {
     /// @param message The message to relay.
     /// @param isTrustedRelayer Whether the caller was the trusted relayer.
     function __validateAndRelay(IncomingMessage calldata message, bool isTrustedRelayer) external {
+        // // ==================== METERED GAS SECTION: Execution Prologue ==================== //
         _assertSenderIsEntrypoint();
 
         // NOTE: Intentionally not including the gas limit in the hash to allow for replays with higher gas limits.
@@ -234,7 +264,6 @@ contract Bridge is ReentrancyGuardTransient, Initializable {
 
         // Check that the relay is allowed.
         if (isTrustedRelayer) {
-            // TODO:Should the nonce be cached and only SSTOREd once?
             require(message.nonce == nextIncomingNonce, NonceNotIncremental());
             nextIncomingNonce = message.nonce + 1;
 
@@ -242,27 +271,19 @@ contract Bridge is ReentrancyGuardTransient, Initializable {
         } else {
             require(failures[messageHash], MessageNotAlreadyFailedToRelay());
         }
+        // ==================================================================================== //
 
-        // Cover the gas cost upfront.
-        failures[messageHash] = true;
-
-        // Use the message's specified gas limit for execution, ensuring it doesn't exceed available gas
-        uint256 gasLeft = gasleft();
-        uint256 gasForRelay = gasLeft > _RELAY_MESSAGES_GAS_BUFFER
-            ? (
-                gasLeft - _RELAY_MESSAGES_GAS_BUFFER > message.gasLimit
-                    ? message.gasLimit
-                    : gasLeft - _RELAY_MESSAGES_GAS_BUFFER
-            )
-            : 0;
-
-        try this.__relayMessage{gas: gasForRelay}({message: message}) {
-            // Register the call as successful.
+        // ==================== METERED GAS SECTION: Execution & Epilogue ===================== //
+        uint256 gasLimit = gasleft() - _EXECUTION_GAS_BUFFER - _EXECUTION_EPILOGUE_GAS_BUFFER;
+        try this.__relayMessage{gas: gasLimit}(message) {
+            // Register the message as successfully relayed.
             delete failures[messageHash];
             successes[messageHash] = true;
 
             emit MessageSuccessfullyRelayed(messageHash);
         } catch {
+            // Register the message as failed to relay.
+            failures[messageHash] = true;
             emit FailedToRelayMessage(messageHash);
 
             // Revert for gas estimation.
@@ -270,6 +291,7 @@ contract Bridge is ReentrancyGuardTransient, Initializable {
                 revert ExecutionFailed();
             }
         }
+        // ==================================================================================== //
     }
 
     /// @notice Relays a message sent from Solana to Base.
