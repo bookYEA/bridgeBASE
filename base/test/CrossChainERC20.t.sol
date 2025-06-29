@@ -6,6 +6,8 @@ import {Test, console} from "forge-std/Test.sol";
 import {ERC1967Factory} from "solady/utils/ERC1967Factory.sol";
 import {UpgradeableBeacon} from "solady/utils/UpgradeableBeacon.sol";
 
+import {DeployScript} from "../script/Deploy.s.sol";
+import {Bridge} from "../src/Bridge.sol";
 import {CrossChainERC20} from "../src/CrossChainERC20.sol";
 import {CrossChainERC20Factory} from "../src/CrossChainERC20Factory.sol";
 
@@ -14,9 +16,10 @@ contract CrossChainERC20Test is Test {
     ///                       Test Setup                       ///
     //////////////////////////////////////////////////////////////
 
+    Bridge public bridge;
+    CrossChainERC20Factory public factory;
     CrossChainERC20 public token;
 
-    address public bridge = makeAddr("bridge");
     address public user1 = makeAddr("user1");
     address public user2 = makeAddr("user2");
     address public unauthorized = makeAddr("unauthorized");
@@ -30,15 +33,9 @@ contract CrossChainERC20Test is Test {
     uint256 public constant BURN_AMOUNT = 500 * 10 ** 18;
 
     function setUp() public {
-        ERC1967Factory f = new ERC1967Factory();
-
-        address tokenImpl = address(new CrossChainERC20(bridge));
-        address erc20Beacon =
-            address(new UpgradeableBeacon({initialOwner: address(this), initialImplementation: tokenImpl}));
-        CrossChainERC20Factory xChainERC20FactoryImpl = new CrossChainERC20Factory(erc20Beacon);
-        CrossChainERC20Factory xChainERC20Factory =
-            CrossChainERC20Factory(f.deploy({implementation: address(xChainERC20FactoryImpl), admin: address(this)}));
-        token = CrossChainERC20(xChainERC20Factory.deploy(REMOTE_TOKEN, TOKEN_NAME, TOKEN_SYMBOL, TOKEN_DECIMALS));
+        DeployScript deployer = new DeployScript();
+        (bridge, factory,) = deployer.run();
+        token = CrossChainERC20(factory.deploy(REMOTE_TOKEN, TOKEN_NAME, TOKEN_SYMBOL, TOKEN_DECIMALS));
     }
 
     //////////////////////////////////////////////////////////////
@@ -46,7 +43,7 @@ contract CrossChainERC20Test is Test {
     //////////////////////////////////////////////////////////////
 
     function test_constructor_setsCorrectValues() public view {
-        assertEq(token.bridge(), bridge);
+        assertEq(token.bridge(), address(bridge));
         assertEq(token.remoteToken(), REMOTE_TOKEN);
         assertEq(token.name(), TOKEN_NAME);
         assertEq(token.symbol(), TOKEN_SYMBOL);
@@ -59,7 +56,7 @@ contract CrossChainERC20Test is Test {
     //////////////////////////////////////////////////////////////
 
     function test_bridge_returnsCorrectAddress() public view {
-        assertEq(token.bridge(), bridge);
+        assertEq(token.bridge(), address(bridge));
     }
 
     function test_remoteToken_returnsCorrectValue() public view {
@@ -83,7 +80,7 @@ contract CrossChainERC20Test is Test {
     //////////////////////////////////////////////////////////////
 
     function test_mint_successfulMint() public {
-        vm.prank(bridge);
+        vm.prank(address(bridge));
         vm.expectEmit(true, true, true, true);
         emit CrossChainERC20.Mint(user1, MINT_AMOUNT);
 
@@ -94,7 +91,7 @@ contract CrossChainERC20Test is Test {
     }
 
     function test_mint_multipleMints() public {
-        vm.startPrank(bridge);
+        vm.startPrank(address(bridge));
 
         // First mint
         token.mint(user1, MINT_AMOUNT);
@@ -115,7 +112,7 @@ contract CrossChainERC20Test is Test {
     }
 
     function test_mint_zeroAmount() public {
-        vm.prank(bridge);
+        vm.prank(address(bridge));
         vm.expectEmit(true, true, true, true);
         emit CrossChainERC20.Mint(user1, 0);
 
@@ -126,7 +123,7 @@ contract CrossChainERC20Test is Test {
     }
 
     function test_mint_maxAmount() public {
-        vm.prank(bridge);
+        vm.prank(address(bridge));
 
         token.mint(user1, type(uint256).max);
 
@@ -141,7 +138,7 @@ contract CrossChainERC20Test is Test {
     }
 
     function test_mint_revert_toZeroAddress() public {
-        vm.prank(bridge);
+        vm.prank(address(bridge));
         vm.expectRevert(CrossChainERC20.MintToZeroAddress.selector);
         token.mint(address(0), MINT_AMOUNT);
     }
@@ -153,7 +150,7 @@ contract CrossChainERC20Test is Test {
     }
 
     function test_mint_eventEmission() public {
-        vm.prank(bridge);
+        vm.prank(address(bridge));
 
         vm.expectEmit(address(token));
         emit CrossChainERC20.Mint(user1, MINT_AMOUNT);
@@ -167,11 +164,11 @@ contract CrossChainERC20Test is Test {
 
     function test_burn_successfulBurn() public {
         // First mint tokens to burn
-        vm.prank(bridge);
+        vm.prank(address(bridge));
         token.mint(user1, MINT_AMOUNT);
 
         // Then burn some of them
-        vm.prank(bridge);
+        vm.prank(address(bridge));
         vm.expectEmit(true, true, true, true);
         emit CrossChainERC20.Burn(user1, BURN_AMOUNT);
 
@@ -183,11 +180,11 @@ contract CrossChainERC20Test is Test {
 
     function test_burn_entireBalance() public {
         // Mint tokens
-        vm.prank(bridge);
+        vm.prank(address(bridge));
         token.mint(user1, MINT_AMOUNT);
 
         // Burn entire balance
-        vm.prank(bridge);
+        vm.prank(address(bridge));
         token.burn(user1, MINT_AMOUNT);
 
         assertEq(token.balanceOf(user1), 0);
@@ -196,11 +193,11 @@ contract CrossChainERC20Test is Test {
 
     function test_burn_zeroAmount() public {
         // Mint tokens first
-        vm.prank(bridge);
+        vm.prank(address(bridge));
         token.mint(user1, MINT_AMOUNT);
 
         // Burn zero amount
-        vm.prank(bridge);
+        vm.prank(address(bridge));
         vm.expectEmit(true, true, true, true);
         emit CrossChainERC20.Burn(user1, 0);
 
@@ -211,7 +208,7 @@ contract CrossChainERC20Test is Test {
     }
 
     function test_burn_multipleUsers() public {
-        vm.startPrank(bridge);
+        vm.startPrank(address(bridge));
 
         // Mint to multiple users
         token.mint(user1, MINT_AMOUNT);
@@ -234,7 +231,7 @@ contract CrossChainERC20Test is Test {
 
     function test_burn_revert_fromUnauthorizedAddress() public {
         // Mint tokens first
-        vm.prank(bridge);
+        vm.prank(address(bridge));
         token.mint(user1, MINT_AMOUNT);
 
         // Try to burn from unauthorized address
@@ -244,14 +241,14 @@ contract CrossChainERC20Test is Test {
     }
 
     function test_burn_revert_fromZeroAddress() public {
-        vm.prank(bridge);
+        vm.prank(address(bridge));
         vm.expectRevert(CrossChainERC20.BurnFromZeroAddress.selector);
         token.burn(address(0), BURN_AMOUNT);
     }
 
     function test_burn_revert_fromUser() public {
         // Mint tokens first
-        vm.prank(bridge);
+        vm.prank(address(bridge));
         token.mint(user1, MINT_AMOUNT);
 
         // User tries to burn their own tokens (should fail)
@@ -262,22 +259,22 @@ contract CrossChainERC20Test is Test {
 
     function test_burn_revert_insufficientBalance() public {
         // Mint less than we want to burn
-        vm.prank(bridge);
+        vm.prank(address(bridge));
         token.mint(user1, BURN_AMOUNT - 1);
 
         // Try to burn more than balance (should revert due to ERC20 logic)
-        vm.prank(bridge);
+        vm.prank(address(bridge));
         vm.expectRevert(); // ERC20 will revert with arithmetic error
         token.burn(user1, BURN_AMOUNT);
     }
 
     function test_burn_eventEmission() public {
         // Mint tokens first
-        vm.prank(bridge);
+        vm.prank(address(bridge));
         token.mint(user1, MINT_AMOUNT);
 
         // Burn and check event
-        vm.prank(bridge);
+        vm.prank(address(bridge));
         vm.expectEmit(address(token));
         emit CrossChainERC20.Burn(user1, BURN_AMOUNT);
 
@@ -289,7 +286,7 @@ contract CrossChainERC20Test is Test {
     //////////////////////////////////////////////////////////////
 
     function test_onlyBridge_modifier_allowsBridge() public {
-        vm.prank(bridge);
+        vm.prank(address(bridge));
         token.mint(user1, MINT_AMOUNT);
         // Should succeed without revert
     }
@@ -316,7 +313,7 @@ contract CrossChainERC20Test is Test {
     //////////////////////////////////////////////////////////////
 
     function test_mintAndBurn_integration() public {
-        vm.startPrank(bridge);
+        vm.startPrank(address(bridge));
 
         // Initial state
         assertEq(token.balanceOf(user1), 0);
@@ -342,7 +339,7 @@ contract CrossChainERC20Test is Test {
 
     function test_erc20_standardFunctionality() public {
         // Mint tokens to user1
-        vm.prank(bridge);
+        vm.prank(address(bridge));
         token.mint(user1, MINT_AMOUNT);
 
         // Test transfer
@@ -371,7 +368,7 @@ contract CrossChainERC20Test is Test {
     function testFuzz_mint_validAddressAndAmount(address to, uint256 amount) public {
         vm.assume(to != address(0));
 
-        vm.prank(bridge);
+        vm.prank(address(bridge));
         token.mint(to, amount);
 
         assertEq(token.balanceOf(to), amount);
@@ -382,7 +379,7 @@ contract CrossChainERC20Test is Test {
         vm.assume(from != address(0));
         vm.assume(burnAmount <= mintAmount);
 
-        vm.startPrank(bridge);
+        vm.startPrank(address(bridge));
 
         token.mint(from, mintAmount);
         token.burn(from, burnAmount);
@@ -394,7 +391,7 @@ contract CrossChainERC20Test is Test {
     }
 
     function testFuzz_onlyBridge_rejectsRandomAddresses(address caller, uint256 amount) public {
-        vm.assume(caller != bridge);
+        vm.assume(caller != address(bridge));
 
         vm.prank(caller);
         vm.expectRevert(CrossChainERC20.SenderIsNotBridge.selector);
@@ -410,7 +407,7 @@ contract CrossChainERC20Test is Test {
     //////////////////////////////////////////////////////////////
 
     function test_extremeValues() public {
-        vm.startPrank(bridge);
+        vm.startPrank(address(bridge));
 
         // Test minting maximum uint256
         token.mint(user1, type(uint256).max);
@@ -427,14 +424,14 @@ contract CrossChainERC20Test is Test {
         uint256 gasBefore;
         uint256 gasAfter;
 
-        vm.prank(bridge);
+        vm.prank(address(bridge));
         gasBefore = gasleft();
         token.mint(user1, MINT_AMOUNT);
         gasAfter = gasleft();
 
         console.log("Gas used for mint:", gasBefore - gasAfter);
 
-        vm.prank(bridge);
+        vm.prank(address(bridge));
         gasBefore = gasleft();
         token.burn(user1, BURN_AMOUNT);
         gasAfter = gasleft();

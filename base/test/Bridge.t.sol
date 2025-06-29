@@ -7,6 +7,8 @@ import {ERC1967Factory} from "solady/utils/ERC1967Factory.sol";
 import {LibClone} from "solady/utils/LibClone.sol";
 import {UpgradeableBeacon} from "solady/utils/UpgradeableBeacon.sol";
 
+import {DeployScript} from "../script/Deploy.s.sol";
+import {HelperConfig} from "../script/HelperConfig.s.sol";
 import {Bridge} from "../src/Bridge.sol";
 import {CrossChainERC20} from "../src/CrossChainERC20.sol";
 import {CrossChainERC20Factory} from "../src/CrossChainERC20Factory.sol";
@@ -19,6 +21,9 @@ import {SolanaTokenType, TokenLib, Transfer} from "../src/libraries/TokenLib.sol
 
 contract BridgeTest is Test {
     Bridge public bridge;
+    CrossChainERC20Factory public factory;
+    HelperConfig public helperConfig;
+
     address public trustedRelayer;
     address public initialOwner;
     address public user;
@@ -40,30 +45,17 @@ contract BridgeTest is Test {
     event FailedToRelayMessage(bytes32 indexed messageHash);
 
     function setUp() public {
-        trustedRelayer = makeAddr("trustedRelayer");
-        initialOwner = makeAddr("initialOwner");
+        DeployScript deployer = new DeployScript();
+        (bridge, factory, helperConfig) = deployer.run();
+
+        HelperConfig.NetworkConfig memory cfg = helperConfig.getConfig();
+
+        trustedRelayer = cfg.trustedRelayer;
+        initialOwner = cfg.initialOwner;
         user = makeAddr("user");
         unauthorizedUser = makeAddr("unauthorizedUser");
 
-        ERC1967Factory f = new ERC1967Factory();
-
-        Bridge bridgeImpl = new Bridge({remoteBridge: REMOTE_BRIDGE, trustedRelayer: trustedRelayer});
-        bridge = Bridge(
-            f.deployAndCall({
-                implementation: address(bridgeImpl),
-                admin: address(this),
-                data: abi.encodeCall(Bridge.initialize, (initialOwner))
-            })
-        );
-
-        address tokenImpl = address(new CrossChainERC20(address(bridge)));
-        address erc20Beacon =
-            address(new UpgradeableBeacon({initialOwner: address(this), initialImplementation: tokenImpl}));
-        CrossChainERC20Factory xChainERC20FactoryImpl = new CrossChainERC20Factory(erc20Beacon);
-        CrossChainERC20Factory xChainERC20Factory =
-            CrossChainERC20Factory(f.deploy({implementation: address(xChainERC20FactoryImpl), admin: address(this)}));
-        crossChainToken =
-            CrossChainERC20(xChainERC20Factory.deploy(Pubkey.unwrap(TEST_REMOTE_TOKEN), "Mock Token", "MOCK", 18));
+        crossChainToken = CrossChainERC20(factory.deploy(Pubkey.unwrap(TEST_REMOTE_TOKEN), "Mock Token", "MOCK", 18));
 
         // Deploy mock contracts
         mockToken = new MockERC20("Mock Token", "MOCK", 18);

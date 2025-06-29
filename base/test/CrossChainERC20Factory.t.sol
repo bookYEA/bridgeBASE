@@ -2,11 +2,12 @@
 pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
-
 import {ERC1967Factory} from "solady/utils/ERC1967Factory.sol";
 import {LibClone} from "solady/utils/LibClone.sol";
 import {UpgradeableBeacon} from "solady/utils/UpgradeableBeacon.sol";
 
+import {DeployScript} from "../script/Deploy.s.sol";
+import {Bridge} from "../src/Bridge.sol";
 import {CrossChainERC20} from "../src/CrossChainERC20.sol";
 import {CrossChainERC20Factory} from "../src/CrossChainERC20Factory.sol";
 
@@ -15,8 +16,8 @@ contract CrossChainERC20FactoryTest is Test {
     ///                       Test Setup                       ///
     //////////////////////////////////////////////////////////////
 
+    Bridge public bridge;
     CrossChainERC20Factory public factory;
-    CrossChainERC20 public tokenImplementation;
     address public beacon;
     address public tokenBridge;
 
@@ -32,18 +33,12 @@ contract CrossChainERC20FactoryTest is Test {
     uint8 public constant TOKEN_DECIMALS = 18;
 
     function setUp() public {
-        // Create a mock bridge address
-        tokenBridge = makeAddr("bridge");
+        DeployScript deployerScript = new DeployScript();
+        (bridge, factory,) = deployerScript.run();
 
-        ERC1967Factory f = new ERC1967Factory();
-
-        address tokenImpl = address(new CrossChainERC20(tokenBridge));
-        beacon = address(new UpgradeableBeacon({initialOwner: address(this), initialImplementation: tokenImpl}));
-        CrossChainERC20Factory xChainERC20FactoryImpl = new CrossChainERC20Factory(beacon);
-        factory =
-            CrossChainERC20Factory(f.deploy({implementation: address(xChainERC20FactoryImpl), admin: address(this)}));
-
-        tokenImplementation = CrossChainERC20(tokenImpl);
+        // Initialize the beacon and tokenBridge variables
+        beacon = factory.BEACON();
+        tokenBridge = address(bridge);
     }
 
     //////////////////////////////////////////////////////////////
