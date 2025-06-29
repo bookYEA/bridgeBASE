@@ -44,6 +44,7 @@ contract CrossChainERC20Factory {
     ///
     /// @dev Uses CREATE2 with a salt derived from token parameters to ensure deterministic addresses.
     ///      The same parameters will always result in the same deployment address.
+    ///      Deploys the proxy and initializes it with the provided parameters.
     ///      Emits CrossChainERC20Created event upon successful deployment.
     ///
     /// @param remoteToken The 32-byte identifier of the corresponding token on the remote chain
@@ -58,6 +59,9 @@ contract CrossChainERC20Factory {
     {
         bytes32 salt = keccak256(abi.encode(remoteToken, name, symbol, decimals));
         address localToken = LibClone.deployDeterministicERC1967BeaconProxy({beacon: BEACON, salt: salt});
+
+        // Initialize the deployed proxy with the token parameters
+        CrossChainERC20(localToken).initialize(remoteToken, name, symbol, decimals);
 
         emit CrossChainERC20Created({localToken: localToken, remoteToken: remoteToken, deployer: msg.sender});
 

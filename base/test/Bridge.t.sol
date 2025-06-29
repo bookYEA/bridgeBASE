@@ -2,21 +2,20 @@
 pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
-import {console} from "forge-std/console.sol";
+
+import {ERC1967Factory} from "solady/utils/ERC1967Factory.sol";
+import {LibClone} from "solady/utils/LibClone.sol";
+import {UpgradeableBeacon} from "solady/utils/UpgradeableBeacon.sol";
 
 import {Bridge} from "../src/Bridge.sol";
-
 import {CrossChainERC20} from "../src/CrossChainERC20.sol";
+import {CrossChainERC20Factory} from "../src/CrossChainERC20Factory.sol";
 import {Twin} from "../src/Twin.sol";
-
 import {Call, CallType} from "../src/libraries/CallLib.sol";
 import {MessageStorageLib} from "../src/libraries/MessageStorageLib.sol";
 import {SVMBridgeLib} from "../src/libraries/SVMBridgeLib.sol";
 import {Ix, Pubkey} from "../src/libraries/SVMLib.sol";
 import {SolanaTokenType, TokenLib, Transfer} from "../src/libraries/TokenLib.sol";
-
-import {LibClone} from "solady/utils/LibClone.sol";
-import {UpgradeableBeacon} from "solady/utils/UpgradeableBeacon.sol";
 
 contract BridgeTest is Test {
     Bridge public bridge;
@@ -46,13 +45,29 @@ contract BridgeTest is Test {
         user = makeAddr("user");
         unauthorizedUser = makeAddr("unauthorizedUser");
 
-        // Deploy bridge
-        bridge = new Bridge(REMOTE_BRIDGE, trustedRelayer, initialOwner);
+        ERC1967Factory f = new ERC1967Factory();
+
+        Bridge bridgeImpl = new Bridge({remoteBridge: REMOTE_BRIDGE, trustedRelayer: trustedRelayer});
+        bridge = Bridge(
+            f.deployAndCall({
+                implementation: address(bridgeImpl),
+                admin: address(this),
+                data: abi.encodeCall(Bridge.initialize, (initialOwner))
+            })
+        );
+
+        address tokenImpl = address(new CrossChainERC20(address(bridge)));
+        address erc20Beacon =
+            address(new UpgradeableBeacon({initialOwner: address(this), initialImplementation: tokenImpl}));
+        CrossChainERC20Factory xChainERC20FactoryImpl = new CrossChainERC20Factory(erc20Beacon);
+        CrossChainERC20Factory xChainERC20Factory =
+            CrossChainERC20Factory(f.deploy({implementation: address(xChainERC20FactoryImpl), admin: address(this)}));
+        crossChainToken =
+            CrossChainERC20(xChainERC20Factory.deploy(Pubkey.unwrap(TEST_REMOTE_TOKEN), "Mock Token", "MOCK", 18));
 
         // Deploy mock contracts
         mockToken = new MockERC20("Mock Token", "MOCK", 18);
         mockTarget = new MockTarget();
-        crossChainToken = new CrossChainERC20(address(bridge));
 
         // Set up balances
         vm.deal(address(bridge), 100 ether);
@@ -67,16 +82,15 @@ contract BridgeTest is Test {
     //////////////////////////////////////////////////////////////
 
     function test_constructor_setsCorrectValues() public {
-        Bridge testBridge = new Bridge(TEST_SENDER, trustedRelayer, initialOwner);
+        Bridge testBridge = new Bridge(TEST_SENDER, trustedRelayer);
 
         assertEq(Pubkey.unwrap(testBridge.REMOTE_BRIDGE()), Pubkey.unwrap(TEST_SENDER));
         assertEq(testBridge.TRUSTED_RELAYER(), trustedRelayer);
-        assertTrue(testBridge.TWIN_BEACON() != address(0));
         assertEq(testBridge.nextIncomingNonce(), 0);
     }
 
     function test_constructor_deploysTwinBeacon() public view {
-        address twinBeacon = bridge.TWIN_BEACON();
+        address twinBeacon = bridge.twinBeacon();
         assertTrue(twinBeacon != address(0));
 
         UpgradeableBeacon beacon = UpgradeableBeacon(twinBeacon);
@@ -84,7 +98,7 @@ contract BridgeTest is Test {
     }
 
     function test_constructor_withZeroAddresses() public {
-        Bridge testBridge = new Bridge(Pubkey.wrap(0), address(0), address(0));
+        Bridge testBridge = new Bridge(Pubkey.wrap(0), address(0));
 
         assertEq(Pubkey.unwrap(testBridge.REMOTE_BRIDGE()), 0);
         assertEq(testBridge.TRUSTED_RELAYER(), address(0));
@@ -298,12 +312,12 @@ contract BridgeTest is Test {
     }
 
     function test_relayMessages_revertsOnAlreadySuccessfulMessage() public {
-        // First, create a message that will fail with trusted relayer due to low gas
+        // First, create a message that will succeed with trusted relayer
         Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](1);
         messages[0] = Bridge.IncomingMessage({
             nonce: 0,
             sender: TEST_SENDER,
-            gasLimit: 1000000, // Low gas to cause failure
+            gasLimit: 1000000,
             ty: Bridge.MessageType.Call,
             data: abi.encode(
                 Call({
@@ -317,11 +331,11 @@ contract BridgeTest is Test {
 
         bytes memory ismData = hex"";
 
-        // First attempt by trusted relayer should fail due to low gas
+        // First attempt by trusted relayer should succeed
         vm.prank(trustedRelayer);
         bridge.relayMessages(messages, ismData);
 
-        // Now try the same message again with non-trusted relayer - should revert with
+        // Now try the exact same message again with non-trusted relayer - should revert with
         // MessageAlreadySuccessfullyRelayed
         vm.expectRevert(Bridge.MessageAlreadySuccessfullyRelayed.selector);
         vm.prank(unauthorizedUser);
@@ -420,15 +434,9 @@ contract BridgeTest is Test {
     }
 
     function test_relayMessage_transferType() public {
-        // Deploy a test cross-chain token that can be initialized
-        TestCrossChainERC20 testToken = new TestCrossChainERC20(address(bridge));
-
-        // Initialize it as the bridge
-        vm.prank(address(bridge));
-        testToken.initialize(Pubkey.unwrap(TEST_REMOTE_TOKEN), "Test Token", "TEST", 18);
-
+        // Use the crossChainToken already deployed in setUp
         Transfer memory transfer = Transfer({
-            localToken: address(testToken),
+            localToken: address(crossChainToken),
             remoteToken: TEST_REMOTE_TOKEN,
             to: bytes32(bytes20(user)), // Left-align the address in bytes32
             remoteAmount: 100e6
@@ -448,19 +456,13 @@ contract BridgeTest is Test {
         vm.prank(trustedRelayer);
         bridge.relayMessages(messages, ismData);
 
-        assertEq(testToken.balanceOf(user), 100e6);
+        assertEq(crossChainToken.balanceOf(user), 100e6);
     }
 
     function test_relayMessage_transferAndCallType() public {
-        // Deploy a test cross-chain token for this test
-        TestCrossChainERC20 testToken2 = new TestCrossChainERC20(address(bridge));
-
-        // Initialize it as the bridge
-        vm.prank(address(bridge));
-        testToken2.initialize(Pubkey.unwrap(TEST_REMOTE_TOKEN), "Test Token 2", "TEST2", 18);
-
+        // Use the crossChainToken already deployed in setUp
         Transfer memory transfer = Transfer({
-            localToken: address(testToken2),
+            localToken: address(crossChainToken),
             remoteToken: TEST_REMOTE_TOKEN,
             to: bytes32(bytes20(user)), // Left-align the address in bytes32
             remoteAmount: 100e6
@@ -487,7 +489,7 @@ contract BridgeTest is Test {
         vm.prank(trustedRelayer);
         bridge.relayMessages(messages, ismData);
 
-        assertEq(testToken2.balanceOf(user), 100e6);
+        assertEq(crossChainToken.balanceOf(user), 100e6);
         assertEq(mockTarget.value(), 456);
     }
 
@@ -532,7 +534,7 @@ contract BridgeTest is Test {
 
         vm.expectRevert(Bridge.SenderIsNotEntrypoint.selector);
         vm.prank(user);
-        bridge.__validateAndRelay(message, true, 0);
+        bridge.__validateAndRelay(message, true);
     }
 
     function test_relayMessage_revertsOnDirectCall() public {
@@ -718,11 +720,32 @@ contract BridgeTest is Test {
     }
 
     function testFuzz_relayMessage_withDifferentNonces(uint64 nonce) public {
-        vm.assume(nonce < 1000); // Limit to reasonable range to avoid overflow
+        vm.assume(nonce < 100); // Limit to a smaller range to avoid excessive gas usage
 
-        // Set the next nonce to match
-        _setNextNonce(nonce);
+        // Increment the nonce naturally by sending messages
+        for (uint64 i = 0; i < nonce; i++) {
+            Bridge.IncomingMessage[] memory tempMessages = new Bridge.IncomingMessage[](1);
+            tempMessages[0] = Bridge.IncomingMessage({
+                nonce: i,
+                sender: TEST_SENDER,
+                gasLimit: 1000000,
+                ty: Bridge.MessageType.Call,
+                data: abi.encode(
+                    Call({
+                        ty: CallType.Call,
+                        to: address(mockTarget),
+                        value: 0,
+                        data: abi.encodeWithSelector(MockTarget.setValue.selector, i)
+                    })
+                )
+            });
 
+            bytes memory tempIsmData = hex"";
+            vm.prank(trustedRelayer);
+            bridge.relayMessages(tempMessages, tempIsmData);
+        }
+
+        // Now send the actual test message
         Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](1);
         messages[0] = Bridge.IncomingMessage({
             nonce: nonce,
@@ -769,11 +792,6 @@ contract BridgeTest is Test {
 
         vm.prank(trustedRelayer);
         bridge.relayMessages(messages, ismData);
-    }
-
-    function _setNextNonce(uint64 nonce) internal {
-        // Set the nextIncomingNonce storage slot (slot 3 in Bridge contract)
-        vm.store(address(bridge), bytes32(uint256(3)), bytes32(uint256(nonce)));
     }
 }
 
@@ -841,93 +859,5 @@ contract MockTarget {
 
     function alwaysReverts() external pure {
         revert("This function always reverts");
-    }
-}
-
-contract TestCrossChainERC20 {
-    address private _bridge;
-    string private _name;
-    string private _symbol;
-    uint8 private _decimals;
-    bytes32 private _remoteToken;
-
-    mapping(address => uint256) private _balances;
-    mapping(address => mapping(address => uint256)) private _allowances;
-    uint256 private _totalSupply;
-
-    modifier onlyBridge() {
-        require(msg.sender == _bridge, "Not bridge");
-        _;
-    }
-
-    constructor(address bridge_) {
-        _bridge = bridge_;
-    }
-
-    function initialize(bytes32 remoteToken_, string memory name_, string memory symbol_, uint8 decimals_) external {
-        _remoteToken = remoteToken_;
-        _name = name_;
-        _symbol = symbol_;
-        _decimals = decimals_;
-    }
-
-    function bridge() external view returns (address) {
-        return _bridge;
-    }
-
-    function remoteToken() external view returns (bytes32) {
-        return _remoteToken;
-    }
-
-    function name() external view returns (string memory) {
-        return _name;
-    }
-
-    function symbol() external view returns (string memory) {
-        return _symbol;
-    }
-
-    function decimals() external view returns (uint8) {
-        return _decimals;
-    }
-
-    function totalSupply() external view returns (uint256) {
-        return _totalSupply;
-    }
-
-    function balanceOf(address account) external view returns (uint256) {
-        return _balances[account];
-    }
-
-    function allowance(address owner, address spender) external view returns (uint256) {
-        return _allowances[owner][spender];
-    }
-
-    function mint(address to, uint256 amount) external onlyBridge {
-        _balances[to] += amount;
-        _totalSupply += amount;
-    }
-
-    function burn(address from, uint256 amount) external onlyBridge {
-        _balances[from] -= amount;
-        _totalSupply -= amount;
-    }
-
-    function transfer(address to, uint256 amount) external returns (bool) {
-        _balances[msg.sender] -= amount;
-        _balances[to] += amount;
-        return true;
-    }
-
-    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
-        _allowances[from][msg.sender] -= amount;
-        _balances[from] -= amount;
-        _balances[to] += amount;
-        return true;
-    }
-
-    function approve(address spender, uint256 amount) external returns (bool) {
-        _allowances[msg.sender][spender] = amount;
-        return true;
     }
 }
