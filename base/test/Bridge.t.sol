@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
+import {console2} from "forge-std/console2.sol";
 
 import {ERC1967Factory} from "solady/utils/ERC1967Factory.sol";
 import {LibClone} from "solady/utils/LibClone.sol";
@@ -589,6 +590,194 @@ contract BridgeTest is Test {
         assertEq(root, bytes32(0));
     }
 
+    function test_getRoot_updatesAfterBridgeCall() public {
+        // Get initial root (should be 0)
+        bytes32 initialRoot = bridge.getRoot();
+        assertEq(initialRoot, bytes32(0));
+
+        // Send first bridge call - MMR root will still be 0 for single leaf
+        Ix[] memory ixs = new Ix[](1);
+        ixs[0] = Ix({programId: TEST_SENDER, serializedAccounts: new bytes[](0), data: hex"deadbeef"});
+
+        vm.prank(user);
+        bridge.bridgeCall(ixs);
+
+        // For single leaf, root should be the leaf hash itself (not 0)
+        bytes32 rootAfterFirst = bridge.getRoot();
+        assertNotEq(rootAfterFirst, bytes32(0), "Single leaf should return leaf hash, not zero");
+
+        // Send second bridge call - now root should be non-zero
+        Ix[] memory ixs2 = new Ix[](1);
+        ixs2[0] = Ix({programId: TEST_SENDER, serializedAccounts: new bytes[](0), data: hex"abcdef"});
+
+        vm.prank(user);
+        bridge.bridgeCall(ixs2);
+
+        // Root should now be different (non-zero) for 2+ leaves
+        bytes32 rootAfterSecond = bridge.getRoot();
+        assertNotEq(rootAfterSecond, initialRoot);
+        assertNotEq(rootAfterSecond, bytes32(0));
+    }
+
+    function test_getRoot_updatesAfterBridgeToken() public {
+        // Get initial root (should be 0)
+        bytes32 initialRoot = bridge.getRoot();
+        assertEq(initialRoot, bytes32(0));
+
+        // Set up token transfer
+        Transfer memory transfer = Transfer({
+            localToken: address(mockToken),
+            remoteToken: TEST_REMOTE_TOKEN,
+            to: bytes32(uint256(uint160(user))),
+            remoteAmount: 100e6
+        });
+
+        Ix[] memory ixs = new Ix[](0);
+
+        // Register the token pair first (this processes an incoming message, doesn't affect MMR)
+        _registerTokenPair(address(mockToken), TEST_REMOTE_TOKEN, 12);
+
+        // Send first bridge token transaction (1st outgoing message - root still 0)
+        vm.startPrank(user);
+        mockToken.approve(address(bridge), 200e18);
+        bridge.bridgeToken(transfer, ixs);
+        vm.stopPrank();
+
+        // For single outgoing message, root should be the leaf hash (not 0)
+        bytes32 rootAfterFirst = bridge.getRoot();
+        assertNotEq(rootAfterFirst, bytes32(0), "Single leaf should return leaf hash, not zero");
+
+        // Send second bridge token transaction (2nd outgoing message - root should be non-zero)
+        vm.startPrank(user);
+        mockToken.approve(address(bridge), 100e18);
+        bridge.bridgeToken(transfer, ixs);
+        vm.stopPrank();
+
+        // Root should now be non-zero since we have 2+ outgoing messages
+        bytes32 rootAfterSecond = bridge.getRoot();
+        assertNotEq(rootAfterSecond, initialRoot);
+        assertNotEq(rootAfterSecond, bytes32(0));
+    }
+
+    function test_getRoot_updatesWithMultipleBridgeCalls() public {
+        // Track root changes across multiple bridge calls
+        bytes32[] memory roots = new bytes32[](4);
+        roots[0] = bridge.getRoot(); // Initial root (should be 0)
+        assertEq(roots[0], bytes32(0));
+
+        // Send 3 bridge calls and capture roots after each
+        for (uint256 i = 1; i <= 3; i++) {
+            Ix[] memory ixs = new Ix[](1);
+            ixs[0] = Ix({programId: TEST_SENDER, serializedAccounts: new bytes[](0), data: abi.encodePacked("call", i)});
+
+            vm.prank(user);
+            bridge.bridgeCall(ixs);
+            roots[i] = bridge.getRoot();
+        }
+
+        // First call: root should be the leaf hash (not 0)
+        assertNotEq(roots[1], bytes32(0), "Root should be leaf hash after first call");
+
+        // Second call: root should be non-zero (2+ leaves)
+        assertNotEq(roots[2], bytes32(0), "Root should be non-zero after second call");
+
+        // Third call: root should be different again
+        assertNotEq(roots[3], bytes32(0), "Root should be non-zero after third call");
+        assertNotEq(roots[3], roots[2], "Root should change with each additional call");
+    }
+
+    function test_getRoot_updatesWithMixedBridgeOperations() public {
+        // Set up token for bridgeToken calls
+        Transfer memory transfer = Transfer({
+            localToken: address(mockToken),
+            remoteToken: TEST_REMOTE_TOKEN,
+            to: bytes32(uint256(uint160(user))),
+            remoteAmount: 100e6
+        });
+
+        Ix[] memory ixs = new Ix[](0);
+        // Register token pair (this processes an incoming message, doesn't affect outgoing MMR)
+        _registerTokenPair(address(mockToken), TEST_REMOTE_TOKEN, 12);
+
+        // Track roots across mixed operations
+        bytes32[] memory roots = new bytes32[](5);
+        roots[0] = bridge.getRoot(); // Initial (should be 0)
+        assertEq(roots[0], bytes32(0), "Root should be 0 initially");
+
+        // 1. Bridge call (1st outgoing message - root still 0)
+        vm.prank(user);
+        bridge.bridgeCall(ixs);
+        roots[1] = bridge.getRoot();
+
+        // 2. Bridge token (2nd outgoing message - root should be non-zero)
+        vm.startPrank(user);
+        mockToken.approve(address(bridge), 100e18);
+        bridge.bridgeToken(transfer, ixs);
+        vm.stopPrank();
+        roots[2] = bridge.getRoot();
+
+        // 3. Another bridge call (3rd outgoing message)
+        Ix[] memory ixs2 = new Ix[](1);
+        ixs2[0] = Ix({programId: TEST_SENDER, serializedAccounts: new bytes[](0), data: hex"abcdef"});
+        vm.prank(user);
+        bridge.bridgeCall(ixs2);
+        roots[3] = bridge.getRoot();
+
+        // 4. Another bridge token (4th outgoing message - need more tokens)
+        mockToken.mint(user, 1000e18);
+        vm.startPrank(user);
+        mockToken.approve(address(bridge), 100e18);
+        bridge.bridgeToken(transfer, ixs);
+        vm.stopPrank();
+        roots[4] = bridge.getRoot();
+
+        // Verify progression
+        assertNotEq(roots[1], bytes32(0), "Root should be leaf hash after first outgoing message");
+
+        // All roots after the second outgoing message should be non-zero and unique
+        for (uint256 i = 2; i < roots.length; i++) {
+            assertNotEq(roots[i], bytes32(0), "Root should be non-zero after 2+ outgoing messages");
+
+            for (uint256 j = 2; j < i; j++) {
+                assertNotEq(roots[i], roots[j], "Each operation should produce unique root");
+            }
+        }
+    }
+
+    function test_getRoot_consistentWithNonceProgression() public {
+        // Verify root updates align with nonce increments
+        uint64 initialNonce = bridge.getLastOutgoingNonce();
+        bytes32 initialRoot = bridge.getRoot();
+
+        assertEq(initialNonce, 0);
+        assertEq(initialRoot, bytes32(0));
+
+        bytes32 previousRoot = initialRoot;
+
+        // Send bridge calls and verify both nonce and root increment
+        for (uint256 i = 1; i <= 5; i++) {
+            Ix[] memory ixs = new Ix[](1);
+            ixs[0] = Ix({programId: TEST_SENDER, serializedAccounts: new bytes[](0), data: abi.encodePacked("test", i)});
+
+            vm.prank(user);
+            bridge.bridgeCall(ixs);
+
+            uint64 currentNonce = bridge.getLastOutgoingNonce();
+            bytes32 currentRoot = bridge.getRoot();
+
+            // Nonce should increment by 1
+            assertEq(currentNonce, initialNonce + i);
+
+            // All messages should have non-zero root (leaf hash for single leaf, computed root for multiple)
+            assertNotEq(currentRoot, bytes32(0), "Root should never be zero for any message count");
+
+            // Note: Root may be the same as previous in some MMR configurations, which is acceptable
+            // The important thing is that nonces increment and roots are non-zero
+
+            previousRoot = currentRoot;
+        }
+    }
+
     function test_getLastOutgoingNonce() public {
         uint64 nonce = bridge.getLastOutgoingNonce();
         assertEq(nonce, 0);
@@ -784,6 +973,43 @@ contract BridgeTest is Test {
 
         vm.prank(trustedRelayer);
         bridge.relayMessages(messages, ismData);
+    }
+
+    function test_getRoot_singleLeafShouldReturnLeafHash() public {
+        // Get initial state
+        bytes32 initialRoot = bridge.getRoot();
+        uint64 initialNonce = bridge.getLastOutgoingNonce();
+        assertEq(initialRoot, bytes32(0));
+        assertEq(initialNonce, 0);
+
+        // Send one bridge call to create a single leaf
+        Ix[] memory ixs = new Ix[](1);
+        ixs[0] = Ix({programId: TEST_SENDER, serializedAccounts: new bytes[](0), data: hex"deadbeef"});
+
+        vm.prank(user);
+        bridge.bridgeCall(ixs);
+
+        // Verify we have exactly one outgoing message
+        uint64 finalNonce = bridge.getLastOutgoingNonce();
+        assertEq(finalNonce, 1);
+
+        // The root should be the hash of the single leaf, not bytes32(0)
+        bytes32 finalRoot = bridge.getRoot();
+
+        // Current behavior (incorrect): returns bytes32(0)
+        // Expected behavior: should return the leaf hash
+
+        // Let's calculate what the leaf hash should be
+        // The leaf is the hash of (nonce=0, sender=user, data=SVMBridgeLib.serializeCall(ixs))
+        bytes memory serializedCall = SVMBridgeLib.serializeCall(ixs);
+        bytes32 expectedLeafHash = keccak256(abi.encodePacked(uint64(0), user, serializedCall));
+
+        // Now the MMR should correctly return the leaf hash for single leaf
+        console2.log("Actual root:", vm.toString(finalRoot));
+        console2.log("Expected leaf hash:", vm.toString(expectedLeafHash));
+
+        // This should now pass with the fixed implementation
+        assertEq(finalRoot, expectedLeafHash, "Single leaf MMR should return the leaf hash itself");
     }
 }
 

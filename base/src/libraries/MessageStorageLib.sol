@@ -329,14 +329,27 @@ library MessageStorageLib {
     function _calculateRoot() private view returns (bytes32) {
         MessageStorageLibStorage storage $ = getMessageStorageLibStorage();
 
-        if ($.lastOutgoingNonce == 0) {
+        // Check nodes array length since nonce is incremented after _calculateRoot is called
+        uint256 nodeCount = $.nodes.length;
+
+        if (nodeCount == 0) {
             return bytes32(0);
+        }
+
+        // Special case: single leaf should return the leaf hash itself
+        if (nodeCount == 1) {
+            return $.nodes[0];
         }
 
         uint256[] memory peakIndices = _getPeakNodeIndices();
 
         if (peakIndices.length == 0) {
             return bytes32(0);
+        }
+
+        // Single peak case: return the peak directly
+        if (peakIndices.length == 1) {
+            return $.nodes[peakIndices[0]];
         }
 
         return _hashPeaksSequentially(peakIndices);
