@@ -8,9 +8,9 @@ pub const MAX_GAS_LIMIT_PER_MESSAGE: u64 = 100_000_000;
 pub const GAS_COST_SCALER_DP: u64 = 10u64.pow(6);
 pub const GAS_COST_SCALER: u64 = 1_000_000;
 
-pub const RELAY_MESSAGES_CALL_ABI_ENCODING_OVERHEAD: usize = 544;
-pub const RELAY_MESSAGES_TRANSFER_ABI_ENCODING_OVERHEAD: usize = 480;
-pub const RELAY_MESSAGES_TRANSFER_AND_CALL_ABI_ENCODING_OVERHEAD: usize = 704;
+pub const RELAY_MESSAGES_CALL_ABI_ENCODING_OVERHEAD: usize = 544; // Fix bytes overhead for calling Bridge.relayMessages for a single call
+pub const RELAY_MESSAGES_TRANSFER_ABI_ENCODING_OVERHEAD: usize = 480; // Fix bytes overhead for calling Bridge.relayMessages for a single transfer
+pub const RELAY_MESSAGES_TRANSFER_AND_CALL_ABI_ENCODING_OVERHEAD: usize = 704; // Fix bytes overhead for calling Bridge.relayMessages for a single transfer and call
 
 mod private {
     use anchor_lang::prelude::*;
