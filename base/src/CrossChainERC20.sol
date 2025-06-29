@@ -2,11 +2,12 @@
 pragma solidity 0.8.28;
 
 import {ERC20} from "solady/tokens/ERC20.sol";
+import {Initializable} from "solady/utils/Initializable.sol";
 
 /// @title CrossChainERC20
 ///
 /// @notice A cross-chain ERC20 token implementation that can be minted and burned by an authorized bridge contract.
-contract CrossChainERC20 is ERC20 {
+contract CrossChainERC20 is ERC20, Initializable {
     //////////////////////////////////////////////////////////////
     ///                       Events                           ///
     //////////////////////////////////////////////////////////////
@@ -43,12 +44,6 @@ contract CrossChainERC20 is ERC20 {
     /// @notice The bridge contract address that has minting and burning privileges.
     address private immutable _BRIDGE;
 
-    /// @notice The address of the corresponding token on the remote chain.
-    bytes32 private immutable _REMOTE_TOKEN;
-
-    /// @notice The number of decimal places for this token.
-    uint8 private immutable _DECIMALS;
-
     //////////////////////////////////////////////////////////////
     ///                       Storage                          ///
     //////////////////////////////////////////////////////////////
@@ -58,6 +53,12 @@ contract CrossChainERC20 is ERC20 {
 
     /// @notice The symbol of the token.
     string private _symbol;
+
+    /// @notice The address of the corresponding token on the remote chain.
+    bytes32 private _remoteToken;
+
+    /// @notice The number of decimal places for this token.
+    uint8 private _decimals;
 
     //////////////////////////////////////////////////////////////
     ///                       Modifiers                        ///
@@ -75,17 +76,24 @@ contract CrossChainERC20 is ERC20 {
 
     /// @notice Constructs the CrossChainERC20 contract.
     ///
-    /// @dev Sets the bridge address, remote token address, and token metadata as immutable values.
-    ///
     /// @param bridge_ Address of the bridge contract that will have minting and burning privileges.
+    constructor(address bridge_) {
+        _BRIDGE = bridge_;
+        _disableInitializers();
+    }
+
+    /// @notice Initializes the CrossChainERC20 contract.
+    ///
     /// @param remoteToken_ Address of the corresponding token on the remote chain.
     /// @param name_ ERC20 name of the token.
     /// @param symbol_ ERC20 symbol of the token.
     /// @param decimals_ ERC20 decimals for the token.
-    constructor(address bridge_, bytes32 remoteToken_, string memory name_, string memory symbol_, uint8 decimals_) {
-        _BRIDGE = bridge_;
-        _REMOTE_TOKEN = remoteToken_;
-        _DECIMALS = decimals_;
+    function initialize(bytes32 remoteToken_, string memory name_, string memory symbol_, uint8 decimals_)
+        external
+        reinitializer(1)
+    {
+        _remoteToken = remoteToken_;
+        _decimals = decimals_;
         _name = name_;
         _symbol = symbol_;
     }
@@ -101,7 +109,7 @@ contract CrossChainERC20 is ERC20 {
     ///
     /// @dev This represents the corresponding token on the remote chain.
     function remoteToken() public view returns (bytes32) {
-        return _REMOTE_TOKEN;
+        return _remoteToken;
     }
 
     /// @notice Returns the name of the token.
@@ -122,7 +130,7 @@ contract CrossChainERC20 is ERC20 {
     ///
     /// @dev Overrides the ERC20 decimals function.
     function decimals() public view override returns (uint8) {
-        return _DECIMALS;
+        return _decimals;
     }
 
     /// @notice Allows the Bridge to mint tokens.

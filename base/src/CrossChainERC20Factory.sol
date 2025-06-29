@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {Initializable} from "solady/utils/Initializable.sol";
 import {LibClone} from "solady/utils/LibClone.sol";
 
 import {CrossChainERC20} from "./CrossChainERC20.sol";
@@ -9,7 +8,7 @@ import {CrossChainERC20} from "./CrossChainERC20.sol";
 /// @title CrossChainERC20Factory
 ///
 /// @notice Factory contract for deploying ERC-1967 beacon proxies of CrossChainERC20 tokens.
-contract CrossChainERC20Factory is Initializable {
+contract CrossChainERC20Factory {
     //////////////////////////////////////////////////////////////
     ///                       Events                           ///
     //////////////////////////////////////////////////////////////
@@ -30,9 +29,6 @@ contract CrossChainERC20Factory is Initializable {
     /// @notice Address of the CrossChainERC20 beacon proxy.
     address public immutable BEACON;
 
-    /// @notice Address of the TokenBridge contract that will manage cross-chain token transfers
-    address public immutable TOKEN_BRIDGE;
-
     //////////////////////////////////////////////////////////////
     ///                       Public Functions                 ///
     //////////////////////////////////////////////////////////////
@@ -40,11 +36,8 @@ contract CrossChainERC20Factory is Initializable {
     /// @notice Constructs the CrossChainERC20Factory contract
     ///
     /// @dev Disables initializers to prevent the implementation contract from being initialized
-    constructor(address beacon, address tokenBridge) {
+    constructor(address beacon) {
         BEACON = beacon;
-        TOKEN_BRIDGE = tokenBridge;
-
-        _disableInitializers();
     }
 
     /// @notice Deploys a new CrossChainERC20 token with deterministic address using CREATE2

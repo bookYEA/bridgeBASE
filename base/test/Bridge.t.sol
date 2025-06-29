@@ -1,0 +1,933 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.28;
+
+import {Test} from "forge-std/Test.sol";
+import {console} from "forge-std/console.sol";
+
+import {Bridge} from "../src/Bridge.sol";
+
+import {CrossChainERC20} from "../src/CrossChainERC20.sol";
+import {Twin} from "../src/Twin.sol";
+
+import {Call, CallType} from "../src/libraries/CallLib.sol";
+import {MessageStorageLib} from "../src/libraries/MessageStorageLib.sol";
+import {SVMBridgeLib} from "../src/libraries/SVMBridgeLib.sol";
+import {Ix, Pubkey} from "../src/libraries/SVMLib.sol";
+import {SolanaTokenType, TokenLib, Transfer} from "../src/libraries/TokenLib.sol";
+
+import {LibClone} from "solady/utils/LibClone.sol";
+import {UpgradeableBeacon} from "solady/utils/UpgradeableBeacon.sol";
+
+contract BridgeTest is Test {
+    Bridge public bridge;
+    address public trustedRelayer;
+    address public initialOwner;
+    address public user;
+    address public unauthorizedUser;
+
+    Pubkey public constant REMOTE_BRIDGE =
+        Pubkey.wrap(0xc4c16980efe2a570c1a7599fd2ebb40ca7f85daf897482b9c85d4b8933a61608);
+    Pubkey public constant TEST_SENDER = Pubkey.wrap(0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef);
+    Pubkey public constant TEST_REMOTE_TOKEN =
+        Pubkey.wrap(0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890);
+
+    // Mock contracts
+    MockERC20 public mockToken;
+    MockTarget public mockTarget;
+    CrossChainERC20 public crossChainToken;
+
+    // Events to test
+    event MessageSuccessfullyRelayed(bytes32 indexed messageHash);
+    event FailedToRelayMessage(bytes32 indexed messageHash);
+
+    function setUp() public {
+        trustedRelayer = makeAddr("trustedRelayer");
+        initialOwner = makeAddr("initialOwner");
+        user = makeAddr("user");
+        unauthorizedUser = makeAddr("unauthorizedUser");
+
+        // Deploy bridge
+        bridge = new Bridge(REMOTE_BRIDGE, trustedRelayer, initialOwner);
+
+        // Deploy mock contracts
+        mockToken = new MockERC20("Mock Token", "MOCK", 18);
+        mockTarget = new MockTarget();
+        crossChainToken = new CrossChainERC20(address(bridge));
+
+        // Set up balances
+        vm.deal(address(bridge), 100 ether);
+        vm.deal(user, 100 ether);
+        vm.deal(trustedRelayer, 100 ether);
+        mockToken.mint(user, 1000e18);
+        mockToken.mint(address(bridge), 1000e18);
+    }
+
+    //////////////////////////////////////////////////////////////
+    ///                   Constructor Tests                    ///
+    //////////////////////////////////////////////////////////////
+
+    function test_constructor_setsCorrectValues() public {
+        Bridge testBridge = new Bridge(TEST_SENDER, trustedRelayer, initialOwner);
+
+        assertEq(Pubkey.unwrap(testBridge.REMOTE_BRIDGE()), Pubkey.unwrap(TEST_SENDER));
+        assertEq(testBridge.TRUSTED_RELAYER(), trustedRelayer);
+        assertTrue(testBridge.TWIN_BEACON() != address(0));
+        assertEq(testBridge.nextIncomingNonce(), 0);
+    }
+
+    function test_constructor_deploysTwinBeacon() public view {
+        address twinBeacon = bridge.TWIN_BEACON();
+        assertTrue(twinBeacon != address(0));
+
+        UpgradeableBeacon beacon = UpgradeableBeacon(twinBeacon);
+        assertTrue(beacon.implementation() != address(0));
+    }
+
+    function test_constructor_withZeroAddresses() public {
+        Bridge testBridge = new Bridge(Pubkey.wrap(0), address(0), address(0));
+
+        assertEq(Pubkey.unwrap(testBridge.REMOTE_BRIDGE()), 0);
+        assertEq(testBridge.TRUSTED_RELAYER(), address(0));
+    }
+
+    //////////////////////////////////////////////////////////////
+    ///                 Bridge Call Tests                      ///
+    //////////////////////////////////////////////////////////////
+
+    function test_bridgeCall_withValidInstructions() public {
+        Ix[] memory ixs = new Ix[](1);
+        ixs[0] = Ix({programId: TEST_SENDER, serializedAccounts: new bytes[](0), data: hex"deadbeef"});
+
+        uint64 initialNonce = bridge.getLastOutgoingNonce();
+
+        vm.prank(user);
+        bridge.bridgeCall(ixs);
+
+        assertEq(bridge.getLastOutgoingNonce(), initialNonce + 1);
+    }
+
+    function test_bridgeCall_withEmptyInstructions() public {
+        Ix[] memory ixs = new Ix[](0);
+
+        uint64 initialNonce = bridge.getLastOutgoingNonce();
+
+        vm.prank(user);
+        bridge.bridgeCall(ixs);
+
+        assertEq(bridge.getLastOutgoingNonce(), initialNonce + 1);
+    }
+
+    function test_bridgeCall_withMultipleInstructions() public {
+        Ix[] memory ixs = new Ix[](3);
+        for (uint256 i = 0; i < 3; i++) {
+            ixs[i] = Ix({programId: TEST_SENDER, serializedAccounts: new bytes[](0), data: abi.encodePacked(i)});
+        }
+
+        uint64 initialNonce = bridge.getLastOutgoingNonce();
+
+        vm.prank(user);
+        bridge.bridgeCall(ixs);
+
+        assertEq(bridge.getLastOutgoingNonce(), initialNonce + 1);
+    }
+
+    //////////////////////////////////////////////////////////////
+    ///                Bridge Token Tests                      ///
+    //////////////////////////////////////////////////////////////
+
+    function test_bridgeToken_withERC20() public {
+        Transfer memory transfer = Transfer({
+            localToken: address(mockToken),
+            remoteToken: TEST_REMOTE_TOKEN,
+            to: bytes32(uint256(uint160(user))),
+            remoteAmount: 100e6
+        });
+
+        Ix[] memory ixs = new Ix[](0);
+
+        // Register the token pair first
+        _registerTokenPair(address(mockToken), TEST_REMOTE_TOKEN, 12);
+
+        vm.startPrank(user);
+        mockToken.approve(address(bridge), 100e18);
+        bridge.bridgeToken(transfer, ixs);
+        vm.stopPrank();
+
+        // Check token was transferred
+        assertEq(mockToken.balanceOf(user), 900e18);
+    }
+
+    function test_bridgeToken_withETH() public {
+        Transfer memory transfer = Transfer({
+            localToken: TokenLib.ETH_ADDRESS,
+            remoteToken: TokenLib.NATIVE_SOL_PUBKEY,
+            to: bytes32(uint256(uint160(user))),
+            remoteAmount: 1e9
+        });
+
+        Ix[] memory ixs = new Ix[](0);
+
+        // Register ETH-SOL pair
+        _registerTokenPair(TokenLib.ETH_ADDRESS, TokenLib.NATIVE_SOL_PUBKEY, 9);
+
+        uint256 initialBalance = user.balance;
+        vm.prank(user);
+        bridge.bridgeToken{value: 1e18}(transfer, ixs);
+
+        assertEq(user.balance, initialBalance - 1e18);
+    }
+
+    function test_bridgeToken_revertsWithInvalidMsgValue() public {
+        Transfer memory transfer = Transfer({
+            localToken: TokenLib.ETH_ADDRESS,
+            remoteToken: TokenLib.NATIVE_SOL_PUBKEY,
+            to: bytes32(uint256(uint160(user))),
+            remoteAmount: 1e9
+        });
+
+        Ix[] memory ixs = new Ix[](0);
+
+        _registerTokenPair(TokenLib.ETH_ADDRESS, TokenLib.NATIVE_SOL_PUBKEY, 9);
+
+        vm.expectRevert(TokenLib.InvalidMsgValue.selector);
+        vm.prank(user);
+        bridge.bridgeToken{value: 2e18}(transfer, ixs); // Wrong amount
+    }
+
+    function test_bridgeToken_revertsWithETHForERC20() public {
+        Transfer memory transfer = Transfer({
+            localToken: address(mockToken),
+            remoteToken: TEST_REMOTE_TOKEN,
+            to: bytes32(uint256(uint160(user))),
+            remoteAmount: 100e6
+        });
+
+        Ix[] memory ixs = new Ix[](0);
+
+        _registerTokenPair(address(mockToken), TEST_REMOTE_TOKEN, 12);
+
+        vm.expectRevert(TokenLib.InvalidMsgValue.selector);
+        vm.prank(user);
+        bridge.bridgeToken{value: 1 ether}(transfer, ixs); // Should not send ETH for ERC20
+    }
+
+    //////////////////////////////////////////////////////////////
+    ///               Relay Messages Tests                     ///
+    //////////////////////////////////////////////////////////////
+
+    function test_relayMessages_withTrustedRelayer() public {
+        Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](1);
+        messages[0] = Bridge.IncomingMessage({
+            nonce: 0,
+            sender: TEST_SENDER,
+            gasLimit: 1000000,
+            ty: Bridge.MessageType.Call,
+            data: abi.encode(
+                Call({
+                    ty: CallType.Call,
+                    to: address(mockTarget),
+                    value: 0,
+                    data: abi.encodeWithSelector(MockTarget.setValue.selector, 42)
+                })
+            )
+        });
+
+        bytes memory ismData = hex"";
+
+        vm.prank(trustedRelayer);
+        bridge.relayMessages(messages, ismData);
+
+        assertEq(bridge.nextIncomingNonce(), 1);
+        assertEq(mockTarget.value(), 42);
+    }
+
+    function test_relayMessages_withNonTrustedRelayer() public {
+        // First, make a message fail from trusted relayer
+        Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](1);
+        messages[0] = Bridge.IncomingMessage({
+            nonce: 0,
+            sender: TEST_SENDER,
+            gasLimit: 100000, // Insufficient gas to force failure
+            ty: Bridge.MessageType.Call,
+            data: abi.encode(
+                Call({
+                    ty: CallType.Call,
+                    to: address(mockTarget),
+                    value: 0,
+                    data: abi.encodeWithSelector(MockTarget.setValue.selector, 42)
+                })
+            )
+        });
+
+        bytes memory ismData = hex"";
+
+        vm.prank(trustedRelayer);
+        bridge.relayMessages(messages, ismData);
+
+        // Now retry with non-trusted relayer and higher gas
+        messages[0].gasLimit = 1000000;
+
+        vm.prank(unauthorizedUser);
+        bridge.relayMessages(messages, ismData);
+
+        assertEq(mockTarget.value(), 42);
+    }
+
+    function test_relayMessages_revertsOnIncrementalNonce() public {
+        Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](1);
+        messages[0] = Bridge.IncomingMessage({
+            nonce: 1, // Should be 0
+            sender: TEST_SENDER,
+            gasLimit: 1000000,
+            ty: Bridge.MessageType.Call,
+            data: abi.encode(
+                Call({
+                    ty: CallType.Call,
+                    to: address(mockTarget),
+                    value: 0,
+                    data: abi.encodeWithSelector(MockTarget.setValue.selector, 42)
+                })
+            )
+        });
+
+        bytes memory ismData = hex"";
+
+        vm.expectRevert(Bridge.NonceNotIncremental.selector);
+        vm.prank(trustedRelayer);
+        bridge.relayMessages(messages, ismData);
+    }
+
+    function test_relayMessages_revertsOnAlreadySuccessfulMessage() public {
+        // First, create a message that will fail with trusted relayer due to low gas
+        Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](1);
+        messages[0] = Bridge.IncomingMessage({
+            nonce: 0,
+            sender: TEST_SENDER,
+            gasLimit: 1000000, // Low gas to cause failure
+            ty: Bridge.MessageType.Call,
+            data: abi.encode(
+                Call({
+                    ty: CallType.Call,
+                    to: address(mockTarget),
+                    value: 0,
+                    data: abi.encodeWithSelector(MockTarget.setValue.selector, 42)
+                })
+            )
+        });
+
+        bytes memory ismData = hex"";
+
+        // First attempt by trusted relayer should fail due to low gas
+        vm.prank(trustedRelayer);
+        bridge.relayMessages(messages, ismData);
+
+        // Now try the same message again with non-trusted relayer - should revert with
+        // MessageAlreadySuccessfullyRelayed
+        vm.expectRevert(Bridge.MessageAlreadySuccessfullyRelayed.selector);
+        vm.prank(unauthorizedUser);
+        bridge.relayMessages(messages, ismData);
+    }
+
+    function test_relayMessages_emitsSuccessEvent() public {
+        Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](1);
+        messages[0] = Bridge.IncomingMessage({
+            nonce: 0,
+            sender: TEST_SENDER,
+            gasLimit: 1000000,
+            ty: Bridge.MessageType.Call,
+            data: abi.encode(
+                Call({
+                    ty: CallType.Call,
+                    to: address(mockTarget),
+                    value: 0,
+                    data: abi.encodeWithSelector(MockTarget.setValue.selector, 42)
+                })
+            )
+        });
+
+        bytes32 expectedHash =
+            keccak256(abi.encode(messages[0].nonce, messages[0].sender, messages[0].ty, messages[0].data));
+
+        bytes memory ismData = hex"";
+
+        vm.expectEmit(true, false, false, false);
+        emit MessageSuccessfullyRelayed(expectedHash);
+
+        vm.prank(trustedRelayer);
+        bridge.relayMessages(messages, ismData);
+    }
+
+    function test_relayMessages_emitsFailureEvent() public {
+        Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](1);
+        messages[0] = Bridge.IncomingMessage({
+            nonce: 0,
+            sender: TEST_SENDER,
+            gasLimit: 1000000,
+            ty: Bridge.MessageType.Call,
+            data: abi.encode(
+                Call({
+                    ty: CallType.Call,
+                    to: address(mockTarget),
+                    value: 0,
+                    data: abi.encodeWithSelector(MockTarget.alwaysReverts.selector)
+                })
+            )
+        });
+
+        bytes32 expectedHash =
+            keccak256(abi.encode(messages[0].nonce, messages[0].sender, messages[0].ty, messages[0].data));
+
+        bytes memory ismData = hex"";
+
+        vm.expectEmit(true, false, false, false);
+        emit FailedToRelayMessage(expectedHash);
+
+        vm.prank(trustedRelayer);
+        bridge.relayMessages(messages, ismData);
+    }
+
+    //////////////////////////////////////////////////////////////
+    ///              Message Type Tests                        ///
+    //////////////////////////////////////////////////////////////
+
+    function test_relayMessage_callType() public {
+        Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](1);
+        messages[0] = Bridge.IncomingMessage({
+            nonce: 0,
+            sender: TEST_SENDER,
+            gasLimit: 1000000,
+            ty: Bridge.MessageType.Call,
+            data: abi.encode(
+                Call({
+                    ty: CallType.Call,
+                    to: address(mockTarget),
+                    value: 0,
+                    data: abi.encodeWithSelector(MockTarget.setValue.selector, 123)
+                })
+            )
+        });
+
+        bytes memory ismData = hex"";
+
+        vm.prank(trustedRelayer);
+        bridge.relayMessages(messages, ismData);
+
+        assertEq(mockTarget.value(), 123);
+
+        // Check Twin was deployed
+        address twinAddress = bridge.twins(TEST_SENDER);
+        assertTrue(twinAddress != address(0));
+    }
+
+    function test_relayMessage_transferType() public {
+        // Deploy a test cross-chain token that can be initialized
+        TestCrossChainERC20 testToken = new TestCrossChainERC20(address(bridge));
+
+        // Initialize it as the bridge
+        vm.prank(address(bridge));
+        testToken.initialize(Pubkey.unwrap(TEST_REMOTE_TOKEN), "Test Token", "TEST", 18);
+
+        Transfer memory transfer = Transfer({
+            localToken: address(testToken),
+            remoteToken: TEST_REMOTE_TOKEN,
+            to: bytes32(bytes20(user)), // Left-align the address in bytes32
+            remoteAmount: 100e6
+        });
+
+        Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](1);
+        messages[0] = Bridge.IncomingMessage({
+            nonce: 0,
+            sender: TEST_SENDER,
+            gasLimit: 1000000,
+            ty: Bridge.MessageType.Transfer,
+            data: abi.encode(transfer)
+        });
+
+        bytes memory ismData = hex"";
+
+        vm.prank(trustedRelayer);
+        bridge.relayMessages(messages, ismData);
+
+        assertEq(testToken.balanceOf(user), 100e6);
+    }
+
+    function test_relayMessage_transferAndCallType() public {
+        // Deploy a test cross-chain token for this test
+        TestCrossChainERC20 testToken2 = new TestCrossChainERC20(address(bridge));
+
+        // Initialize it as the bridge
+        vm.prank(address(bridge));
+        testToken2.initialize(Pubkey.unwrap(TEST_REMOTE_TOKEN), "Test Token 2", "TEST2", 18);
+
+        Transfer memory transfer = Transfer({
+            localToken: address(testToken2),
+            remoteToken: TEST_REMOTE_TOKEN,
+            to: bytes32(bytes20(user)), // Left-align the address in bytes32
+            remoteAmount: 100e6
+        });
+
+        Call memory call = Call({
+            ty: CallType.Call,
+            to: address(mockTarget),
+            value: 0,
+            data: abi.encodeWithSelector(MockTarget.setValue.selector, 456)
+        });
+
+        Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](1);
+        messages[0] = Bridge.IncomingMessage({
+            nonce: 0,
+            sender: TEST_SENDER,
+            gasLimit: 1000000,
+            ty: Bridge.MessageType.TransferAndCall,
+            data: abi.encode(transfer, call)
+        });
+
+        bytes memory ismData = hex"";
+
+        vm.prank(trustedRelayer);
+        bridge.relayMessages(messages, ismData);
+
+        assertEq(testToken2.balanceOf(user), 100e6);
+        assertEq(mockTarget.value(), 456);
+    }
+
+    function test_relayMessage_remoteBridgeSpecialCase() public {
+        Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](1);
+        messages[0] = Bridge.IncomingMessage({
+            nonce: 0,
+            sender: REMOTE_BRIDGE, // Special case
+            gasLimit: 1000000,
+            ty: Bridge.MessageType.Call,
+            data: abi.encode(address(mockToken), TEST_REMOTE_TOKEN, uint8(12))
+        });
+
+        bytes memory ismData = hex"";
+
+        vm.prank(trustedRelayer);
+        bridge.relayMessages(messages, ismData);
+
+        // Should complete without creating Twin
+        assertEq(bridge.twins(REMOTE_BRIDGE), address(0));
+    }
+
+    //////////////////////////////////////////////////////////////
+    ///                Access Control Tests                    ///
+    //////////////////////////////////////////////////////////////
+
+    function test_validateAndRelay_revertsOnDirectCall() public {
+        Bridge.IncomingMessage memory message = Bridge.IncomingMessage({
+            nonce: 0,
+            sender: TEST_SENDER,
+            gasLimit: 1000000,
+            ty: Bridge.MessageType.Call,
+            data: abi.encode(
+                Call({
+                    ty: CallType.Call,
+                    to: address(mockTarget),
+                    value: 0,
+                    data: abi.encodeWithSelector(MockTarget.setValue.selector, 42)
+                })
+            )
+        });
+
+        vm.expectRevert(Bridge.SenderIsNotEntrypoint.selector);
+        vm.prank(user);
+        bridge.__validateAndRelay(message, true);
+    }
+
+    function test_relayMessage_revertsOnDirectCall() public {
+        Bridge.IncomingMessage memory message = Bridge.IncomingMessage({
+            nonce: 0,
+            sender: TEST_SENDER,
+            gasLimit: 1000000,
+            ty: Bridge.MessageType.Call,
+            data: abi.encode(
+                Call({
+                    ty: CallType.Call,
+                    to: address(mockTarget),
+                    value: 0,
+                    data: abi.encodeWithSelector(MockTarget.setValue.selector, 42)
+                })
+            )
+        });
+
+        vm.expectRevert(Bridge.SenderIsNotEntrypoint.selector);
+        vm.prank(user);
+        bridge.__relayMessage(message);
+    }
+
+    //////////////////////////////////////////////////////////////
+    ///                 Gas Estimation Tests                   ///
+    //////////////////////////////////////////////////////////////
+
+    function test_gasEstimation_revertsOnFailure() public {
+        // First make this message fail by trusted relayer so it can be retried
+        Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](1);
+        messages[0] = Bridge.IncomingMessage({
+            nonce: 0,
+            sender: TEST_SENDER,
+            gasLimit: 100000, // Low gas to cause failure
+            ty: Bridge.MessageType.Call,
+            data: abi.encode(
+                Call({
+                    ty: CallType.Call,
+                    to: address(mockTarget),
+                    value: 0,
+                    data: abi.encodeWithSelector(MockTarget.alwaysReverts.selector)
+                })
+            )
+        });
+
+        bytes memory ismData = hex"";
+
+        vm.prank(trustedRelayer, bridge.ESTIMATION_ADDRESS());
+        vm.expectRevert(Bridge.ExecutionFailed.selector);
+        bridge.relayMessages(messages, ismData);
+    }
+
+    //////////////////////////////////////////////////////////////
+    ///                    View Function Tests                 ///
+    //////////////////////////////////////////////////////////////
+
+    function test_getRoot() public view {
+        bytes32 root = bridge.getRoot();
+        // Should return current MMR root (initially empty)
+        assertEq(root, bytes32(0));
+    }
+
+    function test_getLastOutgoingNonce() public {
+        uint64 nonce = bridge.getLastOutgoingNonce();
+        assertEq(nonce, 0);
+
+        // Send a message
+        Ix[] memory ixs = new Ix[](0);
+        vm.prank(user);
+        bridge.bridgeCall(ixs);
+
+        assertEq(bridge.getLastOutgoingNonce(), 1);
+    }
+
+    function test_generateProof_revertsOnEmptyMMR() public {
+        vm.expectRevert();
+        bridge.generateProof(0);
+    }
+
+    //////////////////////////////////////////////////////////////
+    ///                    Edge Case Tests                     ///
+    //////////////////////////////////////////////////////////////
+
+    function test_relayMessages_withEmptyArray() public {
+        Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](0);
+        bytes memory ismData = hex"";
+
+        vm.prank(trustedRelayer);
+        bridge.relayMessages(messages, ismData);
+
+        // Should complete without error
+        assertEq(bridge.nextIncomingNonce(), 0);
+    }
+
+    function test_relayMessages_withMultipleMessages() public {
+        Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](3);
+        for (uint256 i = 0; i < 3; i++) {
+            messages[i] = Bridge.IncomingMessage({
+                nonce: uint64(i),
+                sender: TEST_SENDER,
+                gasLimit: 1000000,
+                ty: Bridge.MessageType.Call,
+                data: abi.encode(
+                    Call({
+                        ty: CallType.Call,
+                        to: address(mockTarget),
+                        value: 0,
+                        data: abi.encodeWithSelector(MockTarget.setValue.selector, i + 1)
+                    })
+                )
+            });
+        }
+
+        bytes memory ismData = hex"";
+
+        vm.prank(trustedRelayer);
+        bridge.relayMessages(messages, ismData);
+
+        assertEq(bridge.nextIncomingNonce(), 3);
+        assertEq(mockTarget.value(), 3); // Last value set
+    }
+
+    function test_twinReuse() public {
+        // First message creates Twin
+        Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](1);
+        messages[0] = Bridge.IncomingMessage({
+            nonce: 0,
+            sender: TEST_SENDER,
+            gasLimit: 1000000,
+            ty: Bridge.MessageType.Call,
+            data: abi.encode(
+                Call({
+                    ty: CallType.Call,
+                    to: address(mockTarget),
+                    value: 0,
+                    data: abi.encodeWithSelector(MockTarget.setValue.selector, 1)
+                })
+            )
+        });
+
+        bytes memory ismData = hex"";
+
+        vm.prank(trustedRelayer);
+        bridge.relayMessages(messages, ismData);
+
+        address firstTwin = bridge.twins(TEST_SENDER);
+
+        // Second message reuses Twin
+        messages[0].nonce = 1;
+        messages[0].data = abi.encode(
+            Call({
+                ty: CallType.Call,
+                to: address(mockTarget),
+                value: 0,
+                data: abi.encodeWithSelector(MockTarget.setValue.selector, 2)
+            })
+        );
+
+        vm.prank(trustedRelayer);
+        bridge.relayMessages(messages, ismData);
+
+        address secondTwin = bridge.twins(TEST_SENDER);
+        assertEq(firstTwin, secondTwin);
+        assertEq(mockTarget.value(), 2);
+    }
+
+    //////////////////////////////////////////////////////////////
+    ///                    Fuzz Tests                          ///
+    //////////////////////////////////////////////////////////////
+
+    function testFuzz_bridgeCall_withDifferentSenders(address sender) public {
+        vm.assume(sender != address(0));
+
+        Ix[] memory ixs = new Ix[](1);
+        ixs[0] = Ix({programId: TEST_SENDER, serializedAccounts: new bytes[](0), data: abi.encodePacked("test")});
+
+        uint64 initialNonce = bridge.getLastOutgoingNonce();
+
+        vm.prank(sender);
+        bridge.bridgeCall(ixs);
+
+        assertEq(bridge.getLastOutgoingNonce(), initialNonce + 1);
+    }
+
+    function testFuzz_relayMessage_withDifferentNonces(uint64 nonce) public {
+        vm.assume(nonce < 1000); // Limit to reasonable range to avoid overflow
+
+        // Set the next nonce to match
+        _setNextNonce(nonce);
+
+        Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](1);
+        messages[0] = Bridge.IncomingMessage({
+            nonce: nonce,
+            sender: TEST_SENDER,
+            gasLimit: 1000000,
+            ty: Bridge.MessageType.Call,
+            data: abi.encode(
+                Call({
+                    ty: CallType.Call,
+                    to: address(mockTarget),
+                    value: 0,
+                    data: abi.encodeWithSelector(MockTarget.setValue.selector, 42)
+                })
+            )
+        });
+
+        bytes memory ismData = hex"";
+
+        vm.prank(trustedRelayer);
+        bridge.relayMessages(messages, ismData);
+
+        assertEq(bridge.nextIncomingNonce(), nonce + 1);
+        assertEq(mockTarget.value(), 42);
+    }
+
+    //////////////////////////////////////////////////////////////
+    ///                  Helper Functions                      ///
+    //////////////////////////////////////////////////////////////
+
+    function _registerTokenPair(address localToken, Pubkey remoteToken, uint8 scalerExponent) internal {
+        // Use the Bridge's registerRemoteToken function - simulate it being called by the remote bridge
+        bytes memory data = abi.encode(localToken, remoteToken, scalerExponent);
+
+        Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](1);
+        messages[0] = Bridge.IncomingMessage({
+            nonce: bridge.nextIncomingNonce(),
+            sender: REMOTE_BRIDGE, // Only remote bridge can register tokens
+            gasLimit: 1000000,
+            ty: Bridge.MessageType.Call,
+            data: data
+        });
+
+        bytes memory ismData = hex"";
+
+        vm.prank(trustedRelayer);
+        bridge.relayMessages(messages, ismData);
+    }
+
+    function _setNextNonce(uint64 nonce) internal {
+        // Set the nextIncomingNonce storage slot (slot 3 in Bridge contract)
+        vm.store(address(bridge), bytes32(uint256(3)), bytes32(uint256(nonce)));
+    }
+}
+
+//////////////////////////////////////////////////////////////
+///                    Mock Contracts                      ///
+//////////////////////////////////////////////////////////////
+
+contract MockERC20 {
+    string public name;
+    string public symbol;
+    uint8 public decimals;
+    uint256 public totalSupply;
+
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+
+    event ERC20Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+
+    constructor(string memory _name, string memory _symbol, uint8 _decimals) {
+        name = _name;
+        symbol = _symbol;
+        decimals = _decimals;
+    }
+
+    function mint(address to, uint256 amount) external {
+        balanceOf[to] += amount;
+        totalSupply += amount;
+        emit ERC20Transfer(address(0), to, amount);
+    }
+
+    function transfer(address to, uint256 amount) external returns (bool) {
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += amount;
+        emit ERC20Transfer(msg.sender, to, amount);
+        return true;
+    }
+
+    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+        allowance[from][msg.sender] -= amount;
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount;
+        emit ERC20Transfer(from, to, amount);
+        return true;
+    }
+
+    function approve(address spender, uint256 amount) external returns (bool) {
+        allowance[msg.sender][spender] = amount;
+        emit Approval(msg.sender, spender, amount);
+        return true;
+    }
+}
+
+contract MockTarget {
+    uint256 public value;
+
+    event ValueSet(uint256 newValue);
+
+    receive() external payable {}
+
+    function setValue(uint256 _value) external payable {
+        value = _value;
+        emit ValueSet(_value);
+    }
+
+    function alwaysReverts() external pure {
+        revert("This function always reverts");
+    }
+}
+
+contract TestCrossChainERC20 {
+    address private _bridge;
+    string private _name;
+    string private _symbol;
+    uint8 private _decimals;
+    bytes32 private _remoteToken;
+
+    mapping(address => uint256) private _balances;
+    mapping(address => mapping(address => uint256)) private _allowances;
+    uint256 private _totalSupply;
+
+    modifier onlyBridge() {
+        require(msg.sender == _bridge, "Not bridge");
+        _;
+    }
+
+    constructor(address bridge_) {
+        _bridge = bridge_;
+    }
+
+    function initialize(bytes32 remoteToken_, string memory name_, string memory symbol_, uint8 decimals_) external {
+        _remoteToken = remoteToken_;
+        _name = name_;
+        _symbol = symbol_;
+        _decimals = decimals_;
+    }
+
+    function bridge() external view returns (address) {
+        return _bridge;
+    }
+
+    function remoteToken() external view returns (bytes32) {
+        return _remoteToken;
+    }
+
+    function name() external view returns (string memory) {
+        return _name;
+    }
+
+    function symbol() external view returns (string memory) {
+        return _symbol;
+    }
+
+    function decimals() external view returns (uint8) {
+        return _decimals;
+    }
+
+    function totalSupply() external view returns (uint256) {
+        return _totalSupply;
+    }
+
+    function balanceOf(address account) external view returns (uint256) {
+        return _balances[account];
+    }
+
+    function allowance(address owner, address spender) external view returns (uint256) {
+        return _allowances[owner][spender];
+    }
+
+    function mint(address to, uint256 amount) external onlyBridge {
+        _balances[to] += amount;
+        _totalSupply += amount;
+    }
+
+    function burn(address from, uint256 amount) external onlyBridge {
+        _balances[from] -= amount;
+        _totalSupply -= amount;
+    }
+
+    function transfer(address to, uint256 amount) external returns (bool) {
+        _balances[msg.sender] -= amount;
+        _balances[to] += amount;
+        return true;
+    }
+
+    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+        _allowances[from][msg.sender] -= amount;
+        _balances[from] -= amount;
+        _balances[to] += amount;
+        return true;
+    }
+
+    function approve(address spender, uint256 amount) external returns (bool) {
+        _allowances[msg.sender][spender] = amount;
+        return true;
+    }
+}

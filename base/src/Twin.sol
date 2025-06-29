@@ -16,14 +16,14 @@ contract Twin {
     //////////////////////////////////////////////////////////////
 
     /// @dev The address of the Portal contract.
-    address public immutable PORTAL;
+    address public immutable BRIDGE;
 
     //////////////////////////////////////////////////////////////
     ///                       Public Functions                 ///
     //////////////////////////////////////////////////////////////
 
-    constructor(address portal) {
-        PORTAL = portal;
+    constructor() {
+        BRIDGE = msg.sender;
     }
 
     receive() external payable {}
@@ -32,7 +32,7 @@ contract Twin {
     ///
     /// @param call The encoded call to execute.
     function execute(Call calldata call) external payable {
-        require(msg.sender == PORTAL || msg.sender == address(this), Unauthorized());
+        if (msg.sender != BRIDGE && msg.sender != address(this)) revert Unauthorized();
         CallLib.execute(call);
     }
 }

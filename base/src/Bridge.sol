@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {LibClone} from "solady/utils/LibClone.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
+import {UpgradeableBeacon} from "solady/utils/UpgradeableBeacon.sol";
 
 import {Call} from "./libraries/CallLib.sol";
 import {MessageStorageLib} from "./libraries/MessageStorageLib.sol";
@@ -132,7 +133,7 @@ contract Bridge is ReentrancyGuardTransient {
     mapping(Pubkey owner => address twinAddress) public twins;
 
     /// @notice The last message's nonce relayed by the trusted relayer.
-    uint64 public lastIncomingNonce;
+    uint64 public nextIncomingNonce;
 
     //////////////////////////////////////////////////////////////
     ///                       Public Functions                 ///
@@ -142,11 +143,13 @@ contract Bridge is ReentrancyGuardTransient {
     ///
     /// @param remoteBridge The pubkey of the remote bridge on Solana.
     /// @param trustedRelayer The address of the trusted relayer.
-    /// @param twinBeacon The address of the Twin beacon.
-    constructor(Pubkey remoteBridge, address trustedRelayer, address twinBeacon) {
+    /// @param initialOwner The initial owner of the Twin beacon proxy.
+    constructor(Pubkey remoteBridge, address trustedRelayer, address initialOwner) {
         REMOTE_BRIDGE = remoteBridge;
         TRUSTED_RELAYER = trustedRelayer;
-        TWIN_BEACON = twinBeacon;
+
+        address twinImpl = address(new Twin());
+        TWIN_BEACON = address(new UpgradeableBeacon(initialOwner, twinImpl));
     }
 
     /// @notice Get the current root of the MMR.
@@ -186,7 +189,7 @@ contract Bridge is ReentrancyGuardTransient {
     ///
     /// @param transfer The token transfer to execute.
     /// @param ixs The optional Solana instructions.
-    function bridgeToken(Transfer calldata transfer, Ix[] memory ixs) external {
+    function bridgeToken(Transfer calldata transfer, Ix[] memory ixs) external payable {
         SolanaTokenType transferType = TokenLib.initializeTransfer({transfer: transfer});
         MessageStorageLib.sendMessage({
             sender: msg.sender,
@@ -228,8 +231,8 @@ contract Bridge is ReentrancyGuardTransient {
         // Check that the relay is allowed.
         if (isTrustedRelayer) {
             // TODO:Should the nonce be cached and only SSTOREd once?
-            require(message.nonce == lastIncomingNonce + 1, NonceNotIncremental());
-            lastIncomingNonce = message.nonce;
+            require(message.nonce == nextIncomingNonce, NonceNotIncremental());
+            nextIncomingNonce = message.nonce + 1;
 
             require(!failures[messageHash], MessageAlreadyFailedToRelay());
         } else {
@@ -239,7 +242,17 @@ contract Bridge is ReentrancyGuardTransient {
         // Cover the gas cost upfront.
         failures[messageHash] = true;
 
-        try this.__relayMessage{gas: gasleft() - _RELAY_MESSAGES_GAS_BUFFER}({message: message}) {
+        // Use the message's specified gas limit for execution, ensuring it doesn't exceed available gas
+        uint256 gasLeft = gasleft();
+        uint256 gasForRelay = gasLeft > _RELAY_MESSAGES_GAS_BUFFER
+            ? (
+                gasLeft - _RELAY_MESSAGES_GAS_BUFFER > message.gasLimit
+                    ? message.gasLimit
+                    : gasLeft - _RELAY_MESSAGES_GAS_BUFFER
+            )
+            : 0;
+
+        try this.__relayMessage{gas: gasForRelay}({message: message}) {
             // Register the call as successful.
             delete failures[messageHash];
             successes[messageHash] = true;
@@ -263,7 +276,7 @@ contract Bridge is ReentrancyGuardTransient {
     function __relayMessage(IncomingMessage calldata message) external {
         _assertSenderIsEntrypoint();
 
-        // Special case where the message sneder is directly the Solana bridge.
+        // Special case where the message sender is directly the Solana bridge.
         // For now this is only the case when a Wrapped Token is deployed on Solana and is being registered on Base.
         // When this happens the message is guaranteed to be a single operation that encode the parameters of the
         // `registerRemoteToken` function.
@@ -316,13 +329,6 @@ contract Bridge is ReentrancyGuardTransient {
     //////////////////////////////////////////////////////////////
     ///                       Private Functions                ///
     //////////////////////////////////////////////////////////////
-
-    /// @notice Asserts that the Anchor instruction is safe.
-    ///
-    /// @param ix The Anchor instruction to assert.
-    function _assertSafeIx(Ix memory ix) private view {
-        require(ix.programId != REMOTE_BRIDGE, UnsafeIxTarget());
-    }
 
     /// @notice Asserts that the caller is the entrypoint.
     function _assertSenderIsEntrypoint() private view {
