@@ -30,6 +30,10 @@ forge-deps:
 	forge install --no-git github.com/foundry-rs/forge-std \
 		github.com/Vectorized/solady@92e647bb2b387e952480a5a37800e9b4d54f7a06
 
+.PHONY: coverage
+coverage:
+	@ forge coverage --no-match-coverage "(script|test)"
+
 .PHONY: dev-deploy
 dev-deploy: deploy create-wrapped-sol create-token
 
