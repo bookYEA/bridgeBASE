@@ -29,7 +29,14 @@ pub struct BridgeSpl<'info> {
     #[account(mut)]
     pub from_token_account: InterfaceAccount<'info, TokenAccount>,
 
-    #[account(mut, seeds = [TOKEN_VAULT_SEED, remote_token.as_ref()], bump)]
+    #[account(
+        init_if_needed,
+        payer = payer,
+        seeds = [TOKEN_VAULT_SEED, mint.key().as_ref(), remote_token.as_ref()],
+        bump,
+        token::mint = mint,
+        token::authority = token_vault
+    )]
     pub token_vault: InterfaceAccount<'info, TokenAccount>,
 
     #[account(mut, seeds = [BRIDGE_SEED], bump)]
