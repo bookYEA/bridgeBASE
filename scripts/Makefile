@@ -70,3 +70,7 @@ check-solana-spl-balance:
 .PHONY: check-base-balance
 check-base-balance:
 	bun run src/checkBaseBalance.ts
+
+.PHONY: pubkey-to-bytes32
+pubkey-to-bytes32:
+	bun run src/pubkeyToBytes32.ts
