@@ -39,17 +39,14 @@ contract DeployScript is Script {
         console.log("Deployed Bridge at: %s", bridge);
         console.log("Deployed CrossChainERC20Factory at: %s", factory);
 
-        string memory out = "{";
-        out = _record(out, "Bridge", bridge, false);
-        out = _record(out, "CrossChainERC20Factory", factory, true);
-        out = string.concat(out, "}");
-
-        vm.createDir("deployments", true);
-        vm.writeFile(string.concat("deployments/", chain.chainAlias, ".json"), out);
+        string memory obj = "root";
+        string memory json = vm.serializeAddress(obj, "Bridge", bridge);
+        json = vm.serializeAddress(obj, "CrossChainERC20Factory", factory);
+        vm.writeJson(json, string.concat("deployments/", chain.chainAlias, ".json"));
     }
 
     function _deployBridge() private returns (address) {
-        Bridge bridgeImpl = new Bridge(REMOTE_BRIDGE, ORACLE);
+        Bridge bridgeImpl = new Bridge({remoteBridge: REMOTE_BRIDGE, trustedRelayer: ORACLE});
         Bridge bridgeProxy = Bridge(
             ERC1967Factory(ERC1967FactoryConstants.ADDRESS).deployAndCall({
                 implementation: address(bridgeImpl),
@@ -63,7 +60,7 @@ contract DeployScript is Script {
 
     function _deployFactory(address bridge) private returns (address) {
         address erc20 = address(new CrossChainERC20(bridge));
-        address erc20Beacon = address(new UpgradeableBeacon(PROXY_ADMIN, erc20));
+        address erc20Beacon = address(new UpgradeableBeacon({initialOwner: PROXY_ADMIN, initialImplementation: erc20}));
 
         CrossChainERC20Factory xChainERC20FactoryImpl = new CrossChainERC20Factory(erc20Beacon);
         CrossChainERC20Factory xChainERC20Factory = CrossChainERC20Factory(
@@ -74,17 +71,5 @@ contract DeployScript is Script {
         );
 
         return address(xChainERC20Factory);
-    }
-
-    function _record(string memory out, string memory key, address addr, bool isLast)
-        private
-        pure
-        returns (string memory)
-    {
-        return string.concat(out, "\"", key, "\": \"", vm.toString(addr), isLast ? "\"" : "\",");
-    }
-
-    function _addressToBytes32(address value) private pure returns (bytes32) {
-        return bytes32(uint256(uint160(value)));
     }
 }
