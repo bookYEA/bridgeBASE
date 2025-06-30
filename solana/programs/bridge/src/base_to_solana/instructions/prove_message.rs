@@ -7,7 +7,7 @@ use crate::base_to_solana::{
 };
 
 #[derive(Accounts)]
-#[instruction(_nonce: u64, _sender: [u8; 20], data: Vec<u8>)]
+#[instruction(nonce: u64, sender: [u8; 20], data: Vec<u8>, _proof: Proof, message_hash: [u8; 32])]
 pub struct ProveMessage<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
@@ -18,9 +18,8 @@ pub struct ProveMessage<'info> {
         init,
         payer = payer,
         space = 8 + IncomingMessage::space(data.len()),
-        // // NOTE: We check that the PDA derivation is correct in the handler to optimize the CPI.
-        // seeds = [MESSAGE_FROM_BASE_SEED, &message_hash],
-        // bump
+        seeds = [INCOMING_MESSAGE_SEED, &message_hash],
+        bump
     )]
     pub message: Account<'info, IncomingMessage>,
 
@@ -33,16 +32,13 @@ pub fn prove_message_handler(
     sender: [u8; 20],
     data: Vec<u8>,
     proof: Proof,
+    message_hash: [u8; 32],
 ) -> Result<()> {
-    // Hash the message
-    let message_hash = hash_message(&nonce.to_le_bytes(), &sender, &data);
-
-    // Verify the PDA derivation is correct
-    let (message_pda, _) =
-        Pubkey::find_program_address(&[INCOMING_MESSAGE_SEED, &message_hash], ctx.program_id);
+    // Verify that the provided message hash matches the computed hash
+    let computed_hash = hash_message(&nonce.to_le_bytes(), &sender, &data);
     require!(
-        message_pda == ctx.accounts.message.key(),
-        ProveMessageError::InvalidPda
+        message_hash == computed_hash,
+        ProveMessageError::InvalidMessageHash
     );
 
     // Verify the merkle proof to ensure the transaction exists on the source chain
@@ -68,6 +64,6 @@ fn hash_message(nonce: &[u8], sender: &[u8; 20], data: &[u8]) -> [u8; 32] {
 
 #[error_code]
 pub enum ProveMessageError {
-    #[msg("Invalid PDA derivation")]
-    InvalidPda,
+    #[msg("Invalid message hash")]
+    InvalidMessageHash,
 }

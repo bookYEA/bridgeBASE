@@ -38,8 +38,9 @@ pub mod bridge {
         sender: [u8; 20],
         data: Vec<u8>,
         proof: Proof,
+        message_hash: [u8; 32],
     ) -> Result<()> {
-        prove_message_handler(ctx, nonce, sender, data, proof)
+        prove_message_handler(ctx, nonce, sender, data, proof, message_hash)
     }
 
     pub fn relay_message<'a, 'info>(
