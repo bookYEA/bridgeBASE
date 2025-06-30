@@ -19,8 +19,8 @@ devnet = []
 
 
 [dependencies]
-anchor-lang = { version = "=0.31.0", features = ["init-if-needed"] }
-anchor-spl = "=0.31.0"
+anchor-lang = { version = "=0.31.1", features = ["init-if-needed"] }
+anchor-spl = "=0.31.1"
 spl-type-length-value = "0.7.0"
 
 alloy-primitives = "=0.8.13"

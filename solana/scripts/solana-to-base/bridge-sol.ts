@@ -19,10 +19,10 @@ async function main() {
   // Ix params
   const gasLimit: BridgeSolParams[0] = new anchor.BN(1_000_000);
   const to: BridgeSolParams[1] = [
-    ...toBytes("0x0000000000000000000000000000000000000000"),
+    ...toBytes("0x25f7fD8f50D522b266764cD3b230EDaA8CbB9f75"),
   ];
   const remoteToken: BridgeSolParams[2] = [...toBytes(ADDRESSES.wrappedSOL)];
-  const amount: BridgeSolParams[3] = new anchor.BN(1);
+  const amount: BridgeSolParams[3] = new anchor.BN(10_000);
   const call: BridgeSolParams[4] = null;
 
   const [bridgePda] = PublicKey.findProgramAddressSync(
