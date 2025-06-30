@@ -54,7 +54,6 @@ library SVMBridgeLib {
                 result,
                 uint8(0), // Sol
                 transfer.localToken, // remote_token
-                transfer.remoteToken, // local_token
                 transfer.to, // to
                 SVMLib.toU64LittleEndian(transfer.remoteAmount) // amount
             );
