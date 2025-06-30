@@ -10,6 +10,7 @@ import { toBytes } from "viem";
 import type { Bridge } from "../../target/types/bridge";
 import { getConstantValue } from "../utils/constants";
 import { confirmTransaction } from "../utils/confirm-tx";
+import { CONSTANTS } from "../constants";
 
 type BridgeWrappedTokenParams = Parameters<
   Program<Bridge>["methods"]["bridgeWrappedToken"]
@@ -21,12 +22,13 @@ async function main() {
 
   const program = anchor.workspace.Bridge as Program<Bridge>;
 
+  console.log(`Program ID: ${program.programId.toBase58()}`);
+  console.log(`Sender: ${provider.wallet.publicKey.toBase58()}`);
+
   // Ix params
   const gasLimit: BridgeWrappedTokenParams[0] = new anchor.BN(1_000_000);
-  const to: BridgeWrappedTokenParams[1] = [
-    ...toBytes("0x25f7fD8f50D522b266764cD3b230EDaA8CbB9f75"),
-  ];
-  const amount: BridgeWrappedTokenParams[2] = new anchor.BN(1_000_000);
+  const to: BridgeWrappedTokenParams[1] = toBytes(CONSTANTS.recipient);
+  const amount: BridgeWrappedTokenParams[2] = new anchor.BN(1);
   const call: BridgeWrappedTokenParams[3] = null;
 
   const [bridgePda] = PublicKey.findProgramAddressSync(
@@ -45,7 +47,7 @@ async function main() {
   );
 
   // Get user's token account
-  const mint = new PublicKey("11111111111111111111111111111111");
+  const mint = new PublicKey(CONSTANTS.wrappedEth);
   const fromTokenAccount = getAssociatedTokenAddressSync(
     mint,
     provider.wallet.publicKey,
