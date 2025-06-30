@@ -10,8 +10,7 @@ import { toBytes } from "viem";
 import type { Bridge } from "../../target/types/bridge";
 import { confirmTransaction } from "../utils/confirm-tx";
 import { getConstantValue } from "../utils/constants";
-
-const WRAPPED_SPL_ADDRESS = "0x0000000000000000000000000000000000000000";
+import { ADDRESSES } from "../addresses";
 
 type BridgeSplParams = Parameters<Program<Bridge>["methods"]["bridgeSpl"]>;
 
@@ -26,7 +25,7 @@ async function main() {
   const to: BridgeSplParams[1] = [
     ...toBytes("0x0000000000000000000000000000000000000000"), // Recipient on Base
   ];
-  const remoteToken: BridgeSplParams[2] = [...toBytes(WRAPPED_SPL_ADDRESS)];
+  const remoteToken: BridgeSplParams[2] = [...toBytes(ADDRESSES.wrappedSPL)];
   const amount: BridgeSplParams[3] = new anchor.BN(1);
   const call: BridgeSplParams[4] = null;
 

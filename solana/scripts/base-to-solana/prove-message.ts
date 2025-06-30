@@ -8,6 +8,7 @@ import { decodeEventLog } from "viem/utils";
 import type { Bridge } from "../../target/types/bridge";
 import { BRIDGE_ABI } from "../utils/bridge.abi";
 import { getConstantValue } from "../utils/constants";
+import { ADDRESSES } from "../addresses";
 
 const TRANSACTION_HASH =
   "0x1558d0b5366a42738af3952ff985ed27e604a405793dec8476a38ff2cd3100b8";
@@ -156,7 +157,7 @@ async function generateProof(
   // FIXME: Something is off here, the returned proof does not match the MMR root registered in the OutputRoot PDA
   //        even though we're using the same block number
   const [rawProof, totalLeafCount] = await publicClient.readContract({
-    address: "0xA6d78F4F39A9dEE0d62f2B4DFb969e645dA016D8",
+    address: ADDRESSES.bridge,
     abi: BRIDGE_ABI,
     functionName: "generateProof",
     args: [event.message.nonce],

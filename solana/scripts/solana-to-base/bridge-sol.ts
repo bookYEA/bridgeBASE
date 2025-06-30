@@ -6,10 +6,9 @@ import { toBytes } from "viem";
 import type { Bridge } from "../../target/types/bridge";
 import { confirmTransaction } from "../utils/confirm-tx";
 import { getConstantValue } from "../utils/constants";
+import { ADDRESSES } from "../addresses";
 
 type BridgeSolParams = Parameters<Program<Bridge>["methods"]["bridgeSol"]>;
-
-const WRAPPED_SOL_ADDRESS = "0xfDaB33bcbD3801BE97056c3541cEC59760E23a3B";
 
 async function main() {
   const provider = anchor.AnchorProvider.env();
@@ -22,7 +21,7 @@ async function main() {
   const to: BridgeSolParams[1] = [
     ...toBytes("0x0000000000000000000000000000000000000000"),
   ];
-  const remoteToken: BridgeSolParams[2] = [...toBytes(WRAPPED_SOL_ADDRESS)];
+  const remoteToken: BridgeSolParams[2] = [...toBytes(ADDRESSES.wrappedSOL)];
   const amount: BridgeSolParams[3] = new anchor.BN(1);
   const call: BridgeSolParams[4] = null;
 
