@@ -14,12 +14,12 @@ async function main() {
   const program = anchor.workspace.Bridge as Program<Bridge>;
 
   // Ix params
-  const decimals = 8;
+  const decimals = 6;
   const metadata = {
     name: "Wrapped ETH",
     symbol: "wETH",
     remoteToken: [...toBytes("0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE")], // Native ETH address on Base
-    scalerExponent: 6,
+    scalerExponent: 12,
   };
   const gasLimit = new anchor.BN(1_000_000);
 

@@ -92,7 +92,6 @@ pub fn bridge_wrapped_token_handler(
             authority: ctx.accounts.from.to_account_info(),
         },
     );
-
     token_interface::burn_checked(cpi_ctx, amount, ctx.accounts.mint.decimals)?;
 
     *ctx.accounts.outgoing_message = message;
