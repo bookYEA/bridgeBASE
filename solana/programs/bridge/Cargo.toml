@@ -21,9 +21,14 @@ devnet = []
 [dependencies]
 anchor-lang = { version = "=0.31.0", features = ["init-if-needed"] }
 anchor-spl = "=0.31.0"
+spl-type-length-value = "0.7.0"
 
 alloy-primitives = "=0.8.13"
 alloy-sol-types = { version = "=0.8.13", features = ["json"] }
 alloy-sol-type-parser = "=0.8.13" # Pulled by the json feature above so pin a version that works with the rustc version
 
 hex = "0.4.3"
+
+[dev-dependencies]
+litesvm = "0.6.1"
+solana-account = "2.2.1"

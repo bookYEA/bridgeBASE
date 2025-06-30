@@ -7,8 +7,6 @@ import { keccak256, toBytes } from "viem";
 import type { Bridge } from "../../target/types/bridge";
 import { getConstantValue } from "../utils/constants";
 
-type WrapTokenParams = Parameters<Program<Bridge>["methods"]["wrapToken"]>;
-
 async function main() {
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
@@ -16,14 +14,14 @@ async function main() {
   const program = anchor.workspace.Bridge as Program<Bridge>;
 
   // Ix params
-  const decimals: WrapTokenParams[0] = 6;
-  const metadata: WrapTokenParams[1] = {
+  const decimals = 8;
+  const metadata = {
     name: "Wrapped ETH",
     symbol: "wETH",
     remoteToken: [...toBytes("0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE")], // Native ETH address on Base
     scalerExponent: 6,
   };
-  const gasLimit: WrapTokenParams[2] = new anchor.BN(1_000_000);
+  const gasLimit = new anchor.BN(1_000_000);
 
   const metadataHash = keccak256(
     Buffer.concat([
