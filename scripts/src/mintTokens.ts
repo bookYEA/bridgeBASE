@@ -7,7 +7,7 @@ import {
 import { PublicKey } from "@solana/web3.js";
 import { loadFromEnv } from "./utils/loadFromEnv";
 
-const mint = new PublicKey(loadFromEnv("MINT"));
+const mint = new PublicKey("EpGUaQN3ndd6LvY66kh4NxiStwmZHoApZWtwRMmn5SVS");
 
 async function main() {
   const provider = anchor.AnchorProvider.env();
@@ -22,20 +22,20 @@ async function main() {
     mint,
     payer.publicKey
   );
-  console.log(`User ATA: ${userATA.address.toBuffer().toString("hex")}`);
+  console.log(`User ATA: ${userATA.address}`);
   console.log(`Minting ${amount} tokens to ${payer.publicKey.toBase58()}`);
-  await mintTo(
-    provider.connection,
-    payer.payer,
-    mint,
-    userATA.address,
-    payer.publicKey,
-    amount,
-    [],
-    undefined,
-    TOKEN_PROGRAM_ID
-  );
-  console.log("Done!");
+  // await mintTo(
+  //   provider.connection,
+  //   payer.payer,
+  //   mint,
+  //   userATA.address,
+  //   payer.publicKey,
+  //   amount,
+  //   [],
+  //   undefined,
+  //   TOKEN_PROGRAM_ID
+  // );
+  // console.log("Done!");
 }
 
 main().catch((e) => {
