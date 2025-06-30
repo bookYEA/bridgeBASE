@@ -123,7 +123,7 @@ library TokenLib {
             localAmount = transfer.remoteAmount * scaler;
             require(msg.value == localAmount, InvalidMsgValue());
 
-            tokenType = SolanaTokenType.Sol;
+            tokenType = SolanaTokenType.WrappedToken;
         } else {
             // Prevent sending ETH when bridging ERC20 tokens
             require(msg.value == 0, InvalidMsgValue());

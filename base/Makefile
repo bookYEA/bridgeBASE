@@ -3,7 +3,7 @@
 BASE_RPC=https://base-sepolia.cbhq.net
 # BASE_RPC=https://mainnet.base.org
 
-BRIDGE = 0x9120E174Be861bfD6FF01562BA81a756B0268876
+BRIDGE = 0x0Ee1Aaa5D2F92bd9AbC6c570f8C905fDE90f6278
 
 LOCAL_SOL = 0xfDaB33bcbD3801BE97056c3541cEC59760E23a3B
 REMOTE_SOL = 0x069be72ab836d4eacc02525b7350a78a395da2f1253a40ebafd6630000000000
@@ -76,7 +76,7 @@ bridge-erc20-to-solana:
 	LOCAL_TOKEN=$(LOCAL_ERC20) \
 	REMOTE_TOKEN=$(REMOTE_ERC20) \
 	TO=$(USER_REMOTE_ERC20_ATA) \
-	AMOUNT=1000000 \
+	AMOUNT=1000000000000 \
 	NEEDS_APPROVAL=true \
 	forge script BridgeTokensToSolanaScript --account testnet-admin --rpc-url $(BASE_RPC) --broadcast -vvvv
 
