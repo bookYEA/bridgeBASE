@@ -2,13 +2,15 @@ import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import {
   getAssociatedTokenAddressSync,
-  TOKEN_2022_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
-import { PublicKey, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { PublicKey, SystemProgram } from "@solana/web3.js";
+import baseSepoliaAddrs from "../../../deployments/base_sepolia.json";
 import { toBytes } from "viem";
 
 import type { Bridge } from "../../../target/types/bridge";
+import { loadFromEnv } from "../../utils/loadFromEnv";
+import { confirmTransaction } from "../../utils/confirmTransaction";
 import { getConstantValue } from "../../utils/anchor-consants";
 
 async function main() {
@@ -18,9 +20,9 @@ async function main() {
   const program = anchor.workspace.Bridge as Program<Bridge>;
 
   // Bridge parameters
-  const mint = new PublicKey("EpGUaQN3ndd6LvY66kh4NxiStwmZHoApZWtwRMmn5SVS");
-  const to = toBytes("0x25f7fD8f50D522b266764cD3b230EDaA8CbB9f75"); // Recipient on Base
-  const remoteToken = toBytes("0x8cB2961F96325c64572a67d855ebAB50A3c8332D"); // USDC on Base
+  const mint = new PublicKey(loadFromEnv("MINT"));
+  const to = toBytes(loadFromEnv("USER")); // Recipient on Base
+  const remoteToken = toBytes(baseSepoliaAddrs.WrappedSPL); // USDC on Base
   const amount = new anchor.BN(1);
   const call = null; // No call for this example
 
@@ -88,17 +90,7 @@ async function main() {
 
   console.log("Submitted transaction:", tx);
 
-  const latestBlockHash = await provider.connection.getLatestBlockhash();
-  await provider.connection.confirmTransaction(
-    {
-      blockhash: latestBlockHash.blockhash,
-      lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
-      signature: tx,
-    },
-    "confirmed"
-  );
-
-  console.log("Confirmed transaction:", tx);
+  await confirmTransaction(provider.connection, tx);
 }
 
 main().catch((e) => {

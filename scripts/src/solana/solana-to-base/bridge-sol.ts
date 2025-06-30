@@ -4,6 +4,9 @@ import { PublicKey, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { toBytes } from "viem";
 
 import type { Bridge } from "../../../target/types/bridge";
+import baseSepoliaAddrs from "../../../deployments/base_sepolia.json";
+import { loadFromEnv } from "../../utils/loadFromEnv";
+import { confirmTransaction } from "../../utils/confirmTransaction";
 import { getConstantValue } from "../../utils/anchor-consants";
 
 async function main() {
@@ -13,8 +16,8 @@ async function main() {
   const program = anchor.workspace.Bridge as Program<Bridge>;
 
   // Bridge parameters
-  const to = toBytes("0x25f7fD8f50D522b266764cD3b230EDaA8CbB9f75"); // Recipient on Base
-  const remoteToken = toBytes("0xfDaB33bcbD3801BE97056c3541cEC59760E23a3B"); // Wrapped SOL address on Base
+  const to = toBytes(loadFromEnv("USER")); // Recipient on Base
+  const remoteToken = toBytes(baseSepoliaAddrs.WrappedSOL); // Wrapped SOL address on Base
   const amount = new anchor.BN(1); // 0.000000001 SOL
   const call = null; // No call for this example
 
@@ -66,17 +69,7 @@ async function main() {
 
   console.log("Submitted transaction:", tx);
 
-  const latestBlockHash = await provider.connection.getLatestBlockhash();
-  await provider.connection.confirmTransaction(
-    {
-      blockhash: latestBlockHash.blockhash,
-      lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
-      signature: tx,
-    },
-    "confirmed"
-  );
-
-  console.log("Confirmed transaction:", tx);
+  await confirmTransaction(provider.connection, tx);
 }
 
 main().catch((e) => {

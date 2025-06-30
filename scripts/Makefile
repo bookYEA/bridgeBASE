@@ -33,11 +33,15 @@ mint-tokens:
 
 .PHONY: bridge-sol-to-base
 bridge-sol-to-base:
-	bun run src/bridgeSolToBase.ts
+	bun run src/solana/solana-to-base/bridge-sol.ts
 
 .PHONY: bridge-spl-to-base
 bridge-spl-to-base:
-	bun run src/bridgeTokensToBase.ts
+	bun run src/solana/solana-to-base/bridge-spl.ts
+
+.PHONY: prove-transaction
+prove-transaction:
+	bun run src/solana/base-to-solana/proveTransaction.ts
 
 .PHONY: bridge-erc20-to-base
 bridge-erc20-to-base:
