@@ -47,7 +47,7 @@ async function main() {
   );
 
   // Get user's token account
-  const mint = new PublicKey(CONSTANTS.wrappedEth);
+  const mint = new PublicKey(CONSTANTS.wrappedERC20);
   const fromTokenAccount = getAssociatedTokenAddressSync(
     mint,
     provider.wallet.publicKey,

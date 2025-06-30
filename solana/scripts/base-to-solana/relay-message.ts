@@ -11,7 +11,7 @@ import { deserializeMessage } from "../utils/deserializer";
 
 // The message hash from a previously proven message
 const MESSAGE_HASH =
-  "0x3ea83bf665711379f37807f44461a97ae981744da9f83e3d08bfeb44f6ae0279";
+  "0x51dfebda7e0f66c2f26c91ce3af466fe348291864cbeec2c5eef4bea3badd74c";
 
 async function main() {
   const provider = anchor.AnchorProvider.env();
@@ -51,7 +51,6 @@ async function main() {
 
   const messageData = Buffer.from(message.data);
   const deserializedMessage = deserializeMessage(messageData);
-  console.log(`Deserialized message: ${JSON.stringify(deserializedMessage)}`);
 
   if (deserializedMessage.type === "Call") {
     console.log(

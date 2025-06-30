@@ -1,7 +1,7 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
-import { createPublicClient, http, toBytes, toHex } from "viem";
+import { createPublicClient, http, toBytes, toHex, type Hash } from "viem";
 import { baseSepolia } from "viem/chains";
 import { decodeEventLog } from "viem/utils";
 
@@ -12,7 +12,7 @@ import { ADDRESSES } from "../addresses";
 import { confirmTransaction } from "../utils/confirm-tx";
 
 const TRANSACTION_HASH =
-  "0x4b2043d01440a5695794737ae8f203f9f5c016385dc9dedaf03c367bb87c5f55";
+  "0x14f8f6153f4af514e89b64fd1ca9eeb77b980d9068766108d5e22e4ddf73df91";
 
 async function main() {
   const provider = anchor.AnchorProvider.env();
@@ -92,7 +92,7 @@ main().catch((e) => {
 });
 
 async function generateProof(
-  transactionHash: `0x${string}`,
+  transactionHash: Hash,
   bridgeBaseBlockNumber: bigint
 ) {
   const publicClient = createPublicClient({
@@ -145,8 +145,6 @@ async function generateProof(
   console.log("Sender:", event.message.sender);
   console.log("Data:", event.message.data);
 
-  // FIXME: Something is off here, the returned proof does not match the MMR root registered in the OutputRoot PDA
-  //        even though we're using the same block number
   const [rawProof, totalLeafCount] = await publicClient.readContract({
     address: ADDRESSES.bridge,
     abi: BRIDGE_ABI,
