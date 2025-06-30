@@ -6,7 +6,7 @@ resolution = false
 skip-lint = false
 
 [programs.devnet]
-bridge = "EF3xsxZGWWJX9T7vCPb7hEgyJQKEj1mgSNLMNvF8a7cj"
+bridge = "6ju3gpXy6BvWECqiG41wedXsaanb5TyYzCnNzAZpDvtg"
 
 [registry]
 url = "https://api.apr.dev"
@@ -16,13 +16,9 @@ cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
-
-# Solana -> Base
-wrap-token = "bun run scripts/solana-to-base/wrap-token.ts"
+bridge-call = "bun run scripts/solana-to-base/bridge-call.ts"
 bridge-sol = "bun run scripts/solana-to-base/bridge-sol.ts"
 bridge-spl = "bun run scripts/solana-to-base/bridge-spl.ts"
 bridge-wrapped-token = "bun run scripts/solana-to-base/bridge-wrapped-token.ts"
-bridge-call = "bun run scripts/solana-to-base/bridge-call.ts"
-
-# Base -> Solana
 prove-message = "bun run scripts/base-to-solana/prove-message.ts"
+wrap-token = "bun run scripts/solana-to-base/wrap-token.ts"
