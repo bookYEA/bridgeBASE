@@ -1,7 +1,10 @@
 import * as anchor from "@coral-xyz/anchor";
-import { getOrCreateAssociatedTokenAccount } from "@solana/spl-token";
 import { PublicKey } from "@solana/web3.js";
 import { loadFromEnv } from "./utils/loadFromEnv";
+import {
+  getOrCreateAssociatedTokenAccount,
+  TOKEN_2022_PROGRAM_ID,
+} from "@solana/spl-token";
 
 const mint = new PublicKey(loadFromEnv("ERC20_MINT"));
 
@@ -15,7 +18,11 @@ async function main() {
     provider.connection,
     payer.payer,
     mint,
-    payer.publicKey
+    payer.publicKey,
+    false,
+    undefined,
+    undefined,
+    TOKEN_2022_PROGRAM_ID
   );
 
   console.log(`User ATA: ${userATA.address.toBuffer().toString("hex")}`);

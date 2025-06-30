@@ -1,6 +1,6 @@
 import { PublicKey } from "@solana/web3.js";
 
-const PUBKEY = "EF3xsxZGWWJX9T7vCPb7hEgyJQKEj1mgSNLMNvF8a7cj";
+const PUBKEY = "7GcQjDnXnD4fL9N3FQAMghubZ6Jv5e32ouBbKSEjpNXx";
 
 function main() {
   const pubKey = new PublicKey(PUBKEY);
