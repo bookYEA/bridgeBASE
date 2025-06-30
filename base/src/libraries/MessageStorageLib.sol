@@ -288,7 +288,7 @@ library MessageStorageLib {
     ///
     /// @param leafIndex The 0-indexed position of the leaf to prove.
     ///
-    /// @return Hashes of other mountain peaks.
+    /// @return Hashes of other mountain peaks in right-to-left order.
     function _collectOtherPeaks(uint64 leafIndex) private view returns (bytes32[] memory) {
         MessageStorageLibStorage storage $ = getMessageStorageLibStorage();
 
@@ -315,10 +315,10 @@ library MessageStorageLib {
             }
         }
 
-        // Copy to exact size array
+        // Copy to exact size array in reverse order (right-to-left for peak bagging)
         bytes32[] memory peaks = new bytes32[](peakCount);
         for (uint256 i = 0; i < peakCount; i++) {
-            peaks[i] = tempPeaks[i];
+            peaks[i] = tempPeaks[peakCount - 1 - i];
         }
         return peaks;
     }
