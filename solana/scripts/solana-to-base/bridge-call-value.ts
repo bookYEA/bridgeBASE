@@ -2,18 +2,22 @@ import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import {
   getAssociatedTokenAddressSync,
-  TOKEN_PROGRAM_ID,
+  TOKEN_2022_PROGRAM_ID,
 } from "@solana/spl-token";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
-import { toBytes } from "viem";
+import { createPublicClient, http, toBytes } from "viem";
 
 import type { Bridge } from "../../target/types/bridge";
-import { confirmTransaction } from "../utils/confirm-tx";
 import { getConstantValue } from "../utils/constants";
-import { ADDRESSES } from "../addresses";
+import { confirmTransaction } from "../utils/confirm-tx";
 import { CONSTANTS } from "../constants";
+import { baseSepolia } from "viem/chains";
+import { ADDRESSES } from "../addresses";
+import { BRIDGE_ABI } from "../utils/bridge.abi";
 
-type BridgeSplParams = Parameters<Program<Bridge>["methods"]["bridgeSpl"]>;
+type BridgeWrappedTokenParams = Parameters<
+  Program<Bridge>["methods"]["bridgeWrappedToken"]
+>;
 
 async function main() {
   const provider = anchor.AnchorProvider.env();
@@ -21,12 +25,31 @@ async function main() {
 
   const program = anchor.workspace.Bridge as Program<Bridge>;
 
+  console.log(`Program ID: ${program.programId.toBase58()}`);
+  console.log(`Sender: ${provider.wallet.publicKey.toBase58()}`);
+
+  const publicClient = createPublicClient({
+    chain: baseSepolia,
+    transport: http(),
+  });
+
+  const twinAddress = await publicClient.readContract({
+    address: ADDRESSES.bridge,
+    abi: BRIDGE_ABI,
+    functionName: "twins",
+    args: [`0x${provider.wallet.publicKey.toBuffer().toString("hex")}`],
+  });
+
   // Ix params
-  const gasLimit: BridgeSplParams[0] = new anchor.BN(1_000_000);
-  const to: BridgeSplParams[1] = toBytes(CONSTANTS.recipient);
-  const remoteToken: BridgeSplParams[2] = toBytes(ADDRESSES.wrappedSPL);
-  const amount: BridgeSplParams[3] = new anchor.BN(1);
-  const call: BridgeSplParams[4] = null;
+  const gasLimit: BridgeWrappedTokenParams[0] = new anchor.BN(1_000_000);
+  const to: BridgeWrappedTokenParams[1] = toBytes(twinAddress);
+  const amount: BridgeWrappedTokenParams[2] = new anchor.BN(1);
+  const call: BridgeWrappedTokenParams[3] = {
+    ty: { call: {} }, // Call
+    to: toBytes(CONSTANTS.counterValue),
+    value: new anchor.BN(1000000000000),
+    data: Buffer.from(toBytes("0xd09de08a")), // increment()
+  };
 
   const [bridgePda] = PublicKey.findProgramAddressSync(
     [Buffer.from(getConstantValue("bridgeSeed"))],
@@ -34,16 +57,6 @@ async function main() {
   );
 
   const bridge = await program.account.bridge.fetch(bridgePda);
-
-  const mint = new PublicKey(CONSTANTS.solanaSpl);
-  const [tokenVaultPda] = PublicKey.findProgramAddressSync(
-    [
-      Buffer.from(getConstantValue("tokenVaultSeed")),
-      mint.toBuffer(),
-      Buffer.from(remoteToken),
-    ],
-    program.programId
-  );
 
   const [outgoingMessagePda] = PublicKey.findProgramAddressSync(
     [
@@ -53,32 +66,32 @@ async function main() {
     program.programId
   );
 
+  // Get user's token account
+  const mint = new PublicKey(CONSTANTS.wrappedEth);
   const fromTokenAccount = getAssociatedTokenAddressSync(
     mint,
     provider.wallet.publicKey,
     false,
-    TOKEN_PROGRAM_ID
+    TOKEN_2022_PROGRAM_ID
   );
 
   console.log(`Bridge PDA: ${bridgePda.toBase58()}`);
-  console.log(`Token Vault PDA: ${tokenVaultPda.toBase58()}`);
   console.log(`Outgoing message PDA: ${outgoingMessagePda.toBase58()}`);
   console.log(`From token account: ${fromTokenAccount.toBase58()}`);
   console.log(`Current nonce: ${bridge.nonce.toString()}`);
   console.log(`Bridging amount: ${amount.toNumber()}`);
 
   const tx = await program.methods
-    .bridgeSpl(gasLimit, to, remoteToken, amount, call)
+    .bridgeWrappedToken(gasLimit, to, amount, call)
     .accountsStrict({
       payer: provider.wallet.publicKey,
       from: provider.wallet.publicKey,
       gasFeeReceiver: getConstantValue("gasFeeReceiver"),
       mint: mint,
       fromTokenAccount: fromTokenAccount,
-      tokenVault: tokenVaultPda,
       bridge: bridgePda,
       outgoingMessage: outgoingMessagePda,
-      tokenProgram: TOKEN_PROGRAM_ID,
+      tokenProgram: TOKEN_2022_PROGRAM_ID,
       systemProgram: SystemProgram.programId,
     })
     .rpc();

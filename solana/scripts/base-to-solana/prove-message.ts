@@ -12,7 +12,7 @@ import { ADDRESSES } from "../addresses";
 import { confirmTransaction } from "../utils/confirm-tx";
 
 const TRANSACTION_HASH =
-  "0x14f8f6153f4af514e89b64fd1ca9eeb77b980d9068766108d5e22e4ddf73df91";
+  "0xe5b24e56c15e5a620635da42c599f2f9ea231c402bd5e44f230f5c0019fba25e";
 
 async function main() {
   const provider = anchor.AnchorProvider.env();
