@@ -240,6 +240,76 @@ contract MessageStorageLibTest is Test {
         assertNotEq(root, bytes32(0), "Root should be calculated properly for 2+ leaves");
     }
 
+    /// @notice Debug test to examine the 2-leaf MMR issue in detail
+    function test_MMR_DebugTwoLeafIssue() public {
+        console2.log("=== Debugging 2-leaf MMR Issue ===");
+
+        // Add first leaf
+        bytes memory firstData = _createTestData("first");
+        MessageStorageLib.sendMessage({sender: address(this), data: firstData});
+
+        console2.log("After 1st leaf:");
+        console2.log("  Leaf count:", _getLeafCount());
+        console2.log("  Node count:", _getNodeCount());
+        console2.log("  Root:", vm.toString(_getRoot()));
+        if (_getNodeCount() >= 1) {
+            console2.log("  Node[0]:", vm.toString(_getNode(0)));
+        }
+
+        // Calculate expected first leaf hash
+        bytes32 expectedLeaf1 = _calculateExpectedMessageHash(0, address(this), firstData);
+        console2.log("  Expected leaf1:", vm.toString(expectedLeaf1));
+        console2.log("  Root matches leaf1?", _getRoot() == expectedLeaf1);
+
+        // Add second leaf
+        bytes memory secondData = _createTestData("second");
+        MessageStorageLib.sendMessage({sender: address(this), data: secondData});
+
+        console2.log("After 2nd leaf:");
+        console2.log("  Leaf count:", _getLeafCount());
+        console2.log("  Node count:", _getNodeCount());
+        console2.log("  Root:", vm.toString(_getRoot()));
+
+        // Log all nodes
+        for (uint256 i = 0; i < _getNodeCount(); i++) {
+            console2.log(string(abi.encodePacked("  Node[", vm.toString(i), "]:")), vm.toString(_getNode(i)));
+        }
+
+        // Calculate expected hashes
+        bytes32 expectedLeaf2 = _calculateExpectedMessageHash(1, address(this), secondData);
+        console2.log("  Expected leaf1:", vm.toString(expectedLeaf1));
+        console2.log("  Expected leaf2:", vm.toString(expectedLeaf2));
+
+        // Calculate expected combined root
+        bytes32 expectedCombinedRoot;
+        if (expectedLeaf1 < expectedLeaf2) {
+            expectedCombinedRoot = keccak256(abi.encodePacked(expectedLeaf1, expectedLeaf2));
+        } else {
+            expectedCombinedRoot = keccak256(abi.encodePacked(expectedLeaf2, expectedLeaf1));
+        }
+        console2.log("  Expected combined root:", vm.toString(expectedCombinedRoot));
+
+        // Check what the root actually is
+        bytes32 actualRoot = _getRoot();
+        console2.log("  Actual root:", vm.toString(actualRoot));
+        console2.log("  Root matches leaf1?", actualRoot == expectedLeaf1);
+        console2.log("  Root matches leaf2?", actualRoot == expectedLeaf2);
+        console2.log("  Root matches expected combined?", actualRoot == expectedCombinedRoot);
+
+        // Check if node[2] exists and what it contains
+        if (_getNodeCount() >= 3) {
+            bytes32 node2 = _getNode(2);
+            console2.log("  Node[2] (should be parent):", vm.toString(node2));
+            console2.log("  Node[2] matches expected combined?", node2 == expectedCombinedRoot);
+            console2.log("  Root matches Node[2]?", actualRoot == node2);
+        } else {
+            console2.log("  ERROR: Node[2] doesn't exist!");
+        }
+
+        // The actual assertion - this should pass if MMR is working correctly
+        assertEq(actualRoot, expectedCombinedRoot, "Two leaves should produce combined root, not individual leaf hash");
+    }
+
     function test_MMR_WithThreeLeaves_CreatesCorrectStructure() public {
         // Arrange & Act
         for (uint256 i = 1; i <= 3; i++) {

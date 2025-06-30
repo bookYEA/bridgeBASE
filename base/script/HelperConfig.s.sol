@@ -38,7 +38,7 @@ contract HelperConfig is Script {
     function getBaseSepoliaConfig() public pure returns (NetworkConfig memory) {
         return NetworkConfig({
             initialOwner: 0x0fe884546476dDd290eC46318785046ef68a0BA9, // Base Sepolia Proxy Admin
-            remoteBridge: Pubkey.wrap(0xc4c16980efe2a570c1a7599fd2ebb40ca7f85daf897482b9c85d4b8933a61608), // EF3xsxZGWWJX9T7vCPb7hEgyJQKEj1mgSNLMNvF8a7cj
+            remoteBridge: Pubkey.wrap(0x5547ad75815ba369e7fd8f9a8c37c0c5e1c6f930a68564449d619d21755551b9), // 6ju3gpXy6BvWECqiG41wedXsaanb5TyYzCnNzAZpDvtg
             trustedRelayer: 0x0e9a877906EBc3b7098DA2404412BF0Ed1A5EFb4,
             erc1967Factory: ERC1967FactoryConstants.ADDRESS
         });

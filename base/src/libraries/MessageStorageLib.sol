@@ -196,7 +196,7 @@ library MessageStorageLib {
         _createParentNodes(newLeafNodeIndex, originalLeafCount);
 
         // Update and return the new root
-        bytes32 newRoot = _calculateRoot();
+        bytes32 newRoot = _calculateRoot(originalLeafCount + 1);
         $.root = newRoot;
         return newRoot;
     }
@@ -204,15 +204,15 @@ library MessageStorageLib {
     /// @notice Creates parent nodes by merging when the binary representation allows it.
     ///
     /// @param leafNodeIndex The index of the newly added leaf node.
-    /// @param leafCount The original leaf count before adding the new leaf.
-    function _createParentNodes(uint256 leafNodeIndex, uint64 leafCount) private {
+    /// @param originalLeafCount The original leaf count before adding the new leaf.
+    function _createParentNodes(uint256 leafNodeIndex, uint64 originalLeafCount) private {
         MessageStorageLibStorage storage $ = getMessageStorageLibStorage();
 
         uint256 currentNodeIndex = leafNodeIndex;
         uint256 currentHeight = 0;
 
         // Loop to create parent nodes when merging is possible
-        while (_shouldMergeAtHeight(leafCount, currentHeight)) {
+        while (_shouldMergeAtHeight(originalLeafCount, currentHeight)) {
             uint256 leftSiblingIndex = _calculateLeftSiblingIndex(currentNodeIndex, currentHeight);
 
             // Get the hashes to merge
@@ -326,22 +326,16 @@ library MessageStorageLib {
     /// @notice Calculates the current root by "bagging the peaks".
     ///
     /// @return The MMR root.
-    function _calculateRoot() private view returns (bytes32) {
+    function _calculateRoot(uint64 currentLeafCount) private view returns (bytes32) {
         MessageStorageLibStorage storage $ = getMessageStorageLibStorage();
 
-        // Check nodes array length since nonce is incremented after _calculateRoot is called
         uint256 nodeCount = $.nodes.length;
 
         if (nodeCount == 0) {
             return bytes32(0);
         }
 
-        // Special case: single leaf should return the leaf hash itself
-        if (nodeCount == 1) {
-            return $.nodes[0];
-        }
-
-        uint256[] memory peakIndices = _getPeakNodeIndices();
+        uint256[] memory peakIndices = _getPeakNodeIndicesForLeafCount(currentLeafCount);
 
         if (peakIndices.length == 0) {
             return bytes32(0);
@@ -380,17 +374,25 @@ library MessageStorageLib {
     /// @return The indices of the peak nodes ordered from rightmost to leftmost.
     function _getPeakNodeIndices() private view returns (uint256[] memory) {
         MessageStorageLibStorage storage $ = getMessageStorageLibStorage();
+        return _getPeakNodeIndicesForLeafCount($.lastOutgoingNonce);
+    }
 
-        if ($.lastOutgoingNonce == 0) {
+    /// @notice Gets the indices of all peak nodes in the MMR for a specific leaf count.
+    ///
+    /// @param leafCount The number of leaves to calculate peaks for.
+    ///
+    /// @return The indices of the peak nodes ordered from rightmost to leftmost.
+    function _getPeakNodeIndicesForLeafCount(uint64 leafCount) private pure returns (uint256[] memory) {
+        if (leafCount == 0) {
             return new uint256[](0);
         }
 
         uint256[] memory tempPeakIndices = new uint256[](_MAX_PEAKS);
         uint256 peakCount = 0;
         uint256 nodeOffset = 0;
-        uint64 remainingLeaves = $.lastOutgoingNonce;
+        uint64 remainingLeaves = leafCount;
 
-        uint256 maxHeight = _calculateMaxPossibleHeight($.lastOutgoingNonce);
+        uint256 maxHeight = _calculateMaxPossibleHeight(leafCount);
 
         // Process each possible height from largest to smallest
         for (uint256 height = maxHeight + 1; height > 0; height--) {

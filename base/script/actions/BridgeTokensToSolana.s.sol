@@ -39,8 +39,12 @@ contract BridgeTokensToSolanaScript is Script {
             ERC20(LOCAL_TOKEN).approve(address(bridge), AMOUNT);
         }
         uint256 value = LOCAL_TOKEN == ETH_ADDRESS ? AMOUNT : 0;
-        Transfer memory t =
-            Transfer({localToken: LOCAL_TOKEN, remoteToken: Pubkey.wrap(REMOTE_TOKEN), to: TO, remoteAmount: AMOUNT / 1e6});
+        Transfer memory t = Transfer({
+            localToken: LOCAL_TOKEN,
+            remoteToken: Pubkey.wrap(REMOTE_TOKEN),
+            to: TO,
+            remoteAmount: AMOUNT / 1e12
+        });
         bridge.bridgeToken{value: value}(t, new Ix[](0));
         vm.stopBroadcast();
     }

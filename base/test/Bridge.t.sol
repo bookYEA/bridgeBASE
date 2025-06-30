@@ -995,6 +995,162 @@ contract BridgeTest is Test {
         // This should now pass with the fixed implementation
         assertEq(finalRoot, expectedLeafHash, "Single leaf MMR should return the leaf hash itself");
     }
+
+    /// @notice Test to reproduce the bug where getRoot() returns a leaf hash instead of combined root for 2 nodes
+    function test_getRoot_twoLeavesShouldReturnCombinedRoot_BugReproduction() public {
+        console2.log("=== Testing MMR behavior with 2 leaves ===");
+
+        // Get initial state
+        bytes32 initialRoot = bridge.getRoot();
+        uint64 initialNonce = bridge.getLastOutgoingNonce();
+        assertEq(initialRoot, bytes32(0));
+        assertEq(initialNonce, 0);
+
+        // Send first bridge call
+        Ix[] memory ixs1 = new Ix[](1);
+        ixs1[0] = Ix({programId: TEST_SENDER, serializedAccounts: new bytes[](0), data: hex"deadbeef"});
+
+        vm.prank(user);
+        bridge.bridgeCall(ixs1);
+
+        bytes32 rootAfterFirst = bridge.getRoot();
+        uint64 nonceAfterFirst = bridge.getLastOutgoingNonce();
+
+        console2.log("After first message:");
+        console2.log("  Nonce:", nonceAfterFirst);
+        console2.log("  Root:", vm.toString(rootAfterFirst));
+
+        // Calculate expected first leaf hash
+        bytes memory serializedCall1 = SVMBridgeLib.serializeCall(ixs1);
+        bytes32 expectedLeaf1 = keccak256(abi.encodePacked(uint64(0), user, serializedCall1));
+        console2.log("  Expected leaf1 hash:", vm.toString(expectedLeaf1));
+
+        // Send second bridge call
+        Ix[] memory ixs2 = new Ix[](1);
+        ixs2[0] = Ix({programId: TEST_SENDER, serializedAccounts: new bytes[](0), data: hex"abcdef12"});
+
+        vm.prank(user);
+        bridge.bridgeCall(ixs2);
+
+        bytes32 rootAfterSecond = bridge.getRoot();
+        uint64 nonceAfterSecond = bridge.getLastOutgoingNonce();
+
+        console2.log("After second message:");
+        console2.log("  Nonce:", nonceAfterSecond);
+        console2.log("  Root:", vm.toString(rootAfterSecond));
+
+        // Calculate expected second leaf hash
+        bytes memory serializedCall2 = SVMBridgeLib.serializeCall(ixs2);
+        bytes32 expectedLeaf2 = keccak256(abi.encodePacked(uint64(1), user, serializedCall2));
+        console2.log("  Expected leaf2 hash:", vm.toString(expectedLeaf2));
+
+        // Calculate what the combined root should be
+        // For 2 leaves, the root should be the hash of both leaves combined
+        bytes32 expectedCombinedRoot;
+        if (expectedLeaf1 < expectedLeaf2) {
+            expectedCombinedRoot = keccak256(abi.encodePacked(expectedLeaf1, expectedLeaf2));
+        } else {
+            expectedCombinedRoot = keccak256(abi.encodePacked(expectedLeaf2, expectedLeaf1));
+        }
+        console2.log("  Expected combined root:", vm.toString(expectedCombinedRoot));
+
+        // Check if the bug exists: root should NOT be equal to either leaf hash
+        console2.log("=== Bug Check ===");
+        console2.log("Root equals leaf1?", rootAfterSecond == expectedLeaf1);
+        console2.log("Root equals leaf2?", rootAfterSecond == expectedLeaf2);
+        console2.log("Root equals expected combined?", rootAfterSecond == expectedCombinedRoot);
+
+        // The bug: if root equals one of the leaf hashes, that's incorrect
+        if (rootAfterSecond == expectedLeaf1) {
+            console2.log("BUG CONFIRMED: Root returned leaf1 hash instead of combined root!");
+        } else if (rootAfterSecond == expectedLeaf2) {
+            console2.log("BUG CONFIRMED: Root returned leaf2 hash instead of combined root!");
+        } else if (rootAfterSecond == expectedCombinedRoot) {
+            console2.log("No bug: Root correctly returned combined hash");
+        } else {
+            console2.log("Unexpected root value - neither leaf nor combined");
+        }
+
+        // This assertion should pass if the MMR is working correctly
+        assertEq(
+            rootAfterSecond, expectedCombinedRoot, "Two leaves should produce combined root, not individual leaf hash"
+        );
+
+        // These assertions should fail if the bug exists
+        assertNotEq(rootAfterSecond, expectedLeaf1, "Root should not be leaf1 hash for 2-leaf MMR");
+        assertNotEq(rootAfterSecond, expectedLeaf2, "Root should not be leaf2 hash for 2-leaf MMR");
+    }
+
+    /// @notice Debug test to examine MMR internal state and peak calculation
+    function test_getRoot_debugMMRInternalState() public {
+        console2.log("=== Debugging MMR Internal State ===");
+
+        // Send first bridge call
+        Ix[] memory ixs1 = new Ix[](1);
+        ixs1[0] = Ix({programId: TEST_SENDER, serializedAccounts: new bytes[](0), data: hex"deadbeef"});
+
+        vm.prank(user);
+        bridge.bridgeCall(ixs1);
+
+        console2.log("After 1 leaf:");
+        console2.log("  Nonce:", bridge.getLastOutgoingNonce());
+        console2.log("  Root:", vm.toString(bridge.getRoot()));
+
+        // Try to generate proof to see internal state
+        try bridge.generateProof(0) returns (bytes32[] memory proof, uint64 totalLeafCount) {
+            console2.log("  Successfully generated proof for leaf 0");
+            console2.log("  Total leaf count:", totalLeafCount);
+            console2.log("  Proof length:", proof.length);
+        } catch {
+            console2.log("  Failed to generate proof for leaf 0");
+        }
+
+        // Send second bridge call
+        Ix[] memory ixs2 = new Ix[](1);
+        ixs2[0] = Ix({programId: TEST_SENDER, serializedAccounts: new bytes[](0), data: hex"abcdef12"});
+
+        vm.prank(user);
+        bridge.bridgeCall(ixs2);
+
+        console2.log("After 2 leaves:");
+        console2.log("  Nonce:", bridge.getLastOutgoingNonce());
+        console2.log("  Root:", vm.toString(bridge.getRoot()));
+
+        // Try to generate proofs for both leaves
+        try bridge.generateProof(0) returns (bytes32[] memory proof0, uint64 totalLeafCount0) {
+            console2.log("  Proof for leaf 0 - length:", proof0.length);
+            console2.log("  Total leaf count:", totalLeafCount0);
+            if (proof0.length > 0) {
+                console2.log("  First proof element:", vm.toString(proof0[0]));
+            }
+        } catch {
+            console2.log("  Failed to generate proof for leaf 0");
+        }
+
+        try bridge.generateProof(1) returns (bytes32[] memory proof1, uint64 totalLeafCount1) {
+            console2.log("  Proof for leaf 1 - length:", proof1.length);
+            console2.log("  Total leaf count:", totalLeafCount1);
+            if (proof1.length > 0) {
+                console2.log("  First proof element:", vm.toString(proof1[0]));
+            }
+        } catch {
+            console2.log("  Failed to generate proof for leaf 1");
+        }
+
+        // Calculate what we expect
+        bytes memory serializedCall1 = SVMBridgeLib.serializeCall(ixs1);
+        bytes32 expectedLeaf1 = keccak256(abi.encodePacked(uint64(0), user, serializedCall1));
+
+        bytes memory serializedCall2 = SVMBridgeLib.serializeCall(ixs2);
+        bytes32 expectedLeaf2 = keccak256(abi.encodePacked(uint64(1), user, serializedCall2));
+
+        console2.log("Expected leaf1:", vm.toString(expectedLeaf1));
+        console2.log("Expected leaf2:", vm.toString(expectedLeaf2));
+
+        // For a 2-leaf MMR, both leaves should have the other leaf as their sibling in the proof
+        console2.log("Leaf1 should have leaf2 as sibling:", vm.toString(expectedLeaf2));
+        console2.log("Leaf2 should have leaf1 as sibling:", vm.toString(expectedLeaf1));
+    }
 }
 
 //////////////////////////////////////////////////////////////
