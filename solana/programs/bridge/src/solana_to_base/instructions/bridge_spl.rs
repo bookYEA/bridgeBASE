@@ -68,6 +68,35 @@ pub fn bridge_spl_handler(
         check_call(call)?;
     }
 
+    // Check that the provided mint is not a wrapped token.
+    // Wrapped tokens should be handled by the wrapped_token_transfer_operation branch which burns the token from the user.
+    require!(
+        PartialTokenMetadata::try_from(&ctx.accounts.mint.to_account_info()).is_err(),
+        BridgeSplError::MintIsWrappedToken
+    );
+
+    // Get the token vault balance before the transfer.
+    let token_vault_balance = ctx.accounts.token_vault.amount;
+
+    // Lock the token from the user into the token vault.
+    let cpi_ctx = CpiContext::new(
+        ctx.accounts.token_program.to_account_info(),
+        TransferChecked {
+            mint: ctx.accounts.mint.to_account_info(),
+            from: ctx.accounts.from_token_account.to_account_info(),
+            to: ctx.accounts.token_vault.to_account_info(),
+            authority: ctx.accounts.from.to_account_info(),
+        },
+    );
+    transfer_checked(cpi_ctx, amount, ctx.accounts.mint.decimals)?;
+
+    // Get the token vault balance after the transfer.
+    ctx.accounts.token_vault.reload()?;
+    let token_vault_balance_after = ctx.accounts.token_vault.amount;
+
+    // Compute the real received amount in case the token has transfer fees.
+    let received_amount = token_vault_balance_after - token_vault_balance;
+
     let message = OutgoingMessage::new_transfer(
         ctx.accounts.from.key(),
         gas_limit,
@@ -75,7 +104,7 @@ pub fn bridge_spl_handler(
             to,
             local_token: ctx.accounts.mint.key(),
             remote_token,
-            amount,
+            amount: received_amount,
             call,
         },
     );
@@ -88,24 +117,6 @@ pub fn bridge_spl_handler(
         gas_limit,
         message.relay_messages_tx_size(),
     )?;
-
-    // Check that the provided mint is not a wrapped token.
-    // Wrapped tokens should be handled by the wrapped_token_transfer_operation branch which burns the token from the user.
-    require!(
-        PartialTokenMetadata::try_from(&ctx.accounts.mint.to_account_info()).is_err(),
-        BridgeSplError::MintIsWrappedToken
-    );
-
-    // Lock the token from the user into the token vault.
-    let cpi_accounts = TransferChecked {
-        mint: ctx.accounts.mint.to_account_info(),
-        from: ctx.accounts.from_token_account.to_account_info(),
-        to: ctx.accounts.token_vault.to_account_info(),
-        authority: ctx.accounts.from.to_account_info(),
-    };
-    let cpi_ctx = CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts);
-
-    transfer_checked(cpi_ctx, amount, ctx.accounts.mint.decimals)?;
 
     *ctx.accounts.outgoing_message = message;
     ctx.accounts.bridge.nonce += 1;

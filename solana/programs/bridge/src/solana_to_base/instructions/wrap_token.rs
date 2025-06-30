@@ -5,11 +5,14 @@ use anchor_lang::solana_program::rent::{
     DEFAULT_EXEMPTION_THRESHOLD, DEFAULT_LAMPORTS_PER_BYTE_YEAR,
 };
 use anchor_lang::system_program::{transfer, Transfer};
+use anchor_spl::token_2022::spl_token_2022::extension::{ExtensionType, Length};
+use anchor_spl::token_interface::spl_pod::bytemuck::pod_get_packed_len;
 use anchor_spl::token_interface::{
     spl_token_metadata_interface::state::{Field, TokenMetadata},
     token_metadata_initialize, token_metadata_update_field, Mint, Token2022,
     TokenMetadataInitialize, TokenMetadataUpdateField,
 };
+use spl_type_length_value::variable_len_pack::VariableLenPack;
 
 use crate::common::{bridge::Bridge, PartialTokenMetadata, BRIDGE_SEED, WRAPPED_TOKEN_SEED};
 use crate::solana_to_base::{
@@ -92,11 +95,11 @@ fn initialize_metadata(
 ) -> Result<()> {
     let token_metadata = TokenMetadata::from(partial_token_metadata);
 
-    // FIXME: Computation is most likely unaccurate
     // Calculate lamports required for the additional metadata
-    let data_len = token_metadata.tlv_size_of()?;
-    let lamports =
-        data_len as u64 * DEFAULT_LAMPORTS_PER_BYTE_YEAR * DEFAULT_EXEMPTION_THRESHOLD as u64;
+    let token_metadata_size = add_type_and_length_to_len(token_metadata.get_packed_len().unwrap());
+    let lamports = token_metadata_size as u64
+        * DEFAULT_LAMPORTS_PER_BYTE_YEAR
+        * DEFAULT_EXEMPTION_THRESHOLD as u64;
 
     // Transfer additional lamports to mint account (because we're increasing its size to store the metadata)
     transfer(
@@ -203,6 +206,15 @@ fn register_remote_token(
     ctx.accounts.bridge.nonce += 1;
 
     Ok(())
+}
+
+/// Helper function to calculate exactly how many bytes a value will take up,
+/// given the value's length
+/// Copied from https://github.com/solana-program/token-2022/blob/4f292ccb95529b5fea7c305c4c8bf7ea1037175a/program/src/extension/mod.rs#L136
+const fn add_type_and_length_to_len(value_len: usize) -> usize {
+    value_len
+        .saturating_add(std::mem::size_of::<ExtensionType>())
+        .saturating_add(pod_get_packed_len::<Length>())
 }
 
 #[error_code]

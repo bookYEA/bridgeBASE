@@ -38,6 +38,8 @@ RUN source /home/vscode/.nvm/nvm.sh && \
     
 RUN curl -L https://foundry.paradigm.xyz | bash &&
 
+RUN curl -fsSL https://bun.sh/install | bash
+
 SHELL ["/bin/bash", "--login", "-i", "-c"]
 
 RUN foundryup

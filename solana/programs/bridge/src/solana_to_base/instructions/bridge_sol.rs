@@ -87,7 +87,6 @@ pub fn bridge_sol_handler(
             to: ctx.accounts.sol_vault.to_account_info(),
         },
     );
-
     system_program::transfer(cpi_ctx, amount)?;
 
     *ctx.accounts.outgoing_message = message;
