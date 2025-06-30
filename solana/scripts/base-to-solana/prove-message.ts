@@ -9,6 +9,7 @@ import type { Bridge } from "../../target/types/bridge";
 import { BRIDGE_ABI } from "../utils/bridge.abi";
 import { getConstantValue } from "../utils/constants";
 import { ADDRESSES } from "../addresses";
+import { confirmTransaction } from "../utils/confirm-tx";
 
 const TRANSACTION_HASH =
   "0x1558d0b5366a42738af3952ff985ed27e604a405793dec8476a38ff2cd3100b8";
@@ -82,17 +83,7 @@ async function main() {
 
   console.log("Submitted transaction:", tx);
 
-  const latestBlockHash = await provider.connection.getLatestBlockhash();
-  await provider.connection.confirmTransaction(
-    {
-      blockhash: latestBlockHash.blockhash,
-      lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
-      signature: tx,
-    },
-    "confirmed"
-  );
-
-  console.log("Confirmed transaction:", tx);
+  await confirmTransaction(provider.connection, tx);
 }
 
 main().catch((e) => {

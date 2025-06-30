@@ -6,7 +6,7 @@ resolution = false
 skip-lint = false
 
 [programs.devnet]
-bridge = "EF3xsxZGWWJX9T7vCPb7hEgyJQKEj1mgSNLMNvF8a7cj"
+bridge = "6ju3gpXy6BvWECqiG41wedXsaanb5TyYzCnNzAZpDvtg"
 
 [registry]
 url = "https://api.apr.dev"
@@ -24,5 +24,13 @@ bridge-spl = "bun run scripts/solana-to-base/bridge-spl.ts"
 bridge-wrapped-token = "bun run scripts/solana-to-base/bridge-wrapped-token.ts"
 bridge-call = "bun run scripts/solana-to-base/bridge-call.ts"
 
+# SPL
+mint-spl = "bun run scripts/spl/mint-spl.ts"
+create-mint = "bun run scripts/spl/create-mint.ts"
+create-user-ata = "bun run scripts/spl/create-user-ata.ts"
+
 # Base -> Solana
 prove-message = "bun run scripts/base-to-solana/prove-message.ts"
+
+# Utils
+pubkey-to-bytes32 = "bun run scripts/utils/pubkey-to-bytes32.ts"

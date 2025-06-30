@@ -23,7 +23,7 @@ async function main() {
   // Ix params
   const gasLimit: BridgeSplParams[0] = new anchor.BN(1_000_000);
   const to: BridgeSplParams[1] = [
-    ...toBytes("0x0000000000000000000000000000000000000000"), // Recipient on Base
+    ...toBytes("0x8c1a617bdb47342f9c17ac8750e0b070c372c721"), // Recipient on Base
   ];
   const remoteToken: BridgeSplParams[2] = [...toBytes(ADDRESSES.wrappedSPL)];
   const amount: BridgeSplParams[3] = new anchor.BN(1);
@@ -36,7 +36,7 @@ async function main() {
 
   const bridge = await program.account.bridge.fetch(bridgePda);
 
-  const mint = new PublicKey("11111111111111111111111111111111");
+  const mint = new PublicKey("7gpNAiU3abTrrqD4EkW5zC6Zbo3uGSzADSgsfAdQzDZ8");
   const [tokenVaultPda] = PublicKey.findProgramAddressSync(
     [
       Buffer.from(getConstantValue("tokenVaultSeed")),

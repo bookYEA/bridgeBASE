@@ -5,6 +5,7 @@ import { toBytes } from "viem";
 
 import type { Bridge } from "../../target/types/bridge";
 import { getConstantValue } from "../utils/constants";
+import { confirmTransaction } from "../utils/confirm-tx";
 
 type BridgeCallParams = Parameters<Program<Bridge>["methods"]["bridgeCall"]>;
 
@@ -56,17 +57,7 @@ async function main() {
 
   console.log("Submitted transaction:", tx);
 
-  const latestBlockHash = await provider.connection.getLatestBlockhash();
-  await provider.connection.confirmTransaction(
-    {
-      blockhash: latestBlockHash.blockhash,
-      lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
-      signature: tx,
-    },
-    "confirmed"
-  );
-
-  console.log("Confirmed transaction:", tx);
+  await confirmTransaction(provider.connection, tx);
 }
 
 main().catch((e) => {
