@@ -7,7 +7,10 @@ use anchor_spl::{
     token_interface::{self, Mint, TokenAccount},
 };
 
-use crate::{base_to_solana::WRAPPED_TOKEN_SEED, common::PartialTokenMetadata, ID};
+use crate::{
+    common::{PartialTokenMetadata, WRAPPED_TOKEN_SEED},
+    ID,
+};
 
 #[derive(Debug, Copy, Clone, BorshSerialize, BorshDeserialize)]
 pub struct FinalizeBridgeWrappedToken {

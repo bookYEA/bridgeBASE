@@ -8,10 +8,6 @@ skip-lint = false
 [programs.devnet]
 bridge = "EF3xsxZGWWJX9T7vCPb7hEgyJQKEj1mgSNLMNvF8a7cj"
 
-[programs.localnet]
-portal = "4jduFi9ShXq258vmY4GroJUYTRQnd9GWZxzK8zTxTmmw"
-token_bridge = "99GM6j7R186ie7izfeHaB97LWSamFHiV8EbQVTdLuhan"
-
 [registry]
 url = "https://api.apr.dev"
 
@@ -20,4 +16,13 @@ cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
-test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
+
+# Solana -> Base
+wrap-token = "bun run scripts/solana-to-base/wrap-token.ts"
+bridge-sol = "bun run scripts/solana-to-base/bridge-sol.ts"
+bridge-spl = "bun run scripts/solana-to-base/bridge-spl.ts"
+bridge-wrapped-token = "bun run scripts/solana-to-base/bridge-wrapped-token.ts"
+bridge-call = "bun run scripts/solana-to-base/bridge-call.ts"
+
+# Base -> Solana
+prove-message = "bun run scripts/base-to-solana/prove-message.ts"

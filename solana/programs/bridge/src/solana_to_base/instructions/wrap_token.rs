@@ -11,13 +11,11 @@ use anchor_spl::token_interface::{
     TokenMetadataInitialize, TokenMetadataUpdateField,
 };
 
-use crate::base_to_solana::{
-    REMOTE_TOKEN_METADATA_KEY, SCALER_EXPONENT_METADATA_KEY, WRAPPED_TOKEN_SEED,
-};
-use crate::common::{bridge::Bridge, PartialTokenMetadata, BRIDGE_SEED};
+use crate::common::{bridge::Bridge, PartialTokenMetadata, BRIDGE_SEED, WRAPPED_TOKEN_SEED};
 use crate::solana_to_base::{
     check_and_pay_for_gas, Call, CallType, OutgoingMessage, GAS_FEE_RECEIVER, OUTGOING_MESSAGE_SEED,
 };
+use crate::solana_to_base::{REMOTE_TOKEN_METADATA_KEY, SCALER_EXPONENT_METADATA_KEY};
 use crate::ID;
 
 const REGISTER_REMOTE_TOKEN_DATA_LEN: usize = {

@@ -9,32 +9,32 @@ type BridgeConstantNames = BridgeConstants[number]["name"];
 
 type BridgeConstant<
   T extends BridgeConstants,
-  Name extends BridgeConstantNames
+  Name extends BridgeConstantNames,
 > = Extract<T[number], { name: Name }>;
 
 type BridgeConstantField<
   T extends BridgeConstants,
   Name extends BridgeConstantNames,
-  Field extends keyof BridgeConstant<T, Name> = "value"
+  Field extends keyof BridgeConstant<T, Name> = "value",
 > = BridgeConstant<T, Name>[Field];
 
 type ParsedConstantValue<Name extends BridgeConstantNames> =
   BridgeConstantField<BridgeConstants, Name, "type"> extends "pubkey"
     ? PublicKey
     : BridgeConstantField<BridgeConstants, Name, "type"> extends
-        | "u64"
-        | "u16"
-        | "u8"
-    ? number
-    : BridgeConstantField<BridgeConstants, Name, "type"> extends "bytes"
-    ? number[]
-    : BridgeConstantField<BridgeConstants, Name, "type"> extends {
-        array: any;
-      }
-    ? number[]
-    : BridgeConstantField<BridgeConstants, Name, "type"> extends "string"
-    ? string
-    : never;
+          | "u64"
+          | "u16"
+          | "u8"
+      ? number
+      : BridgeConstantField<BridgeConstants, Name, "type"> extends "bytes"
+        ? number[]
+        : BridgeConstantField<BridgeConstants, Name, "type"> extends {
+              array: any;
+            }
+          ? number[]
+          : BridgeConstantField<BridgeConstants, Name, "type"> extends "string"
+            ? string
+            : never;
 
 export const getConstantValue = <T extends BridgeConstantNames>(
   name: T

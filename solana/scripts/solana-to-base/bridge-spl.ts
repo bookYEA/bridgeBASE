@@ -5,13 +5,15 @@ import {
   TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
-import baseSepoliaAddrs from "../../../deployments/base_sepolia.json";
 import { toBytes } from "viem";
 
-import type { Bridge } from "../../../target/types/bridge";
-import { loadFromEnv } from "../../utils/loadFromEnv";
-import { confirmTransaction } from "../../utils/confirmTransaction";
-import { getConstantValue } from "../../utils/anchor-consants";
+import type { Bridge } from "../../target/types/bridge";
+import { confirmTransaction } from "../utils/confirm-tx";
+import { getConstantValue } from "../utils/constants";
+
+const WRAPPED_SPL_ADDRESS = "0x0000000000000000000000000000000000000000";
+
+type BridgeSplParams = Parameters<Program<Bridge>["methods"]["bridgeSpl"]>;
 
 async function main() {
   const provider = anchor.AnchorProvider.env();
@@ -19,45 +21,40 @@ async function main() {
 
   const program = anchor.workspace.Bridge as Program<Bridge>;
 
-  // Bridge parameters
-  const mint = new PublicKey(loadFromEnv("MINT"));
-  const to = toBytes(loadFromEnv("USER")); // Recipient on Base
-  const remoteToken = toBytes(baseSepoliaAddrs.WrappedSPL); // USDC on Base
-  const amount = new anchor.BN(1);
-  const call = null; // No call for this example
+  // Ix params
+  const gasLimit: BridgeSplParams[0] = new anchor.BN(1_000_000);
+  const to: BridgeSplParams[1] = [
+    ...toBytes("0x0000000000000000000000000000000000000000"), // Recipient on Base
+  ];
+  const remoteToken: BridgeSplParams[2] = [...toBytes(WRAPPED_SPL_ADDRESS)];
+  const amount: BridgeSplParams[3] = new anchor.BN(1);
+  const call: BridgeSplParams[4] = null;
 
-  const gasLimit = new anchor.BN(1_000_000); // 1M gas limit
-
-  // Derive bridge PDA
-  const bridgePda = PublicKey.findProgramAddressSync(
+  const [bridgePda] = PublicKey.findProgramAddressSync(
     [Buffer.from(getConstantValue("bridgeSeed"))],
     program.programId
-  )[0];
+  );
 
-  // Fetch bridge state to get current nonce
   const bridge = await program.account.bridge.fetch(bridgePda);
-  const nonce = bridge.nonce;
 
-  // Derive token vault PDA
-  const tokenVaultPda = PublicKey.findProgramAddressSync(
+  const mint = new PublicKey("11111111111111111111111111111111");
+  const [tokenVaultPda] = PublicKey.findProgramAddressSync(
     [
       Buffer.from(getConstantValue("tokenVaultSeed")),
       mint.toBuffer(),
-      remoteToken,
+      Buffer.from(remoteToken),
     ],
     program.programId
-  )[0];
+  );
 
-  // Derive outgoing message PDA
-  const outgoingMessagePda = PublicKey.findProgramAddressSync(
+  const [outgoingMessagePda] = PublicKey.findProgramAddressSync(
     [
       Buffer.from(getConstantValue("outgoingMessageSeed")),
-      nonce.toBuffer("le", 8),
+      bridge.nonce.toBuffer("le", 8),
     ],
     program.programId
-  )[0];
+  );
 
-  // Get user's token account
   const fromTokenAccount = getAssociatedTokenAddressSync(
     mint,
     provider.wallet.publicKey,
@@ -69,11 +66,11 @@ async function main() {
   console.log(`Token Vault PDA: ${tokenVaultPda.toBase58()}`);
   console.log(`Outgoing message PDA: ${outgoingMessagePda.toBase58()}`);
   console.log(`From token account: ${fromTokenAccount.toBase58()}`);
-  console.log(`Current nonce: ${nonce.toString()}`);
+  console.log(`Current nonce: ${bridge.nonce.toString()}`);
   console.log(`Bridging amount: ${amount.toNumber()}`);
 
   const tx = await program.methods
-    .bridgeSpl(gasLimit, Array.from(to), Array.from(remoteToken), amount, call)
+    .bridgeSpl(gasLimit, to, remoteToken, amount, call)
     .accountsStrict({
       payer: provider.wallet.publicKey,
       from: provider.wallet.publicKey,

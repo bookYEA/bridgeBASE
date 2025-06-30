@@ -80,10 +80,11 @@ impl OutgoingMessage {
     pub fn relay_messages_tx_size(&self) -> usize {
         match &self.message {
             Message::Call(call) => {
-                RELAY_MESSAGES_CALL_ABI_ENCODING_OVERHEAD + call.data.len().div_ceil(32) * 32
+                RELAY_MESSAGES_CALL_ABI_ENCODING_OVERHEAD as usize
+                    + call.data.len().div_ceil(32) * 32
             }
             Message::Transfer(transfer) => {
-                RELAY_MESSAGES_TRANSFER_ABI_ENCODING_OVERHEAD
+                RELAY_MESSAGES_TRANSFER_ABI_ENCODING_OVERHEAD as usize
                     + transfer
                         .call
                         .as_ref()

@@ -1,16 +1,31 @@
 use anchor_lang::prelude::*;
 
+#[constant]
 pub const MESSAGE_HEADER_SEED: &[u8] = b"message_header";
+#[constant]
 pub const OPERATION_SEED: &[u8] = b"operation";
+#[constant]
 pub const OUTGOING_MESSAGE_SEED: &[u8] = b"outgoing_message";
+#[constant]
 pub const NATIVE_SOL_PUBKEY: Pubkey = pubkey!("SoL1111111111111111111111111111111111111111");
+#[constant]
 pub const MAX_GAS_LIMIT_PER_MESSAGE: u64 = 100_000_000;
+#[constant]
 pub const GAS_COST_SCALER_DP: u64 = 10u64.pow(6);
+#[constant]
 pub const GAS_COST_SCALER: u64 = 1_000_000;
 
-pub const RELAY_MESSAGES_CALL_ABI_ENCODING_OVERHEAD: usize = 544; // Fix bytes overhead for calling Bridge.relayMessages for a single call
-pub const RELAY_MESSAGES_TRANSFER_ABI_ENCODING_OVERHEAD: usize = 480; // Fix bytes overhead for calling Bridge.relayMessages for a single transfer
-pub const RELAY_MESSAGES_TRANSFER_AND_CALL_ABI_ENCODING_OVERHEAD: usize = 704; // Fix bytes overhead for calling Bridge.relayMessages for a single transfer and call
+#[constant]
+pub const RELAY_MESSAGES_CALL_ABI_ENCODING_OVERHEAD: u64 = 544; // Fix bytes overhead for calling Bridge.relayMessages for a single call
+#[constant]
+pub const RELAY_MESSAGES_TRANSFER_ABI_ENCODING_OVERHEAD: u64 = 480; // Fix bytes overhead for calling Bridge.relayMessages for a single transfer
+#[constant]
+pub const RELAY_MESSAGES_TRANSFER_AND_CALL_ABI_ENCODING_OVERHEAD: u64 = 704; // Fix bytes overhead for calling Bridge.relayMessages for a single transfer and call
+
+#[constant]
+pub const REMOTE_TOKEN_METADATA_KEY: &str = "remote_token";
+#[constant]
+pub const SCALER_EXPONENT_METADATA_KEY: &str = "scaler_exponent";
 
 mod private {
     use anchor_lang::prelude::*;
@@ -19,6 +34,7 @@ mod private {
     pub mod config {
         use super::*;
 
+        #[constant]
         pub const GAS_FEE_RECEIVER: Pubkey = pubkey!("eEwCrQLBdQchykrkYitkYUZskd7MPrU2YxBXcPDPnMt");
     }
 
@@ -26,6 +42,7 @@ mod private {
     pub mod config {
         use super::*;
 
+        #[constant]
         pub const GAS_FEE_RECEIVER: Pubkey = pubkey!("11111111111111111111111111111111");
     }
 
@@ -33,6 +50,7 @@ mod private {
     pub mod config {
         use super::*;
 
+        #[constant]
         pub const GAS_FEE_RECEIVER: Pubkey =
             pubkey!("CB8GXDdZDSD5uqfeow1qfp48ouayxXGpw7ycmoovuQMX");
     }
@@ -75,7 +93,7 @@ mod tests {
 
         assert_eq!(
             call.abi_encoded_size(),
-            RELAY_MESSAGES_CALL_ABI_ENCODING_OVERHEAD
+            RELAY_MESSAGES_CALL_ABI_ENCODING_OVERHEAD as usize
         );
     }
 
@@ -103,7 +121,7 @@ mod tests {
 
         assert_eq!(
             call.abi_encoded_size(),
-            RELAY_MESSAGES_TRANSFER_ABI_ENCODING_OVERHEAD
+            RELAY_MESSAGES_TRANSFER_ABI_ENCODING_OVERHEAD as usize
         );
     }
 
@@ -138,7 +156,7 @@ mod tests {
 
         assert_eq!(
             call.abi_encoded_size(),
-            RELAY_MESSAGES_TRANSFER_AND_CALL_ABI_ENCODING_OVERHEAD
+            RELAY_MESSAGES_TRANSFER_AND_CALL_ABI_ENCODING_OVERHEAD as usize
         );
     }
 }

@@ -35,7 +35,7 @@ pub fn prove_message_handler(
     message_hash: [u8; 32],
 ) -> Result<()> {
     // Verify that the provided message hash matches the computed hash
-    let computed_hash = hash_message(&nonce.to_le_bytes(), &sender, &data);
+    let computed_hash = hash_message(&nonce.to_be_bytes(), &sender, &data);
     require!(
         message_hash == computed_hash,
         ProveMessageError::InvalidMessageHash

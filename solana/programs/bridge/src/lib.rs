@@ -51,6 +51,15 @@ pub mod bridge {
 
     // Solana -> Base
 
+    pub fn wrap_token(
+        ctx: Context<WrapToken>,
+        decimals: u8,
+        partial_token_metadata: PartialTokenMetadata,
+        gas_limit: u64,
+    ) -> Result<()> {
+        wrap_token_handler(ctx, decimals, partial_token_metadata, gas_limit)
+    }
+
     pub fn bridge_call(ctx: Context<BridgeCall>, gas_limit: u64, call: Call) -> Result<()> {
         bridge_call_handler(ctx, gas_limit, call)
     }
