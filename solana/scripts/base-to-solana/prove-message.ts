@@ -12,7 +12,7 @@ import { ADDRESSES } from "../addresses";
 import { confirmTransaction } from "../utils/confirm-tx";
 
 const TRANSACTION_HASH =
-  "0xe5b24e56c15e5a620635da42c599f2f9ea231c402bd5e44f230f5c0019fba25e";
+  "0x7d1ec92977298bb6efb245f171dc758d914a7258ed241930885e00548ca814a7";
 
 async function main() {
   const provider = anchor.AnchorProvider.env();
@@ -79,7 +79,7 @@ async function main() {
       message: messagePda,
       systemProgram: SystemProgram.programId,
     })
-    .rpc();
+    .rpc({ skipPreflight: true });
 
   console.log("Submitted transaction:", tx);
 

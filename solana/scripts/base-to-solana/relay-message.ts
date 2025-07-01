@@ -12,7 +12,7 @@ import { SYSTEM_PROGRAM_ID } from "@coral-xyz/anchor/dist/cjs/native/system";
 
 // The message hash from a previously proven message
 const MESSAGE_HASH =
-  "0xd03ac3911cb9f2266018a82c5a95c724b83bf20a8bff7ae18fcdc01c3ff678f1";
+  "0xc90155ebcc3a4c7b144ae713ef91ae147d41c46c73977b757274543892fbd66f";
 
 const NEW_ACCOUNT_SECRET_KEY =
   "a6874e93b6689c5040ad370ad820c82245d0dd499ff2205dce19286a073ed7b9922c7e8af0079b3e1a2880d68dac6601a9f0a96dcc65c3f0409553d4a6c0e090";
@@ -56,6 +56,7 @@ async function main() {
   console.log(`Message PDA: ${messagePda.toBase58()}`);
   console.log(`Bridge CPI Authority PDA: ${bridgeCpiAuthorityPda.toBase58()}`);
   console.log(`Message executed: ${message.executed}`);
+  console.log(`Message sender: ${toHex(Buffer.from(message.sender))}`);
 
   if (message.executed) {
     console.log("Message has already been executed!");
@@ -228,6 +229,17 @@ async function main() {
   } else {
     throw new Error("Unexpected message type detected");
   }
+
+  // Set the isSigner flag to false for the bridge CPI authority account (if it exists)
+  remainingAccounts = remainingAccounts.map((acct) => {
+    if (acct.pubkey.toBase58() === bridgeCpiAuthorityPda.toBase58()) {
+      return {
+        ...acct,
+        isSigner: false,
+      };
+    }
+    return acct;
+  });
 
   remainingAccounts.forEach((acct, i) => {
     console.log(`Account ${i + 1}:`);

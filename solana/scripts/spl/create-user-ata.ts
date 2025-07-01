@@ -4,8 +4,9 @@ import {
   getOrCreateAssociatedTokenAccount,
   TOKEN_2022_PROGRAM_ID,
 } from "@solana/spl-token";
+import { CONSTANTS } from "../constants";
 
-const mint = new PublicKey("BqpnEEWxNFsACBtF7MFddmNa8YDyPJ6ZXXGLWem58S5p");
+const mint = new PublicKey(CONSTANTS.wrappedEth);
 
 async function main() {
   const provider = anchor.AnchorProvider.env();

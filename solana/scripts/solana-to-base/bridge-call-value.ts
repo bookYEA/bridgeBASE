@@ -33,13 +33,14 @@ async function main() {
     transport: http(),
   });
 
-  // TODO: derive here instead of lookup
   const twinAddress = await publicClient.readContract({
     address: ADDRESSES.bridge,
     abi: BRIDGE_ABI,
-    functionName: "twins",
+    functionName: "getPredictedTwinAddress",
     args: [`0x${provider.wallet.publicKey.toBuffer().toString("hex")}`],
   });
+
+  console.log(`Twin address: ${twinAddress}`);
 
   // Ix params
   const gasLimit: BridgeWrappedTokenParams[0] = new anchor.BN(1_000_000);
