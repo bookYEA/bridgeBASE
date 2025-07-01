@@ -160,7 +160,6 @@ version = "0.8.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4feea540fc8233df2ad1156efd744b2075372f43a8f942a68b3b19c8a00e2c12"
 dependencies = [
- "alloy-json-abi",
  "alloy-sol-macro-input",
  "const-hex",
  "heck 0.5.0",
@@ -179,13 +178,11 @@ version = "0.8.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a0ad281f3d1b613af814b66977ee698e443d4644a1510962d0241f26e0e53ae"
 dependencies = [
- "alloy-json-abi",
  "const-hex",
  "dunce",
  "heck 0.5.0",
  "proc-macro2",
  "quote",
- "serde_json",
  "syn 2.0.101",
  "syn-solidity",
 ]
@@ -879,6 +876,10 @@ dependencies = [
  "hex",
  "litesvm",
  "solana-account",
+ "solana-keypair",
+ "solana-message",
+ "solana-signer",
+ "solana-transaction",
  "spl-type-length-value",
 ]
 

@@ -6,9 +6,7 @@ use crate::common::PartialTokenMetadata;
 use crate::solana_to_base::{check_and_pay_for_gas, check_call};
 use crate::{
     common::{bridge::Bridge, BRIDGE_SEED, TOKEN_VAULT_SEED},
-    solana_to_base::{
-        Call, OutgoingMessage, Transfer as TransferOp, GAS_FEE_RECEIVER, OUTGOING_MESSAGE_SEED,
-    },
+    solana_to_base::{Call, OutgoingMessage, Transfer as TransferOp, GAS_FEE_RECEIVER},
 };
 
 #[derive(Accounts)]
@@ -44,8 +42,6 @@ pub struct BridgeSpl<'info> {
 
     #[account(
         init,
-        seeds = [OUTGOING_MESSAGE_SEED, bridge.nonce.to_le_bytes().as_ref()],
-        bump,
         payer = payer,
         space = 8 + OutgoingMessage::space(call.map(|c| c.data.len())),
     )]
@@ -98,6 +94,7 @@ pub fn bridge_spl_handler(
     let received_amount = token_vault_balance_after - token_vault_balance;
 
     let message = OutgoingMessage::new_transfer(
+        ctx.accounts.bridge.nonce,
         ctx.accounts.from.key(),
         gas_limit,
         TransferOp {

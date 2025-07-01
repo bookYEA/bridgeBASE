@@ -16,7 +16,7 @@ use spl_type_length_value::variable_len_pack::VariableLenPack;
 
 use crate::common::{bridge::Bridge, PartialTokenMetadata, BRIDGE_SEED, WRAPPED_TOKEN_SEED};
 use crate::solana_to_base::{
-    check_and_pay_for_gas, Call, CallType, OutgoingMessage, GAS_FEE_RECEIVER, OUTGOING_MESSAGE_SEED,
+    check_and_pay_for_gas, Call, CallType, OutgoingMessage, GAS_FEE_RECEIVER,
 };
 use crate::solana_to_base::{REMOTE_TOKEN_METADATA_KEY, SCALER_EXPONENT_METADATA_KEY};
 use crate::ID;
@@ -58,8 +58,6 @@ pub struct WrapToken<'info> {
 
     #[account(
         init,
-        seeds = [OUTGOING_MESSAGE_SEED, bridge.nonce.to_le_bytes().as_ref()],
-        bump,
         payer = payer,
         space = 8 + OutgoingMessage::space(Some(REGISTER_REMOTE_TOKEN_DATA_LEN)),
     )]
@@ -191,7 +189,7 @@ fn register_remote_token(
         data: (address, local_token, scaler_exponent).abi_encode(),
     };
 
-    let message = OutgoingMessage::new_call(ID, gas_limit, call);
+    let message = OutgoingMessage::new_call(ctx.accounts.bridge.nonce, ID, gas_limit, call);
 
     check_and_pay_for_gas(
         &ctx.accounts.system_program,

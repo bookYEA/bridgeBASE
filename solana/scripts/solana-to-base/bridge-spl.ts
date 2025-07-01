@@ -4,7 +4,7 @@ import {
   getAssociatedTokenAddressSync,
   TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
-import { PublicKey, SystemProgram } from "@solana/web3.js";
+import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
 import { toBytes } from "viem";
 
 import type { Bridge } from "../../target/types/bridge";
@@ -45,13 +45,7 @@ async function main() {
     program.programId
   );
 
-  const [outgoingMessagePda] = PublicKey.findProgramAddressSync(
-    [
-      Buffer.from(getConstantValue("outgoingMessageSeed")),
-      bridge.nonce.toBuffer("le", 8),
-    ],
-    program.programId
-  );
+  const outgoingMessage = Keypair.generate();
 
   const fromTokenAccount = getAssociatedTokenAddressSync(
     mint,
@@ -62,7 +56,7 @@ async function main() {
 
   console.log(`Bridge PDA: ${bridgePda.toBase58()}`);
   console.log(`Token Vault PDA: ${tokenVaultPda.toBase58()}`);
-  console.log(`Outgoing message PDA: ${outgoingMessagePda.toBase58()}`);
+  console.log(`Outgoing message: ${outgoingMessage.publicKey.toBase58()}`);
   console.log(`From token account: ${fromTokenAccount.toBase58()}`);
   console.log(`Current nonce: ${bridge.nonce.toString()}`);
   console.log(`Bridging amount: ${amount.toNumber()}`);
@@ -77,10 +71,11 @@ async function main() {
       fromTokenAccount: fromTokenAccount,
       tokenVault: tokenVaultPda,
       bridge: bridgePda,
-      outgoingMessage: outgoingMessagePda,
+      outgoingMessage: outgoingMessage.publicKey,
       tokenProgram: TOKEN_PROGRAM_ID,
       systemProgram: SystemProgram.programId,
     })
+    .signers([outgoingMessage])
     .rpc();
 
   console.log("Submitted transaction:", tx);

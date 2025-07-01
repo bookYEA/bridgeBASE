@@ -6,13 +6,13 @@ import { baseSepolia } from "viem/chains";
 import { decodeEventLog } from "viem/utils";
 
 import type { Bridge } from "../../target/types/bridge";
-import { BRIDGE_ABI } from "../utils/bridge.abi";
-import { getConstantValue } from "../utils/constants";
 import { ADDRESSES } from "../addresses";
+import { BRIDGE_ABI } from "../utils/bridge.abi";
 import { confirmTransaction } from "../utils/confirm-tx";
+import { getConstantValue } from "../utils/constants";
 
 const TRANSACTION_HASH =
-  "0x7d1ec92977298bb6efb245f171dc758d914a7258ed241930885e00548ca814a7";
+  "0x30b961b75231b2711cfd511e9de42aa43096feecd05466356d20bd0e123519f3";
 
 async function main() {
   const provider = anchor.AnchorProvider.env();

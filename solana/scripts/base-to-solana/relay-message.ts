@@ -1,21 +1,20 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { PublicKey, SystemProgram } from "@solana/web3.js";
 import { toBytes, toHex } from "viem";
-import { PublicKey } from "@solana/web3.js";
 
 import type { Bridge } from "../../target/types/bridge";
 import { getConstantValue } from "../utils/constants";
 import { confirmTransaction } from "../utils/confirm-tx";
 import { deserializeMessage } from "../utils/deserializer";
-import { SYSTEM_PROGRAM_ID } from "@coral-xyz/anchor/dist/cjs/native/system";
 
 // The message hash from a previously proven message
 const MESSAGE_HASH =
-  "0xc90155ebcc3a4c7b144ae713ef91ae147d41c46c73977b757274543892fbd66f";
+  "0x3514a3ce6322e5f3e0f3167968ee12afe64138ec536de379717543d19d2b8919";
 
 const NEW_ACCOUNT_SECRET_KEY =
-  "a6874e93b6689c5040ad370ad820c82245d0dd499ff2205dce19286a073ed7b9922c7e8af0079b3e1a2880d68dac6601a9f0a96dcc65c3f0409553d4a6c0e090";
+  "18086548c47c68b78850f41b99dd15f42b228c576da774ad966c583320eb7f52da82fd4b83c1da20f37c026e06189d97766c785057bc1ed21013a4b211553e87";
 
 async function main() {
   const provider = anchor.AnchorProvider.env();
@@ -98,8 +97,6 @@ async function main() {
         isSigner: false,
       })),
     ];
-
-    signers.push(newAccount);
   } else if (deserializedMessage.type === "Transfer") {
     console.log(
       `Transfer message with ${deserializedMessage.ixs.length} instructions`
@@ -134,7 +131,7 @@ async function main() {
           isSigner: false,
         },
         {
-          pubkey: SYSTEM_PROGRAM_ID,
+          pubkey: SystemProgram.programId,
           isWritable: false,
           isSigner: false,
         },
@@ -210,6 +207,8 @@ async function main() {
           isSigner: false,
         },
       ];
+
+      signers.push(newAccount);
     } else {
       throw new Error("Unexpected transfer type detected");
     }

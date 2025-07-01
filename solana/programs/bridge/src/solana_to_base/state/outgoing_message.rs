@@ -50,22 +50,25 @@ pub enum Message {
 #[account]
 #[derive(Debug, Eq, PartialEq)]
 pub struct OutgoingMessage {
+    pub nonce: u64,
     pub sender: Pubkey,
     pub gas_limit: u64,
     pub message: Message,
 }
 
 impl OutgoingMessage {
-    pub fn new_call(sender: Pubkey, gas_limit: u64, call: Call) -> Self {
+    pub fn new_call(nonce: u64, sender: Pubkey, gas_limit: u64, call: Call) -> Self {
         Self {
+            nonce,
             sender,
             gas_limit,
             message: Message::Call(call),
         }
     }
 
-    pub fn new_transfer(sender: Pubkey, gas_limit: u64, transfer: Transfer) -> Self {
+    pub fn new_transfer(nonce: u64, sender: Pubkey, gas_limit: u64, transfer: Transfer) -> Self {
         Self {
+            nonce,
             sender,
             gas_limit,
             message: Message::Transfer(transfer),
@@ -74,7 +77,7 @@ impl OutgoingMessage {
 
     pub fn space(data_len: Option<usize>) -> usize {
         // The transfer variant is always bigger than the call variant (as it embeds an optional call)
-        32 + 8 + (1 + Transfer::space(data_len))
+        16 + 32 + 8 + (1 + Transfer::space(data_len))
     }
 
     pub fn relay_messages_tx_size(&self) -> usize {

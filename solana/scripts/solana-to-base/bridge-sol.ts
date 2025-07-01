@@ -1,6 +1,11 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
-import { PublicKey, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import {
+  Keypair,
+  PublicKey,
+  SystemProgram,
+  LAMPORTS_PER_SOL,
+} from "@solana/web3.js";
 import { toBytes } from "viem";
 
 import type { Bridge } from "../../target/types/bridge";
@@ -39,17 +44,11 @@ async function main() {
     program.programId
   );
 
-  const [outgoingMessagePda] = PublicKey.findProgramAddressSync(
-    [
-      Buffer.from(getConstantValue("outgoingMessageSeed")),
-      bridge.nonce.toBuffer("le", 8),
-    ],
-    program.programId
-  );
+  const outgoingMessage = Keypair.generate();
 
   console.log(`Bridge PDA: ${bridgePda.toBase58()}`);
   console.log(`SOL Vault PDA: ${solVaultPda.toBase58()}`);
-  console.log(`Outgoing message PDA: ${outgoingMessagePda.toBase58()}`);
+  console.log(`Outgoing message: ${outgoingMessage.publicKey.toBase58()}`);
   console.log(`Current nonce: ${bridge.nonce.toString()}`);
   console.log(`Bridging ${amount.toNumber() / LAMPORTS_PER_SOL} SOL`);
 
@@ -61,9 +60,10 @@ async function main() {
       gasFeeReceiver: getConstantValue("gasFeeReceiver"),
       solVault: solVaultPda,
       bridge: bridgePda,
-      outgoingMessage: outgoingMessagePda,
+      outgoingMessage: outgoingMessage.publicKey,
       systemProgram: SystemProgram.programId,
     })
+    .signers([outgoingMessage])
     .rpc();
 
   console.log("Submitted transaction:", tx);
