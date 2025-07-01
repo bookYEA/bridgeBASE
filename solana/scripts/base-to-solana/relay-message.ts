@@ -1,11 +1,7 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
-import {
-  TOKEN_2022_PROGRAM_ID,
-  TOKEN_PROGRAM_ID,
-  type Account,
-} from "@solana/spl-token";
-import { toBytes } from "viem";
+import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { toBytes, toHex } from "viem";
 import { PublicKey } from "@solana/web3.js";
 
 import type { Bridge } from "../../target/types/bridge";
@@ -39,7 +35,9 @@ async function main() {
   // Fetch the message to get the sender for the bridge CPI authority
   const message = await program.account.incomingMessage.fetch(messagePda);
 
-  // Find the bridge CPI authority PDA
+  // Find the bridge CPI authority PDA. Not always needed, but simpler to always compute it here.
+  // It is only really needed if the relayed message needs to CPI into a program that requires
+  // the bridge CPI authority as a signer.
   const [bridgeCpiAuthorityPda] = PublicKey.findProgramAddressSync(
     [
       Buffer.from(getConstantValue("bridgeCpiAuthoritySeed")),
@@ -57,15 +55,14 @@ async function main() {
     return;
   }
 
-  console.log(`message data: 0x${message.data.toString("hex")}`);
   const messageData = Buffer.from(message.data);
   const deserializedMessage = deserializeMessage(messageData);
 
   const requiredAccounts = {
     payer: provider.wallet.publicKey,
-    bridgeCpiAuthority: bridgeCpiAuthorityPda,
     message: messagePda,
   };
+
   let remainingAccounts: {
     pubkey: anchor.web3.PublicKey;
     isWritable: boolean;
@@ -92,13 +89,6 @@ async function main() {
         isSigner: false,
       })),
     ];
-
-    remainingAccounts.forEach((acct, i) => {
-      console.log(`Account ${i + 1}:`);
-      console.log(`  Pubkey: ${acct.pubkey}`);
-      console.log(`  IsWritable: ${acct.isWritable}`);
-      console.log(`  IsSigner: ${acct.isSigner}`);
-    });
   } else if (deserializedMessage.type === "Transfer") {
     console.log(
       `Transfer message with ${deserializedMessage.ixs.length} instructions`
@@ -109,9 +99,7 @@ async function main() {
       const solTransfer = deserializedMessage.transfer;
 
       console.log(`SOL transfer:`);
-      console.log(
-        `  Remote token: 0x${solTransfer.remoteToken.toString("hex")}`
-      );
+      console.log(`  Remote token: 0x${toHex(solTransfer.remoteToken)}`);
       console.log(`  To: ${solTransfer.to.toBase58()}`);
       console.log(`  Amount: ${solTransfer.amount}`);
 
@@ -145,9 +133,7 @@ async function main() {
       const splTransfer = deserializedMessage.transfer;
 
       console.log(`SPL transfer:`);
-      console.log(
-        `  RemoteToken: 0x${splTransfer.remoteToken.toString("hex")}`
-      );
+      console.log(`  RemoteToken: 0x${toHex(splTransfer.remoteToken)}`);
       console.log(`  LocalToken: ${splTransfer.localToken.toBase58()}`);
       console.log(`  To: ${splTransfer.to.toBase58()}`);
       console.log(`  Amount: ${splTransfer.amount}`);
@@ -216,9 +202,29 @@ async function main() {
     } else {
       throw new Error("Unexpected transfer type detected");
     }
+
+    // Process the list of optional instructions
+    const { ixs } = deserializedMessage;
+
+    // Include both the accounts and program IDs for each instruction
+    remainingAccounts.push(
+      ...ixs.flatMap((i) => i.accounts),
+      ...ixs.map((i) => ({
+        pubkey: i.programId,
+        isWritable: false,
+        isSigner: false,
+      }))
+    );
   } else {
     throw new Error("Unexpected message type detected");
   }
+
+  remainingAccounts.forEach((acct, i) => {
+    console.log(`Account ${i + 1}:`);
+    console.log(`  Pubkey: ${acct.pubkey}`);
+    console.log(`  IsWritable: ${acct.isWritable}`);
+    console.log(`  IsSigner: ${acct.isSigner}`);
+  });
 
   const tx = await program.methods
     .relayMessage()
