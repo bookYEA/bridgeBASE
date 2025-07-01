@@ -6,7 +6,7 @@ resolution = false
 skip-lint = false
 
 [programs.devnet]
-bridge = "6ju3gpXy6BvWECqiG41wedXsaanb5TyYzCnNzAZpDvtg"
+bridge = "4L8cUU2DXTzEaa5C8MWLTyEV8dpmpDbCjg8DNgUuGedc"
 
 [registry]
 url = "https://api.apr.dev"
