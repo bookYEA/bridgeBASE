@@ -23,7 +23,7 @@ contract DeployScript is Script {
         console.log("Deploying on chain: %s", chain.name);
 
         address precomputedBridgeAddress =
-            ERC1967Factory(cfg.erc1967Factory).predictDeterministicAddress({salt: _salt("bridge10")});
+            ERC1967Factory(cfg.erc1967Factory).predictDeterministicAddress({salt: _salt("bridge11")});
 
         vm.startBroadcast(msg.sender);
         address twinBeacon = _deployTwinBeacon({cfg: cfg, precomputedBridgeAddress: precomputedBridgeAddress});
@@ -61,7 +61,7 @@ contract DeployScript is Script {
         return ERC1967Factory(cfg.erc1967Factory).deployDeterministic({
             implementation: address(bridgeImpl),
             admin: cfg.initialOwner,
-            salt: _salt("bridge10")
+            salt: _salt("bridge11")
         });
     }
 
