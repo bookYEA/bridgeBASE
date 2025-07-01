@@ -99,3 +99,25 @@ cd ../scripts && make build
 ```
 
 17. Ensure addresses in oracle and base Makefiles are updated accordingly
+
+### Solana Program Deployment
+
+If deploying a fresh version of the Solana program, follow these steps:
+
+1. Clean the solana directory: `anchor clean`
+
+2. Build the solana project: `make build-devnet`
+
+3. Deploy the program: `anchor deploy`
+
+4. Initialize the program: `anchor run initialize`
+
+5. Deploy wrappedETH and wrappedERC20 SPL tokens on Solana
+
+6. Convert the new program's program ID to bytes32 format by pasting in [`solana/scripts/utils/pubkey-to-bytes32.ts`](solana/scripts/utils/pubkey-to-bytes32.ts) and running `anchor run pubkey-to-bytes32`
+
+7. Set the bridge bytes32 program ID in [`base/script/HelperConfig.s.sol`](base/script/HelperConfig.s.sol) under the appropriate network
+
+8. Make sure the oracle has the updated bridge program ID
+
+9. For the new wETH and wERC20 tokens on Solana, convert both pubkeys to bytes32 format like above, and add to [`base/Makefile`](base/Makefile) as `REMOTE_ERC20` and `REMOTE_ETH`.
