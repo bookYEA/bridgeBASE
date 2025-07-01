@@ -16,6 +16,7 @@ cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
+initialize = "bun run scripts/initialize.ts"
 bridge-call = "bun run scripts/solana-to-base/bridge-call.ts"
 bridge-call-value = "bun run scripts/solana-to-base/bridge-call-value.ts"
 bridge-sol = "bun run scripts/solana-to-base/bridge-sol.ts"

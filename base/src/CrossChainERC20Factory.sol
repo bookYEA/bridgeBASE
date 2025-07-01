@@ -30,6 +30,14 @@ contract CrossChainERC20Factory {
     address public immutable BEACON;
 
     //////////////////////////////////////////////////////////////
+    ///                       Storage                          ///
+    //////////////////////////////////////////////////////////////
+
+    /// @notice Mapping of token addresses to boolean values indicating whether they have been deployed by this factory
+    ///         and thus have cross-chain functionality.
+    mapping(address token => bool isCrossChainErc20) public isCrossChainErc20;
+
+    //////////////////////////////////////////////////////////////
     ///                       Public Functions                 ///
     //////////////////////////////////////////////////////////////
 
@@ -61,7 +69,14 @@ contract CrossChainERC20Factory {
         address localToken = LibClone.deployDeterministicERC1967BeaconProxy({beacon: BEACON, salt: salt});
 
         // Initialize the deployed proxy with the token parameters
-        CrossChainERC20(localToken).initialize(remoteToken, name, symbol, decimals);
+        CrossChainERC20(localToken).initialize({
+            remoteToken_: remoteToken,
+            name_: name,
+            symbol_: symbol,
+            decimals_: decimals
+        });
+
+        isCrossChainErc20[localToken] = true;
 
         emit CrossChainERC20Created({localToken: localToken, remoteToken: remoteToken, deployer: msg.sender});
 

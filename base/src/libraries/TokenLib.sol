@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 
 import {CrossChainERC20} from "../CrossChainERC20.sol";
+import {CrossChainERC20Factory} from "../CrossChainERC20Factory.sol";
 
 import {Ix, Pubkey} from "./SVMLib.sol";
 
@@ -108,9 +109,13 @@ library TokenLib {
     /// @notice Initializes a token transfer.
     ///
     /// @param transfer The token transfer to initialize.
+    /// @param crossChainErc20Factory The address of the CrossChainERC20Factory.
     ///
     /// @return tokenType The Solana token type.
-    function initializeTransfer(Transfer memory transfer) internal returns (SolanaTokenType tokenType) {
+    function initializeTransfer(Transfer memory transfer, address crossChainErc20Factory)
+        internal
+        returns (SolanaTokenType tokenType)
+    {
         TokenLibStorage storage $ = getTokenLibStorage();
 
         uint256 localAmount;
@@ -128,15 +133,16 @@ library TokenLib {
             // Prevent sending ETH when bridging ERC20 tokens
             require(msg.value == 0, InvalidMsgValue());
 
-            try CrossChainERC20(transfer.localToken).remoteToken() returns (bytes32 remoteToken_) {
+            if (CrossChainERC20Factory(crossChainErc20Factory).isCrossChainErc20(transfer.localToken)) {
                 // Case: Bridging back native SOL or SPL token to Solana
-                require(Pubkey.wrap(remoteToken_) == transfer.remoteToken, IncorrectRemoteToken());
+                bytes32 remoteToken = CrossChainERC20(transfer.localToken).remoteToken();
+                require(Pubkey.wrap(remoteToken) == transfer.remoteToken, IncorrectRemoteToken());
 
                 localAmount = transfer.remoteAmount;
                 CrossChainERC20(transfer.localToken).burn({from: msg.sender, amount: localAmount});
 
                 tokenType = transfer.remoteToken == NATIVE_SOL_PUBKEY ? SolanaTokenType.Sol : SolanaTokenType.Spl;
-            } catch {
+            } else {
                 // Case: Bridging native ERC20 to Solana
                 uint256 scaler = $.scalars[transfer.localToken][transfer.remoteToken];
                 require(scaler != 0, WrappedSplRouteNotRegistered());
@@ -167,7 +173,8 @@ library TokenLib {
     /// @notice Finalizes a token transfer.
     ///
     /// @param transfer The token transfer to finalize.
-    function finalizeTransfer(Transfer memory transfer) internal {
+    /// @param crossChainErc20Factory The address of the CrossChainERC20Factory.
+    function finalizeTransfer(Transfer memory transfer, address crossChainErc20Factory) internal {
         TokenLibStorage storage $ = getTokenLibStorage();
 
         // TODO: Rather this or shift right?
@@ -182,12 +189,14 @@ library TokenLib {
 
             SafeTransferLib.safeTransferETH({to: to, amount: localAmount});
         } else {
-            try CrossChainERC20(transfer.localToken).remoteToken() returns (bytes32 remoteToken_) {
+            if (CrossChainERC20Factory(crossChainErc20Factory).isCrossChainErc20(transfer.localToken)) {
                 // Case: Bridging native SOL or SPL token to EVM
-                require(Pubkey.wrap(remoteToken_) == transfer.remoteToken, IncorrectRemoteToken());
+                bytes32 remoteToken = CrossChainERC20(transfer.localToken).remoteToken();
+                require(Pubkey.wrap(remoteToken) == transfer.remoteToken, IncorrectRemoteToken());
+
                 localAmount = transfer.remoteAmount;
                 CrossChainERC20(transfer.localToken).mint({to: to, amount: localAmount});
-            } catch {
+            } else {
                 // Case: Bridging back native ERC20 to EVM
                 uint256 scaler = $.scalars[transfer.localToken][transfer.remoteToken];
                 require(scaler != 0, WrappedSplRouteNotRegistered());

@@ -19,7 +19,7 @@ async function main() {
   const metadata = {
     name: "Wrapped ETH",
     symbol: "wETH",
-    remoteToken: [...toBytes("0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE")], // Native ETH address on Base
+    remoteToken: [...toBytes("0x62C1332822983B8412A6Ffda0fd77cd7d5733Ee9")], // Native ETH address on Base
     scalerExponent: 12,
   };
   const gasLimit = new anchor.BN(1_000_000);

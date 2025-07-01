@@ -72,8 +72,12 @@ contract BridgeTest is Test {
     //////////////////////////////////////////////////////////////
 
     function test_constructor_setsCorrectValues() public {
-        Bridge testBridge =
-            new Bridge({remoteBridge: TEST_SENDER, trustedRelayer: trustedRelayer, twinBeacon: address(twinBeacon)});
+        Bridge testBridge = new Bridge({
+            remoteBridge: TEST_SENDER,
+            trustedRelayer: trustedRelayer,
+            twinBeacon: address(twinBeacon),
+            crossChainErc20Factory: address(factory)
+        });
 
         assertEq(Pubkey.unwrap(testBridge.REMOTE_BRIDGE()), Pubkey.unwrap(TEST_SENDER));
         assertEq(testBridge.TRUSTED_RELAYER(), trustedRelayer);

@@ -27,8 +27,8 @@ contract DeployScript is Script {
 
         vm.startBroadcast(msg.sender);
         address twinBeacon = _deployTwinBeacon({cfg: cfg, precomputedBridgeAddress: precomputedBridgeAddress});
-        address bridge = _deployBridge({cfg: cfg, twinBeacon: twinBeacon});
-        address factory = _deployFactory({cfg: cfg, bridge: bridge});
+        address factory = _deployFactory({cfg: cfg, precomputedBridgeAddress: precomputedBridgeAddress});
+        address bridge = _deployBridge({cfg: cfg, twinBeacon: twinBeacon, crossChainErc20Factory: factory});
         vm.stopBroadcast();
 
         require(address(bridge) == precomputedBridgeAddress, "Bridge address mismatch");
@@ -54,9 +54,16 @@ contract DeployScript is Script {
         return address(new UpgradeableBeacon({initialOwner: cfg.initialOwner, initialImplementation: twinImpl}));
     }
 
-    function _deployBridge(HelperConfig.NetworkConfig memory cfg, address twinBeacon) private returns (address) {
-        Bridge bridgeImpl =
-            new Bridge({remoteBridge: cfg.remoteBridge, trustedRelayer: cfg.trustedRelayer, twinBeacon: twinBeacon});
+    function _deployBridge(HelperConfig.NetworkConfig memory cfg, address twinBeacon, address crossChainErc20Factory)
+        private
+        returns (address)
+    {
+        Bridge bridgeImpl = new Bridge({
+            remoteBridge: cfg.remoteBridge,
+            trustedRelayer: cfg.trustedRelayer,
+            twinBeacon: twinBeacon,
+            crossChainErc20Factory: crossChainErc20Factory
+        });
 
         return ERC1967Factory(cfg.erc1967Factory).deployDeterministic({
             implementation: address(bridgeImpl),
@@ -65,8 +72,11 @@ contract DeployScript is Script {
         });
     }
 
-    function _deployFactory(HelperConfig.NetworkConfig memory cfg, address bridge) private returns (address) {
-        address erc20 = address(new CrossChainERC20(bridge));
+    function _deployFactory(HelperConfig.NetworkConfig memory cfg, address precomputedBridgeAddress)
+        private
+        returns (address)
+    {
+        address erc20 = address(new CrossChainERC20(precomputedBridgeAddress));
         address erc20Beacon =
             address(new UpgradeableBeacon({initialOwner: cfg.initialOwner, initialImplementation: erc20}));
 

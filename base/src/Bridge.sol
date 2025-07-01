@@ -112,6 +112,9 @@ contract Bridge is ReentrancyGuardTransient {
     /// @notice Address of the Twin beacon.
     address public immutable TWIN_BEACON;
 
+    /// @notice Address of the CrossChainERC20Factory.
+    address public immutable CROSS_CHAIN_ERC20_FACTORY;
+
     /// @notice Gas required to run the execution prologue section of `__validateAndRelay`.
     ///
     /// @dev Simulated via a forge test performing a call to `relayMessages` with a single message where:
@@ -172,10 +175,12 @@ contract Bridge is ReentrancyGuardTransient {
     /// @param remoteBridge The pubkey of the remote bridge on Solana.
     /// @param trustedRelayer The address of the trusted relayer.
     /// @param twinBeacon The address of the Twin beacon.
-    constructor(Pubkey remoteBridge, address trustedRelayer, address twinBeacon) {
+    /// @param crossChainErc20Factory The address of the CrossChainERC20Factory.
+    constructor(Pubkey remoteBridge, address trustedRelayer, address twinBeacon, address crossChainErc20Factory) {
         REMOTE_BRIDGE = remoteBridge;
         TRUSTED_RELAYER = trustedRelayer;
         TWIN_BEACON = twinBeacon;
+        CROSS_CHAIN_ERC20_FACTORY = crossChainErc20Factory;
     }
 
     /// @notice Get the current root of the MMR.
@@ -249,7 +254,8 @@ contract Bridge is ReentrancyGuardTransient {
     /// @param transfer The token transfer to execute.
     /// @param ixs The optional Solana instructions.
     function bridgeToken(Transfer calldata transfer, Ix[] memory ixs) external payable {
-        SolanaTokenType transferType = TokenLib.initializeTransfer({transfer: transfer});
+        SolanaTokenType transferType =
+            TokenLib.initializeTransfer({transfer: transfer, crossChainErc20Factory: CROSS_CHAIN_ERC20_FACTORY});
         MessageStorageLib.sendMessage({
             sender: msg.sender,
             data: SVMBridgeLib.serializeTransfer({transfer: transfer, tokenType: transferType, ixs: ixs})
@@ -360,10 +366,10 @@ contract Bridge is ReentrancyGuardTransient {
             Twin(payable(twins[message.sender])).execute(call);
         } else if (message.ty == MessageType.Transfer) {
             Transfer memory transfer = abi.decode(message.data, (Transfer));
-            TokenLib.finalizeTransfer(transfer);
+            TokenLib.finalizeTransfer({transfer: transfer, crossChainErc20Factory: CROSS_CHAIN_ERC20_FACTORY});
         } else if (message.ty == MessageType.TransferAndCall) {
             (Transfer memory transfer, Call memory call) = abi.decode(message.data, (Transfer, Call));
-            TokenLib.finalizeTransfer(transfer);
+            TokenLib.finalizeTransfer({transfer: transfer, crossChainErc20Factory: CROSS_CHAIN_ERC20_FACTORY});
             Twin(payable(twins[message.sender])).execute(call);
         }
     }
