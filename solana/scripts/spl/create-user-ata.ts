@@ -1,11 +1,13 @@
 import * as anchor from "@coral-xyz/anchor";
-import { PublicKey } from "@solana/web3.js";
 import {
   getOrCreateAssociatedTokenAccount,
   TOKEN_2022_PROGRAM_ID,
 } from "@solana/spl-token";
+import { PublicKey } from "@solana/web3.js";
 
-const mint = new PublicKey("BqpnEEWxNFsACBtF7MFddmNa8YDyPJ6ZXXGLWem58S5p");
+import { CONSTANTS } from "../constants";
+
+const mint = new PublicKey(CONSTANTS.wrappedEth);
 
 async function main() {
   const provider = anchor.AnchorProvider.env();

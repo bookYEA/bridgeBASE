@@ -7,9 +7,7 @@ use anchor_spl::{
 use crate::solana_to_base::{check_and_pay_for_gas, check_call};
 use crate::{
     common::{bridge::Bridge, PartialTokenMetadata, BRIDGE_SEED},
-    solana_to_base::{
-        Call, OutgoingMessage, Transfer as TransferOp, GAS_FEE_RECEIVER, OUTGOING_MESSAGE_SEED,
-    },
+    solana_to_base::{Call, OutgoingMessage, Transfer as TransferOp, GAS_FEE_RECEIVER},
 };
 
 #[derive(Accounts)]
@@ -34,9 +32,7 @@ pub struct BridgeWrappedToken<'info> {
     pub bridge: Account<'info, Bridge>,
 
     #[account(
-        init,
-        seeds = [OUTGOING_MESSAGE_SEED, bridge.nonce.to_le_bytes().as_ref()],
-        bump,
+        init,       
         payer = payer,
         space = 8 + OutgoingMessage::space(call.map(|c| c.data.len())),
     )]
@@ -63,6 +59,7 @@ pub fn bridge_wrapped_token_handler(
         PartialTokenMetadata::try_from(&ctx.accounts.mint.to_account_info())?;
 
     let message = OutgoingMessage::new_transfer(
+        ctx.accounts.bridge.nonce,
         ctx.accounts.from.key(),
         gas_limit,
         TransferOp {

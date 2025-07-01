@@ -1,12 +1,12 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { TOKEN_2022_PROGRAM_ID } from "@solana/spl-token";
-import { PublicKey, SystemProgram } from "@solana/web3.js";
+import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
 import { keccak256, toBytes } from "viem";
 
 import type { Bridge } from "../../target/types/bridge";
-import { getConstantValue } from "../utils/constants";
 import { confirmTransaction } from "../utils/confirm-tx";
+import { getConstantValue } from "../utils/constants";
 
 async function main() {
   const provider = anchor.AnchorProvider.env();
@@ -50,17 +50,11 @@ async function main() {
   const bridge = await program.account.bridge.fetch(bridgePda);
   const nonce = bridge.nonce;
 
-  const [outgoingMessagePda] = PublicKey.findProgramAddressSync(
-    [
-      Buffer.from(getConstantValue("outgoingMessageSeed")),
-      nonce.toBuffer("le", 8),
-    ],
-    program.programId
-  );
+  const outgoingMessage = Keypair.generate();
 
   console.log(`Bridge PDA: ${bridgePda.toBase58()}`);
   console.log(`Mint PDA: ${mintPda.toBase58()}`);
-  console.log(`Outgoing message PDA: ${outgoingMessagePda.toBase58()}`);
+  console.log(`Outgoing message: ${outgoingMessage.publicKey.toBase58()}`);
 
   const tx = await program.methods
     .wrapToken(decimals, metadata, gasLimit)
@@ -69,10 +63,11 @@ async function main() {
       gasFeeReceiver: getConstantValue("gasFeeReceiver"),
       mint: mintPda,
       bridge: bridgePda,
-      outgoingMessage: outgoingMessagePda,
+      outgoingMessage: outgoingMessage.publicKey,
       tokenProgram: TOKEN_2022_PROGRAM_ID,
       systemProgram: SystemProgram.programId,
     })
+    .signers([outgoingMessage])
     .rpc();
 
   console.log("Submitted transaction:", tx);

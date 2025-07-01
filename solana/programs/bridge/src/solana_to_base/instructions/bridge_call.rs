@@ -2,10 +2,7 @@ use anchor_lang::prelude::*;
 
 use crate::{
     common::{bridge::Bridge, BRIDGE_SEED},
-    solana_to_base::{
-        check_and_pay_for_gas, check_call, Call, OutgoingMessage, GAS_FEE_RECEIVER,
-        OUTGOING_MESSAGE_SEED,
-    },
+    solana_to_base::{check_and_pay_for_gas, check_call, Call, OutgoingMessage, GAS_FEE_RECEIVER},
 };
 
 #[derive(Accounts)]
@@ -25,8 +22,6 @@ pub struct BridgeCall<'info> {
 
     #[account(
         init,
-        seeds = [OUTGOING_MESSAGE_SEED, bridge.nonce.to_le_bytes().as_ref()],
-        bump,
         payer = payer,
         space = 8 + OutgoingMessage::space(Some(call.data.len())),
     )]
@@ -38,7 +33,12 @@ pub struct BridgeCall<'info> {
 pub fn bridge_call_handler(ctx: Context<BridgeCall>, gas_limit: u64, call: Call) -> Result<()> {
     check_call(&call)?;
 
-    let message = OutgoingMessage::new_call(ctx.accounts.from.key(), gas_limit, call);
+    let message = OutgoingMessage::new_call(
+        ctx.accounts.bridge.nonce,
+        ctx.accounts.from.key(),
+        gas_limit,
+        call,
+    );
 
     check_and_pay_for_gas(
         &ctx.accounts.system_program,

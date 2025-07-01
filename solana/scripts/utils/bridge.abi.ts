@@ -246,6 +246,30 @@ export const BRIDGE_ABI = [
   },
   {
     type: "function",
+    name: "deposits",
+    inputs: [
+      {
+        name: "localToken",
+        type: "address",
+        internalType: "address",
+      },
+      {
+        name: "remoteToken",
+        type: "bytes32",
+        internalType: "Pubkey",
+      },
+    ],
+    outputs: [
+      {
+        name: "",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
     name: "failures",
     inputs: [
       {
@@ -296,6 +320,25 @@ export const BRIDGE_ABI = [
         name: "",
         type: "uint64",
         internalType: "uint64",
+      },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getPredictedTwinAddress",
+    inputs: [
+      {
+        name: "sender",
+        type: "bytes32",
+        internalType: "Pubkey",
+      },
+    ],
+    outputs: [
+      {
+        name: "",
+        type: "address",
+        internalType: "address",
       },
     ],
     stateMutability: "view",
@@ -370,6 +413,30 @@ export const BRIDGE_ABI = [
     ],
     outputs: [],
     stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "scalars",
+    inputs: [
+      {
+        name: "localToken",
+        type: "address",
+        internalType: "address",
+      },
+      {
+        name: "remoteToken",
+        type: "bytes32",
+        internalType: "Pubkey",
+      },
+    ],
+    outputs: [
+      {
+        name: "",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
+    stateMutability: "view",
   },
   {
     type: "function",

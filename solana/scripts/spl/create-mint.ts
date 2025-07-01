@@ -1,6 +1,6 @@
 import * as anchor from "@coral-xyz/anchor";
-import { Keypair } from "@solana/web3.js";
 import { createMint, TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { Keypair } from "@solana/web3.js";
 
 async function main() {
   const provider = anchor.AnchorProvider.env();

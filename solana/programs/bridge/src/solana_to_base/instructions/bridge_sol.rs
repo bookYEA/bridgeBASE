@@ -7,7 +7,7 @@ use crate::{
     common::{bridge::Bridge, BRIDGE_SEED, SOL_VAULT_SEED},
     solana_to_base::{
         check_and_pay_for_gas, check_call, Call, OutgoingMessage, Transfer as TransferOp,
-        GAS_FEE_RECEIVER, NATIVE_SOL_PUBKEY, OUTGOING_MESSAGE_SEED,
+        GAS_FEE_RECEIVER, NATIVE_SOL_PUBKEY,
     },
 };
 
@@ -36,8 +36,6 @@ pub struct BridgeSol<'info> {
 
     #[account(
         init,
-        seeds = [OUTGOING_MESSAGE_SEED, bridge.nonce.to_le_bytes().as_ref()],
-        bump,
         payer = payer,
         space = 8 + OutgoingMessage::space(call.map(|c| c.data.len())),
     )]
@@ -59,6 +57,7 @@ pub fn bridge_sol_handler(
     }
 
     let message = OutgoingMessage::new_transfer(
+        ctx.accounts.bridge.nonce,
         ctx.accounts.from.key(),
         gas_limit,
         TransferOp {

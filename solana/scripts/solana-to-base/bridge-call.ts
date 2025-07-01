@@ -1,11 +1,11 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
-import { PublicKey, SystemProgram } from "@solana/web3.js";
+import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
 import { toBytes } from "viem";
 
 import type { Bridge } from "../../target/types/bridge";
-import { getConstantValue } from "../utils/constants";
 import { confirmTransaction } from "../utils/confirm-tx";
+import { getConstantValue } from "../utils/constants";
 
 type BridgeCallParams = Parameters<Program<Bridge>["methods"]["bridgeCall"]>;
 
@@ -31,16 +31,10 @@ async function main() {
 
   const bridge = await program.account.bridge.fetch(bridgePda);
 
-  const [outgoingMessagePda] = PublicKey.findProgramAddressSync(
-    [
-      Buffer.from(getConstantValue("outgoingMessageSeed")),
-      bridge.nonce.toBuffer("le", 8),
-    ],
-    program.programId
-  );
+  const outgoingMessage = Keypair.generate();
 
   console.log(`Bridge PDA: ${bridgePda.toBase58()}`);
-  console.log(`Outgoing message PDA: ${outgoingMessagePda.toBase58()}`);
+  console.log(`Outgoing message: ${outgoingMessage.publicKey.toBase58()}`);
   console.log(`Current nonce: ${bridge.nonce.toString()}`);
 
   const tx = await program.methods
@@ -50,9 +44,10 @@ async function main() {
       from: provider.wallet.publicKey, // Using same key as from
       gasFeeReceiver: getConstantValue("gasFeeReceiver"),
       bridge: bridgePda,
-      outgoingMessage: outgoingMessagePda,
+      outgoingMessage: outgoingMessage.publicKey,
       systemProgram: SystemProgram.programId,
     })
+    .signers([outgoingMessage])
     .rpc();
 
   console.log("Submitted transaction:", tx);
