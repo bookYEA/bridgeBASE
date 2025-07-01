@@ -204,6 +204,39 @@ contract Bridge is ReentrancyGuardTransient {
         return MessageStorageLib.generateProof(leafIndex);
     }
 
+    /// @notice Predict the address of the Twin contract for a given Solana sender pubkey.
+    ///
+    /// @param sender The Solana sender's pubkey.
+    ///
+    /// @return The predicted address of the Twin contract for the given Solana sender pubkey.
+    function getPredictedTwinAddress(Pubkey sender) external view returns (address) {
+        return LibClone.predictDeterministicAddressERC1967BeaconProxy({
+            beacon: TWIN_BEACON,
+            salt: Pubkey.unwrap(sender),
+            deployer: address(this)
+        });
+    }
+
+    /// @notice Get the deposit amount for a given local token and remote token.
+    ///
+    /// @param localToken The address of the local token.
+    /// @param remoteToken The pubkey of the remote token.
+    ///
+    /// @return The deposit amount for the given local token and remote token.
+    function deposits(address localToken, Pubkey remoteToken) external view returns (uint256) {
+        return TokenLib.getTokenLibStorage().deposits[localToken][remoteToken];
+    }
+
+    /// @notice Get the scalar used to convert local token amounts to remote token amounts.
+    ///
+    /// @param localToken The address of the local token.
+    /// @param remoteToken The pubkey of the remote token.
+    ///
+    /// @return The scalar used to convert local token amounts to remote token amounts.
+    function scalars(address localToken, Pubkey remoteToken) external view returns (uint256) {
+        return TokenLib.getTokenLibStorage().scalars[localToken][remoteToken];
+    }
+
     /// @notice Bridges a call to the Solana bridge.
     ///
     /// @param ixs The Solana instructions.
