@@ -12,7 +12,10 @@ import { SYSTEM_PROGRAM_ID } from "@coral-xyz/anchor/dist/cjs/native/system";
 
 // The message hash from a previously proven message
 const MESSAGE_HASH =
-  "0xc90b90a789921bcb7613c238bf5ce65646980f23555465a53ec41d15744d1039";
+  "0xd03ac3911cb9f2266018a82c5a95c724b83bf20a8bff7ae18fcdc01c3ff678f1";
+
+const NEW_ACCOUNT_SECRET_KEY =
+  "a6874e93b6689c5040ad370ad820c82245d0dd499ff2205dce19286a073ed7b9922c7e8af0079b3e1a2880d68dac6601a9f0a96dcc65c3f0409553d4a6c0e090";
 
 async function main() {
   const provider = anchor.AnchorProvider.env();
@@ -22,6 +25,10 @@ async function main() {
 
   console.log(`Program ID: ${program.programId.toBase58()}`);
   console.log(`Signer: ${provider.wallet.publicKey.toBase58()}`);
+
+  const newAccount = anchor.web3.Keypair.fromSecretKey(
+    Buffer.from(NEW_ACCOUNT_SECRET_KEY, "hex")
+  );
 
   // Find the message PDA using the message hash (from prove-message)
   const [messagePda] = PublicKey.findProgramAddressSync(
@@ -68,6 +75,7 @@ async function main() {
     isWritable: boolean;
     isSigner: boolean;
   }[];
+  const signers: Array<anchor.web3.Signer> = [];
 
   if (deserializedMessage.type === "Call") {
     console.log(
@@ -89,6 +97,8 @@ async function main() {
         isSigner: false,
       })),
     ];
+
+    signers.push(newAccount);
   } else if (deserializedMessage.type === "Transfer") {
     console.log(
       `Transfer message with ${deserializedMessage.ixs.length} instructions`
@@ -230,6 +240,7 @@ async function main() {
     .relayMessage()
     .accountsStrict(requiredAccounts)
     .remainingAccounts(remainingAccounts)
+    .signers(signers)
     .rpc();
 
   console.log("Submitted transaction:", tx);

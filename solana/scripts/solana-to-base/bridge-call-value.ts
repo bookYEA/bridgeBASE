@@ -33,6 +33,7 @@ async function main() {
     transport: http(),
   });
 
+  // TODO: derive here instead of lookup
   const twinAddress = await publicClient.readContract({
     address: ADDRESSES.bridge,
     abi: BRIDGE_ABI,
