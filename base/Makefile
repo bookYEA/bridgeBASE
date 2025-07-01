@@ -95,3 +95,7 @@ check-root:
 .PHONY: check-count
 check-count:
 	@ cast call 0xCdfe10f911eD5039E031D6a7be3a0F97fA061C38 "count()" --rpc-url https://base-sepolia-dev.cbhq.net:8545
+
+.PHONY: log-args
+log-args:
+	forge script LogArgsScript --rpc-url $(BASE_RPC) --broadcast -vvvv
