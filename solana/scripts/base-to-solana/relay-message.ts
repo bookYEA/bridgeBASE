@@ -16,13 +16,16 @@ import { SYSTEM_PROGRAM_ID } from "@coral-xyz/anchor/dist/cjs/native/system";
 
 // The message hash from a previously proven message
 const MESSAGE_HASH =
-  "0xbde92c4328e72e69a66b741c0aa5f7082c59446cf7dca097f3b3249f6e7d3d87";
+  "0xc90b90a789921bcb7613c238bf5ce65646980f23555465a53ec41d15744d1039";
 
 async function main() {
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
 
   const program = anchor.workspace.Bridge as Program<Bridge>;
+
+  console.log(`Program ID: ${program.programId.toBase58()}`);
+  console.log(`Signer: ${provider.wallet.publicKey.toBase58()}`);
 
   // Find the message PDA using the message hash (from prove-message)
   const [messagePda] = PublicKey.findProgramAddressSync(
@@ -54,28 +57,52 @@ async function main() {
     return;
   }
 
+  console.log(`message data: 0x${message.data.toString("hex")}`);
   const messageData = Buffer.from(message.data);
   const deserializedMessage = deserializeMessage(messageData);
+
+  const requiredAccounts = {
+    payer: provider.wallet.publicKey,
+    bridgeCpiAuthority: bridgeCpiAuthorityPda,
+    message: messagePda,
+  };
+  let remainingAccounts: {
+    pubkey: anchor.web3.PublicKey;
+    isWritable: boolean;
+    isSigner: boolean;
+  }[];
 
   if (deserializedMessage.type === "Call") {
     console.log(
       `Call message with ${deserializedMessage.ixs.length} instructions`
     );
+
+    const { ixs } = deserializedMessage;
+
+    if (ixs.length === 0) {
+      throw new Error("Zero instructions in call message");
+    }
+
+    // Include both the accounts and program IDs for each instruction
+    remainingAccounts = [
+      ...ixs.flatMap((i) => i.accounts),
+      ...ixs.map((i) => ({
+        pubkey: i.programId,
+        isWritable: false,
+        isSigner: false,
+      })),
+    ];
+
+    remainingAccounts.forEach((acct, i) => {
+      console.log(`Account ${i + 1}:`);
+      console.log(`  Pubkey: ${acct.pubkey}`);
+      console.log(`  IsWritable: ${acct.isWritable}`);
+      console.log(`  IsSigner: ${acct.isSigner}`);
+    });
   } else if (deserializedMessage.type === "Transfer") {
     console.log(
       `Transfer message with ${deserializedMessage.ixs.length} instructions`
     );
-
-    const requiredAccounts = {
-      payer: provider.wallet.publicKey,
-      bridgeCpiAuthority: bridgeCpiAuthorityPda,
-      message: messagePda,
-    };
-    let remainingAccounts: {
-      pubkey: anchor.web3.PublicKey;
-      isWritable: boolean;
-      isSigner: boolean;
-    }[];
 
     if (deserializedMessage.transfer.type === "Sol") {
       console.log("SOL transfer detected");
@@ -189,17 +216,19 @@ async function main() {
     } else {
       throw new Error("Unexpected transfer type detected");
     }
-
-    const tx = await program.methods
-      .relayMessage()
-      .accountsStrict(requiredAccounts)
-      .remainingAccounts(remainingAccounts)
-      .rpc();
-
-    console.log("Submitted transaction:", tx);
-
-    await confirmTransaction(provider.connection, tx);
+  } else {
+    throw new Error("Unexpected message type detected");
   }
+
+  const tx = await program.methods
+    .relayMessage()
+    .accountsStrict(requiredAccounts)
+    .remainingAccounts(remainingAccounts)
+    .rpc();
+
+  console.log("Submitted transaction:", tx);
+
+  await confirmTransaction(provider.connection, tx);
 }
 
 main().catch((e) => {
