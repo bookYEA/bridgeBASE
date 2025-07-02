@@ -12,6 +12,7 @@ import type { Bridge } from "../../target/types/bridge";
 import { confirmTransaction } from "../utils/confirm-tx";
 import { getConstantValue } from "../utils/constants";
 import { ADDRESSES } from "../addresses";
+import { CONSTANTS } from "../constants";
 
 type BridgeSolParams = Parameters<Program<Bridge>["methods"]["bridgeSol"]>;
 
@@ -21,12 +22,13 @@ async function main() {
 
   const program = anchor.workspace.Bridge as Program<Bridge>;
 
+  console.log(`Program ID: ${program.programId.toBase58()}`);
+  console.log(`Signer: ${provider.wallet.publicKey.toBase58()}`);
+
   // Ix params
   const gasLimit: BridgeSolParams[0] = new anchor.BN(1_000_000);
-  const to: BridgeSolParams[1] = [
-    ...toBytes("0x25f7fD8f50D522b266764cD3b230EDaA8CbB9f75"),
-  ];
-  const remoteToken: BridgeSolParams[2] = [...toBytes(ADDRESSES.wrappedSOL)];
+  const to: BridgeSolParams[1] = toBytes(CONSTANTS.recipient);
+  const remoteToken: BridgeSolParams[2] = toBytes(ADDRESSES.wrappedSOL);
   const amount: BridgeSolParams[3] = new anchor.BN(
     0.001 * anchor.web3.LAMPORTS_PER_SOL
   );

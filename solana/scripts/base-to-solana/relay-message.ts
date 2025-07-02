@@ -11,10 +11,10 @@ import { deserializeMessage } from "../utils/deserializer";
 
 // The message hash from a previously proven message
 const MESSAGE_HASH =
-  "0x3514a3ce6322e5f3e0f3167968ee12afe64138ec536de379717543d19d2b8919";
+  "0x5a1e91ae8594a7e58ae2aa213954d7733a5e90b276a37d62800ec00a97e7e66d";
 
 const NEW_ACCOUNT_SECRET_KEY =
-  "18086548c47c68b78850f41b99dd15f42b228c576da774ad966c583320eb7f52da82fd4b83c1da20f37c026e06189d97766c785057bc1ed21013a4b211553e87";
+  "0cd60f7db0ca726a07da10e35323042a5b05facc00b781e57b06a59eaf2e2197769b26af0c3e3d129796876e465c21b479aae47bba4e9c964bb556d8d7cf93b2";
 
 async function main() {
   const provider = anchor.AnchorProvider.env();
@@ -97,6 +97,7 @@ async function main() {
         isSigner: false,
       })),
     ];
+    signers.push(newAccount);
   } else if (deserializedMessage.type === "Transfer") {
     console.log(
       `Transfer message with ${deserializedMessage.ixs.length} instructions`
@@ -207,8 +208,7 @@ async function main() {
           isSigner: false,
         },
       ];
-
-      signers.push(newAccount);
+      // signers.push(newAccount);
     } else {
       throw new Error("Unexpected transfer type detected");
     }

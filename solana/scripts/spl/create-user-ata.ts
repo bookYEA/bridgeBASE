@@ -7,7 +7,7 @@ import { PublicKey } from "@solana/web3.js";
 
 import { CONSTANTS } from "../constants";
 
-const mint = new PublicKey(CONSTANTS.wrappedEth);
+const mint = new PublicKey(CONSTANTS.solanaSpl);
 
 async function main() {
   const provider = anchor.AnchorProvider.env();

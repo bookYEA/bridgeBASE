@@ -68,6 +68,7 @@ async function main() {
       tokenProgram: TOKEN_2022_PROGRAM_ID,
       systemProgram: SystemProgram.programId,
     })
+    .signers([outgoingMessage])
     .rpc();
 
   console.log("Submitted transaction:", tx);

@@ -21,6 +21,9 @@ async function main() {
 
   const program = anchor.workspace.Bridge as Program<Bridge>;
 
+  console.log(`Program ID: ${program.programId.toBase58()}`);
+  console.log(`Signer: ${provider.wallet.publicKey.toBase58()}`);
+
   // Ix params
   const gasLimit: BridgeSplParams[0] = new anchor.BN(1_000_000);
   const to: BridgeSplParams[1] = toBytes(CONSTANTS.recipient);

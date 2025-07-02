@@ -7,6 +7,7 @@ import { keccak256, toBytes } from "viem";
 import type { Bridge } from "../../target/types/bridge";
 import { confirmTransaction } from "../utils/confirm-tx";
 import { getConstantValue } from "../utils/constants";
+import { CONSTANTS } from "../constants";
 
 async function main() {
   const provider = anchor.AnchorProvider.env();
@@ -14,12 +15,15 @@ async function main() {
 
   const program = anchor.workspace.Bridge as Program<Bridge>;
 
+  console.log(`Program ID: ${program.programId.toBase58()}`);
+  console.log(`Signer: ${provider.wallet.publicKey.toBase58()}`);
+
   // Ix params
   const decimals = 6;
   const metadata = {
     name: "Wrapped ETH",
     symbol: "wETH",
-    remoteToken: [...toBytes("0x62C1332822983B8412A6Ffda0fd77cd7d5733Ee9")], // Native ETH address on Base
+    remoteToken: toBytes(CONSTANTS.ethAddr), // Native ETH address on Base
     scalerExponent: 12,
   };
   const gasLimit = new anchor.BN(1_000_000);
@@ -46,9 +50,6 @@ async function main() {
     [Buffer.from(getConstantValue("bridgeSeed"))],
     program.programId
   );
-
-  const bridge = await program.account.bridge.fetch(bridgePda);
-  const nonce = bridge.nonce;
 
   const outgoingMessage = Keypair.generate();
 

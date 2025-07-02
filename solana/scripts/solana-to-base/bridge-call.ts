@@ -6,6 +6,7 @@ import { toBytes } from "viem";
 import type { Bridge } from "../../target/types/bridge";
 import { confirmTransaction } from "../utils/confirm-tx";
 import { getConstantValue } from "../utils/constants";
+import { CONSTANTS } from "../constants";
 
 type BridgeCallParams = Parameters<Program<Bridge>["methods"]["bridgeCall"]>;
 
@@ -19,9 +20,9 @@ async function main() {
   const gasLimit: BridgeCallParams[0] = new anchor.BN(1000000);
   const call: BridgeCallParams[1] = {
     ty: { call: {} },
-    to: [...toBytes("0x0000000000000000000000000000000000000000")],
+    to: toBytes(CONSTANTS.counterAddress),
     value: new anchor.BN(0),
-    data: Buffer.from(""),
+    data: Buffer.from("d09de08a", "hex"), // increment()
   };
 
   const [bridgePda] = PublicKey.findProgramAddressSync(
@@ -41,7 +42,7 @@ async function main() {
     .bridgeCall(gasLimit, call)
     .accountsStrict({
       payer: provider.wallet.publicKey,
-      from: provider.wallet.publicKey, // Using same key as from
+      from: provider.wallet.publicKey,
       gasFeeReceiver: getConstantValue("gasFeeReceiver"),
       bridge: bridgePda,
       outgoingMessage: outgoingMessage.publicKey,
