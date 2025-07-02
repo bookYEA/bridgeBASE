@@ -36,10 +36,20 @@ contract HelperConfig is Script {
     }
 
     function getBaseSepoliaConfig() public pure returns (NetworkConfig memory) {
+        // Internal testing version
+        // return NetworkConfig({
+        //     initialOwner: 0x0fe884546476dDd290eC46318785046ef68a0BA9, // Base Sepolia Proxy Admin
+        //     remoteBridge: Pubkey.wrap(0x3179b3df897c6f5fc5391806c1e7e38284ecbaa7cc7c7f56df7c299e800f1437), //
+        // 4L8cUU2DXTzEaa5C8MWLTyEV8dpmpDbCjg8DNgUuGedc
+        //     trustedRelayer: 0x0e9a877906EBc3b7098DA2404412BF0Ed1A5EFb4,
+        //     erc1967Factory: ERC1967FactoryConstants.ADDRESS
+        // });
+
+        // Public version
         return NetworkConfig({
-            initialOwner: 0x0fe884546476dDd290eC46318785046ef68a0BA9, // Base Sepolia Proxy Admin
-            remoteBridge: Pubkey.wrap(0x3179b3df897c6f5fc5391806c1e7e38284ecbaa7cc7c7f56df7c299e800f1437), // 4L8cUU2DXTzEaa5C8MWLTyEV8dpmpDbCjg8DNgUuGedc
-            trustedRelayer: 0x0e9a877906EBc3b7098DA2404412BF0Ed1A5EFb4,
+            initialOwner: 0x20624CA8d0dF80B8bd67C25Bc19A9E10AfB67733,
+            remoteBridge: Pubkey.wrap(0x9379502b8fd1d9f6feee747094a08cd0f9b79fbbc7e51a36e2da237ee1506460), // AvgDrHpWUeV7fpZYVhDQbWrV2sD7zp9zDB7w97CWknKH
+            trustedRelayer: 0x2880a6DcC8c87dD2874bCBB9ad7E627a407Cf3C2,
             erc1967Factory: ERC1967FactoryConstants.ADDRESS
         });
     }

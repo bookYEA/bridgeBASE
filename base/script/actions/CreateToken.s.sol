@@ -17,8 +17,8 @@ contract CreateTokenScript is Script {
 
     bytes32 public immutable REMOTE_TOKEN = vm.envBytes32("REMOTE_TOKEN");
     string public tokenName = vm.envString("TOKEN_NAME");
-    string public constant NAME = "Test Token";
-    string public constant SYMBOL = "TT";
+    string public tokenSymbol = vm.envString("TOKEN_SYMBOL");
+
     string public data;
 
     CrossChainERC20Factory public crossChainERC20Factory;
@@ -37,7 +37,7 @@ contract CreateTokenScript is Script {
     function run() public {
         vm.startBroadcast();
         address token =
-            crossChainERC20Factory.deploy({remoteToken: REMOTE_TOKEN, name: NAME, symbol: SYMBOL, decimals: 9});
+            crossChainERC20Factory.deploy({remoteToken: REMOTE_TOKEN, name: tokenName, symbol: tokenSymbol, decimals: 9});
         console.log("Deployed Token at: %s", token);
         vm.stopBroadcast();
 
