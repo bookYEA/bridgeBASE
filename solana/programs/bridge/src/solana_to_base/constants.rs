@@ -1,5 +1,7 @@
 use anchor_lang::prelude::*;
 
+use crate::base_to_solana::TRUSTED_ORACLE;
+
 #[constant]
 pub const MESSAGE_HEADER_SEED: &[u8] = b"message_header";
 #[constant]
@@ -25,36 +27,8 @@ pub const REMOTE_TOKEN_METADATA_KEY: &str = "remote_token";
 #[constant]
 pub const SCALER_EXPONENT_METADATA_KEY: &str = "scaler_exponent";
 
-mod private {
-    use anchor_lang::prelude::*;
-
-    #[cfg(feature = "devnet")]
-    pub mod config {
-        use super::*;
-
-        #[constant]
-        pub const GAS_FEE_RECEIVER: Pubkey = pubkey!("eEwCrQLBdQchykrkYitkYUZskd7MPrU2YxBXcPDPnMt");
-    }
-
-    #[cfg(feature = "mainnet")]
-    pub mod config {
-        use super::*;
-
-        #[constant]
-        pub const GAS_FEE_RECEIVER: Pubkey = pubkey!("11111111111111111111111111111111");
-    }
-
-    #[cfg(not(any(feature = "devnet", feature = "mainnet")))]
-    pub mod config {
-        use super::*;
-
-        #[constant]
-        pub const GAS_FEE_RECEIVER: Pubkey =
-            pubkey!("CB8GXDdZDSD5uqfeow1qfp48ouayxXGpw7ycmoovuQMX");
-    }
-}
-
-pub use private::config::*;
+#[constant]
+pub const GAS_FEE_RECEIVER: Pubkey = TRUSTED_ORACLE;
 
 #[cfg(test)]
 mod tests {

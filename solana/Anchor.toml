@@ -13,7 +13,7 @@ url = "https://api.apr.dev"
 
 [provider]
 cluster = "devnet"
-wallet = "~/.config/solana/id.json"
+wallet = "~/.config/solana/deployer.devnet.apha.json"
 
 [scripts]
 bridge-call = "bun run scripts/solana-to-base/bridge-call.ts"

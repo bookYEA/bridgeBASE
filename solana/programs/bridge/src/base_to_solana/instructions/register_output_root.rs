@@ -38,11 +38,10 @@ pub fn register_output_root_handler(
     output_root: [u8; 32],
     block_number: u64,
 ) -> Result<()> {
-    // TODO: Uncomment this once we are done testing
-    // require!(
-    //     block_number % 300 == 0,
-    //     RegisterOutputRootError::IncorrectBlockNumber
-    // );
+    require!(
+        block_number > ctx.accounts.bridge.base_block_number && block_number % 300 == 0,
+        RegisterOutputRootError::IncorrectBlockNumber
+    );
 
     // TODO: Plug some ISM verification here.
 
