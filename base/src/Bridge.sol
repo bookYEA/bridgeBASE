@@ -251,11 +251,18 @@ contract Bridge is ReentrancyGuardTransient {
 
     /// @notice Bridges a transfer with optional an optional list of instructions to the Solana bridge.
     ///
+    /// @dev The `Transfer` struct MUST be in memory because the `TokenLib.initializeTransfer` function might modify the
+    ///      `transfer.remoteAmount` field to account for potential transfer fees.
+    ///
     /// @param transfer The token transfer to execute.
     /// @param ixs The optional Solana instructions.
-    function bridgeToken(Transfer calldata transfer, Ix[] memory ixs) external payable {
+    function bridgeToken(Transfer memory transfer, Ix[] memory ixs) external payable {
+        // IMPORTANT: The `TokenLib.initializeTransfer` function might modify the `transfer.remoteAmount` field to
+        //            account for potential transfer fees.
         SolanaTokenType transferType =
             TokenLib.initializeTransfer({transfer: transfer, crossChainErc20Factory: CROSS_CHAIN_ERC20_FACTORY});
+
+        // IMPORTANT: At this point the `transfer.remoteAmount` field is safe to be used for bridging.
         MessageStorageLib.sendMessage({
             sender: msg.sender,
             data: SVMBridgeLib.serializeTransfer({transfer: transfer, tokenType: transferType, ixs: ixs})
@@ -340,13 +347,13 @@ contract Bridge is ReentrancyGuardTransient {
         // `registerRemoteToken` function.
         if (message.sender == REMOTE_BRIDGE) {
             Call memory call = abi.decode(message.data, (Call));
-            (address localToken, Pubkey remoteToken, uint8 scalerExponent) =
+            (address localToken, Pubkey remoteToken, uint8 scalarExponent) =
                 abi.decode(call.data, (address, Pubkey, uint8));
 
             TokenLib.registerRemoteToken({
                 localToken: localToken,
                 remoteToken: remoteToken,
-                scalerExponent: scalerExponent
+                scalarExponent: scalarExponent
             });
             return;
         }
