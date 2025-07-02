@@ -6,6 +6,9 @@ pub mod base_to_solana;
 pub mod common;
 pub mod solana_to_base;
 
+#[cfg(test)]
+mod test_utils;
+
 use base_to_solana::*;
 use common::*;
 use solana_to_base::*;

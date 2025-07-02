@@ -9,7 +9,7 @@ use crate::common::{
 };
 
 #[account]
-#[derive(Default, InitSpace)]
+#[derive(Debug, Default, PartialEq, Eq, InitSpace)]
 pub struct Bridge {
     /// The Base block number associated with the latest registered output root.
     pub base_block_number: u64,
@@ -19,7 +19,7 @@ pub struct Bridge {
     pub eip1559: Eip1559,
 }
 
-#[derive(Debug, Clone, InitSpace, AnchorSerialize, AnchorDeserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, InitSpace, AnchorSerialize, AnchorDeserialize)]
 pub struct Eip1559 {
     /// Gas target per window
     pub target: u64,
@@ -298,6 +298,7 @@ mod tests {
         let new_time = 1000 + (windows_passed * state.window_duration_seconds as i64);
         let base_fee_after_all_empty_windows = state.refresh_base_fee(new_time);
 
+        // Base fee should decrease, gas usage should reset, window should restart
         assert!(base_fee_immediately_after_first_window > base_fee_after_all_empty_windows);
         assert_eq!(state.current_window_gas_used, 0);
         assert_eq!(state.window_start_time, new_time);

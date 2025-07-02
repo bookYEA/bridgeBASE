@@ -33,3 +33,83 @@ pub fn initialize_handler(ctx: Context<Initialize>) -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use anchor_lang::{
+        solana_program::{
+            example_mocks::solana_sdk::system_program, instruction::Instruction,
+            native_token::LAMPORTS_PER_SOL,
+        },
+        InstructionData,
+    };
+    use litesvm::LiteSVM;
+    use solana_keypair::Keypair;
+    use solana_message::Message;
+    use solana_signer::Signer;
+    use solana_transaction::Transaction;
+
+    use crate::{accounts, instruction::Initialize, test_utils::mock_clock, ID};
+
+    #[test]
+    fn test_initialize_handler() {
+        let mut svm = LiteSVM::new();
+        svm.add_program_from_file(ID, "../../target/deploy/bridge.so")
+            .unwrap();
+
+        // Create test accounts
+        let payer = Keypair::new();
+        let payer_pk = payer.pubkey();
+        svm.airdrop(&payer_pk, LAMPORTS_PER_SOL).unwrap();
+
+        // Mock the clock to ensure we get a proper timestamp
+        let timestamp = 1747440000; // May 16th, 2025
+        mock_clock(&mut svm, timestamp);
+
+        // Find the Bridge PDA
+        let bridge_pda = Pubkey::find_program_address(&[BRIDGE_SEED], &ID).0;
+
+        // Build the Initialize instruction accounts
+        let accounts = accounts::Initialize {
+            payer: payer_pk,
+            bridge: bridge_pda,
+            system_program: system_program::ID,
+        }
+        .to_account_metas(None);
+
+        // Build the Initialize instruction
+        let ix = Instruction {
+            program_id: ID,
+            accounts,
+            data: Initialize {}.data(),
+        };
+
+        // Build the transaction
+        let tx = Transaction::new(
+            &[payer],
+            Message::new(&[ix], Some(&payer_pk)),
+            svm.latest_blockhash(),
+        );
+
+        // Send the transaction
+        svm.send_transaction(tx)
+            .expect("Failed to send transaction");
+
+        // Assert the Bridge account state is correctly initialized
+        let bridge = svm.get_account(&bridge_pda).unwrap();
+        assert_eq!(bridge.owner, ID);
+        let bridge = Bridge::try_deserialize(&mut &bridge.data[..]).unwrap();
+
+        // Assert the Bridge state is correctly initialized
+        assert_eq!(
+            bridge,
+            Bridge {
+                base_block_number: 0,
+                nonce: 0,
+                eip1559: Eip1559::new(timestamp),
+            }
+        );
+    }
+}
