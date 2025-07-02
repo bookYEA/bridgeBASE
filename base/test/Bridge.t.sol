@@ -26,9 +26,8 @@ contract BridgeTest is Test {
     address public initialOwner;
     address public user;
     address public unauthorizedUser;
+    Pubkey public remoteBridge;
 
-    Pubkey public constant REMOTE_BRIDGE =
-        Pubkey.wrap(0xc4c16980efe2a570c1a7599fd2ebb40ca7f85daf897482b9c85d4b8933a61608);
     Pubkey public constant TEST_SENDER = Pubkey.wrap(0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef);
     Pubkey public constant TEST_REMOTE_TOKEN =
         Pubkey.wrap(0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890);
@@ -50,6 +49,7 @@ contract BridgeTest is Test {
 
         trustedRelayer = cfg.trustedRelayer;
         initialOwner = cfg.initialOwner;
+        remoteBridge = cfg.remoteBridge;
         user = makeAddr("user");
         unauthorizedUser = makeAddr("unauthorizedUser");
 
@@ -478,7 +478,7 @@ contract BridgeTest is Test {
         Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](1);
         messages[0] = Bridge.IncomingMessage({
             nonce: 0,
-            sender: REMOTE_BRIDGE, // Special case
+            sender: remoteBridge, // Special case
             gasLimit: 1000000,
             ty: Bridge.MessageType.Call,
             data: abi.encode(address(mockToken), TEST_REMOTE_TOKEN, uint8(12))
@@ -490,7 +490,7 @@ contract BridgeTest is Test {
         bridge.relayMessages(messages, ismData);
 
         // Should complete without creating Twin
-        assertEq(bridge.twins(REMOTE_BRIDGE), address(0));
+        assertEq(bridge.twins(remoteBridge), address(0));
     }
 
     //////////////////////////////////////////////////////////////
@@ -946,12 +946,19 @@ contract BridgeTest is Test {
 
     function _registerTokenPair(address localToken, Pubkey remoteToken, uint8 scalerExponent) internal {
         // Use the Bridge's registerRemoteToken function - simulate it being called by the remote bridge
-        bytes memory data = abi.encode(localToken, remoteToken, scalerExponent);
+        // The Bridge expects the data to be encoded as a Call struct
+        Call memory call = Call({
+            ty: CallType.Call,
+            to: address(0), // Not relevant for token registration
+            value: 0,
+            data: abi.encode(localToken, remoteToken, scalerExponent)
+        });
+        bytes memory data = abi.encode(call);
 
         Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](1);
         messages[0] = Bridge.IncomingMessage({
             nonce: bridge.nextIncomingNonce(),
-            sender: REMOTE_BRIDGE, // Only remote bridge can register tokens
+            sender: remoteBridge, // Only remote bridge can register tokens
             gasLimit: 1000000,
             ty: Bridge.MessageType.Call,
             data: data
