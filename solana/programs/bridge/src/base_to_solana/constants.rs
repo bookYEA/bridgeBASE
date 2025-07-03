@@ -23,7 +23,7 @@ mod private {
         use super::*;
 
         #[constant]
-        pub const TRUSTED_ORACLE: Pubkey = pubkey!("7iiwFR2X74MUtHy2yhXcnDTY5LNJxBXj9TEfW5ojbWWf");
+        pub const TRUSTED_ORACLE: Pubkey = pubkey!("4vTj5kmBrmds3zWogiyUxtZPggcVUmG44EXRy2CxTcEZ");
     }
 
     #[cfg(not(any(feature = "devnet")))]
