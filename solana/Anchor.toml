@@ -6,14 +6,14 @@ resolution = false
 skip-lint = false
 
 [programs.devnet]
-bridge = "4L8cUU2DXTzEaa5C8MWLTyEV8dpmpDbCjg8DNgUuGedc"
+bridge = "AvgDrHpWUeV7fpZYVhDQbWrV2sD7zp9zDB7w97CWknKH"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
 cluster = "devnet"
-wallet = "~/.config/solana/deployer.devnet.alpha.json"
+wallet = "~/.config/solana/deployer.devnet.prod.json"
 
 [scripts]
 bridge-call = "bun run scripts/solana-to-base/bridge-call.ts"

@@ -13,7 +13,7 @@ use base_to_solana::*;
 use common::*;
 use solana_to_base::*;
 
-declare_id!("4L8cUU2DXTzEaa5C8MWLTyEV8dpmpDbCjg8DNgUuGedc");
+declare_id!("AvgDrHpWUeV7fpZYVhDQbWrV2sD7zp9zDB7w97CWknKH");
 
 #[program]
 pub mod bridge {
