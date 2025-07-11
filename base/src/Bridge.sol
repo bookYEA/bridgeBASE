@@ -208,6 +208,7 @@ contract Bridge is ReentrancyGuardTransient, Initializable, OwnableRoles {
         for (uint256 i; i < guardians.length; i++) {
             _grantRoles(guardians[i], GUARDIAN_ROLE);
         }
+
         // Initialize ISM verification library
         ISMVerificationLib.initialize(validators, threshold);
     }
