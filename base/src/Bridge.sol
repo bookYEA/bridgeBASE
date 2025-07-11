@@ -1,96 +1,28 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+import {Ownable} from "solady/auth/Ownable.sol";
+import {Initializable} from "solady/utils/Initializable.sol";
 import {LibClone} from "solady/utils/LibClone.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 import {UpgradeableBeacon} from "solady/utils/UpgradeableBeacon.sol";
 
 import {Call} from "./libraries/CallLib.sol";
+import {IncomingMessage, MessageType} from "./libraries/MessageLib.sol";
 import {MessageStorageLib} from "./libraries/MessageStorageLib.sol";
 import {SVMBridgeLib} from "./libraries/SVMBridgeLib.sol";
 import {Ix, Pubkey} from "./libraries/SVMLib.sol";
 import {SolanaTokenType, TokenLib, Transfer} from "./libraries/TokenLib.sol";
 
 import {Twin} from "./Twin.sol";
+import {ISMVerificationLib} from "./libraries/ISMVerificationLib.sol";
 
 /// @title Bridge
 ///
 /// @notice The Bridge enables sending calls from Solana to Base.
 ///
 /// @dev Calls sent from Solana to Base are relayed via a Twin contract that is specific per Solana sender pubkey.
-contract Bridge is ReentrancyGuardTransient {
-    //////////////////////////////////////////////////////////////
-    ///                       Events                           ///
-    //////////////////////////////////////////////////////////////
-
-    /// @notice Emitted whenever a message is successfully relayed and executed.
-    ///
-    /// @param messageHash Keccak256 hash of the message that was successfully relayed.
-    event MessageSuccessfullyRelayed(bytes32 indexed messageHash);
-
-    /// @notice Emitted whenever a message fails to be relayed.
-    ///
-    /// @param messageHash Keccak256 hash of the message that failed to be relayed.
-    event FailedToRelayMessage(bytes32 indexed messageHash);
-
-    //////////////////////////////////////////////////////////////
-    ///                       Errors                           ///
-    //////////////////////////////////////////////////////////////
-
-    /// @notice Thrown when the ISM verification fails.
-    error ISMVerificationFailed();
-
-    /// @notice Thrown when doing gas estimation and the call's gas left is insufficient to cover the `minGas` plus the
-    ///         `reservedGas`.
-    error EstimationInsufficientGas();
-
-    /// @notice Thrown when the call execution fails.
-    error ExecutionFailed();
-
-    /// @notice Thrown when the sender is not the entrypoint.
-    error SenderIsNotEntrypoint();
-
-    /// @notice Thrown when the nonce is not incremental.
-    error NonceNotIncremental();
-
-    /// @notice Thrown when a message has already been successfully relayed.
-    error MessageAlreadySuccessfullyRelayed();
-
-    /// @notice Thrown when a message has already failed to relay.
-    error MessageAlreadyFailedToRelay();
-
-    /// @notice Thrown when a message has not been marked as failed by the relayer but a user tries to relay it
-    /// manually.
-    error MessageNotAlreadyFailedToRelay();
-
-    /// @notice Thrown when an Anchor instruction is invalid.
-    error UnsafeIxTarget();
-
-    //////////////////////////////////////////////////////////////
-    ///                       Structs                          ///
-    //////////////////////////////////////////////////////////////
-
-    /// @notice Enum containing operation types.
-    enum MessageType {
-        Call,
-        Transfer,
-        TransferAndCall
-    }
-
-    /// @notice Message sent from Solana to Base.
-    ///
-    /// @custom:field nonce Unique nonce for the message.
-    /// @custom:field sender The Solana sender's pubkey.
-    /// @custom:field gasLimit The gas limit for the message execution.
-    /// @custom:field operations The operations to be executed.
-    struct IncomingMessage {
-        uint64 nonce;
-        Pubkey sender;
-        uint64 gasLimit;
-        MessageType ty;
-        bytes data;
-    }
-
+contract Bridge is ReentrancyGuardTransient, Initializable, Ownable {
     //////////////////////////////////////////////////////////////
     ///                       Constants                        ///
     //////////////////////////////////////////////////////////////
@@ -167,6 +99,53 @@ contract Bridge is ReentrancyGuardTransient {
     uint64 public nextIncomingNonce;
 
     //////////////////////////////////////////////////////////////
+    ///                       Events                           ///
+    //////////////////////////////////////////////////////////////
+
+    /// @notice Emitted whenever a message is successfully relayed and executed.
+    ///
+    /// @param messageHash Keccak256 hash of the message that was successfully relayed.
+    event MessageSuccessfullyRelayed(bytes32 indexed messageHash);
+
+    /// @notice Emitted whenever a message fails to be relayed.
+    ///
+    /// @param messageHash Keccak256 hash of the message that failed to be relayed.
+    event FailedToRelayMessage(bytes32 indexed messageHash);
+
+    //////////////////////////////////////////////////////////////
+    ///                       Errors                           ///
+    //////////////////////////////////////////////////////////////
+
+    /// @notice Thrown when the ISM verification fails.
+    error ISMVerificationFailed();
+
+    /// @notice Thrown when doing gas estimation and the call's gas left is insufficient to cover the `minGas` plus the
+    ///         `reservedGas`.
+    error EstimationInsufficientGas();
+
+    /// @notice Thrown when the call execution fails.
+    error ExecutionFailed();
+
+    /// @notice Thrown when the sender is not the entrypoint.
+    error SenderIsNotEntrypoint();
+
+    /// @notice Thrown when the nonce is not incremental.
+    error NonceNotIncremental();
+
+    /// @notice Thrown when a message has already been successfully relayed.
+    error MessageAlreadySuccessfullyRelayed();
+
+    /// @notice Thrown when a message has already failed to relay.
+    error MessageAlreadyFailedToRelay();
+
+    /// @notice Thrown when a message has not been marked as failed by the relayer but a user tries to relay it
+    /// manually.
+    error MessageNotAlreadyFailedToRelay();
+
+    /// @notice Thrown when an Anchor instruction is invalid.
+    error UnsafeIxTarget();
+
+    //////////////////////////////////////////////////////////////
     ///                       Public Functions                 ///
     //////////////////////////////////////////////////////////////
 
@@ -181,6 +160,24 @@ contract Bridge is ReentrancyGuardTransient {
         TRUSTED_RELAYER = trustedRelayer;
         TWIN_BEACON = twinBeacon;
         CROSS_CHAIN_ERC20_FACTORY = crossChainErc20Factory;
+
+        _disableInitializers();
+    }
+
+    /// @notice Initializes the Bridge contract with ISM verification parameters.
+    ///
+    /// @dev This function should be called immediately after deployment when using with a proxy.
+    ///      Can only be called once due to the initializer modifier.
+    ///
+    /// @param validators Array of validator addresses for ISM verification.
+    /// @param threshold The ISM verification threshold.
+    /// @param ismOwner The owner of the ISM verification system.
+    function initialize(address[] calldata validators, uint128 threshold, address ismOwner) external initializer {
+        // Initialize ownership
+        _initializeOwner(ismOwner);
+
+        // Initialize ISM verification library
+        ISMVerificationLib.initialize(validators, threshold);
     }
 
     /// @notice Get the current root of the MMR.
@@ -276,7 +273,7 @@ contract Bridge is ReentrancyGuardTransient {
     function relayMessages(IncomingMessage[] calldata messages, bytes calldata ismData) external nonReentrant {
         bool isTrustedRelayer = msg.sender == TRUSTED_RELAYER;
         if (isTrustedRelayer) {
-            _ismVerify({messages: messages, ismData: ismData});
+            require(ISMVerificationLib.isApproved(messages, ismData), ISMVerificationFailed());
         }
 
         for (uint256 i; i < messages.length; i++) {
@@ -381,6 +378,49 @@ contract Bridge is ReentrancyGuardTransient {
         }
     }
 
+    /// @notice Sets the ISM verification threshold.
+    ///
+    /// @param newThreshold The new ISM verification threshold.
+    function setISMThreshold(uint128 newThreshold) external onlyOwner {
+        ISMVerificationLib.setThreshold(newThreshold);
+    }
+
+    /// @notice Add a validator to the ISM verification set.
+    ///
+    /// @param validator Address to add as validator.
+    function addISMValidator(address validator) external onlyOwner {
+        ISMVerificationLib.addValidator(validator);
+    }
+
+    /// @notice Remove a validator from the ISM verification set.
+    ///
+    /// @param validator Address to remove.
+    function removeISMValidator(address validator) external onlyOwner {
+        ISMVerificationLib.removeValidator(validator);
+    }
+
+    /// @notice Gets the current ISM verification threshold.
+    ///
+    /// @return The current threshold.
+    function getISMThreshold() external view returns (uint128) {
+        return ISMVerificationLib.getThreshold();
+    }
+
+    /// @notice Gets the current ISM validator count.
+    ///
+    /// @return The current validator count.
+    function getISMValidatorCount() external view returns (uint128) {
+        return ISMVerificationLib.getValidatorCount();
+    }
+
+    /// @notice Checks if an address is an ISM validator.
+    ///
+    /// @param validator The address to check.
+    /// @return True if the address is a validator, false otherwise.
+    function isISMValidator(address validator) external view returns (bool) {
+        return ISMVerificationLib.isValidator(validator);
+    }
+
     //////////////////////////////////////////////////////////////
     ///                       Internal Functions                ///
     //////////////////////////////////////////////////////////////
@@ -399,17 +439,5 @@ contract Bridge is ReentrancyGuardTransient {
     /// @notice Asserts that the caller is the entrypoint.
     function _assertSenderIsEntrypoint() private view {
         require(msg.sender == address(this), SenderIsNotEntrypoint());
-    }
-
-    /// @notice Checks whether the ISM verification is successful.
-    ///
-    /// @param messages The messages to verify.
-    /// @param ismData Encoded ISM data used to verify the call.
-    function _ismVerify(IncomingMessage[] calldata messages, bytes calldata ismData) private pure {
-        messages; // Silence unused variable warning.
-        ismData; // Silence unused variable warning.
-
-        // TODO: Plug some ISM verification here.
-        require(true, ISMVerificationFailed());
     }
 }

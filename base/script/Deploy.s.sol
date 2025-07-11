@@ -11,6 +11,7 @@ import {Bridge} from "../src/Bridge.sol";
 
 import {CrossChainERC20} from "../src/CrossChainERC20.sol";
 import {CrossChainERC20Factory} from "../src/CrossChainERC20Factory.sol";
+
 import {Twin} from "../src/Twin.sol";
 import {HelperConfig} from "./HelperConfig.s.sol";
 
@@ -65,11 +66,14 @@ contract DeployScript is Script {
             crossChainErc20Factory: crossChainErc20Factory
         });
 
-        return ERC1967Factory(cfg.erc1967Factory).deployDeterministic({
+        address proxy = ERC1967Factory(cfg.erc1967Factory).deployDeterministicAndCall({
             implementation: address(bridgeImpl),
             admin: cfg.initialOwner,
-            salt: _salt("bridge15")
+            salt: _salt("bridge15"),
+            data: abi.encodeCall(Bridge.initialize, (cfg.initialValidators, cfg.initialThreshold, cfg.initialOwner))
         });
+
+        return proxy;
     }
 
     function _deployFactory(HelperConfig.NetworkConfig memory cfg, address precomputedBridgeAddress)

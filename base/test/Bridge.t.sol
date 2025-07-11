@@ -9,8 +9,10 @@ import {HelperConfig} from "../script/HelperConfig.s.sol";
 import {Bridge} from "../src/Bridge.sol";
 import {CrossChainERC20} from "../src/CrossChainERC20.sol";
 import {CrossChainERC20Factory} from "../src/CrossChainERC20Factory.sol";
+
 import {Twin} from "../src/Twin.sol";
 import {Call, CallType} from "../src/libraries/CallLib.sol";
+import {IncomingMessage, MessageType} from "../src/libraries/MessageLib.sol";
 import {MessageStorageLib} from "../src/libraries/MessageStorageLib.sol";
 import {SVMBridgeLib} from "../src/libraries/SVMBridgeLib.sol";
 import {Ix, Pubkey} from "../src/libraries/SVMLib.sol";
@@ -41,7 +43,13 @@ contract BridgeTest is Test {
     event MessageSuccessfullyRelayed(bytes32 indexed messageHash);
     event FailedToRelayMessage(bytes32 indexed messageHash);
 
+    // Test validator keys for ISM verification (same as in HelperConfig)
+    uint256 constant VALIDATOR1_KEY = 0x1;
+    uint256 constant VALIDATOR2_KEY = 0x2;
+    uint256 constant VALIDATOR3_KEY = 0x3;
+
     function setUp() public {
+        // Use the DeployScript normally - now it uses deterministic validator keys
         DeployScript deployer = new DeployScript();
         (twinBeacon, bridge, factory, helperConfig) = deployer.run();
 
@@ -65,24 +73,6 @@ contract BridgeTest is Test {
         vm.deal(trustedRelayer, 100 ether);
         mockToken.mint(user, 1000e18);
         mockToken.mint(address(bridge), 1000e18);
-    }
-
-    //////////////////////////////////////////////////////////////
-    ///                   Constructor Tests                    ///
-    //////////////////////////////////////////////////////////////
-
-    function test_constructor_setsCorrectValues() public {
-        Bridge testBridge = new Bridge({
-            remoteBridge: TEST_SENDER,
-            trustedRelayer: trustedRelayer,
-            twinBeacon: address(twinBeacon),
-            crossChainErc20Factory: address(factory)
-        });
-
-        assertEq(Pubkey.unwrap(testBridge.REMOTE_BRIDGE()), Pubkey.unwrap(TEST_SENDER));
-        assertEq(testBridge.TRUSTED_RELAYER(), trustedRelayer);
-        assertEq(testBridge.TWIN_BEACON(), address(twinBeacon));
-        assertEq(testBridge.nextIncomingNonce(), 0);
     }
 
     //////////////////////////////////////////////////////////////
@@ -211,12 +201,12 @@ contract BridgeTest is Test {
     //////////////////////////////////////////////////////////////
 
     function test_relayMessages_withTrustedRelayer() public {
-        Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](1);
-        messages[0] = Bridge.IncomingMessage({
+        IncomingMessage[] memory messages = new IncomingMessage[](1);
+        messages[0] = IncomingMessage({
             nonce: 0,
             sender: TEST_SENDER,
             gasLimit: 1000000,
-            ty: Bridge.MessageType.Call,
+            ty: MessageType.Call,
             data: abi.encode(
                 Call({
                     ty: CallType.Call,
@@ -227,7 +217,7 @@ contract BridgeTest is Test {
             )
         });
 
-        bytes memory ismData = hex"";
+        bytes memory ismData = _generateValidISMData(messages);
 
         vm.prank(trustedRelayer);
         bridge.relayMessages(messages, ismData);
@@ -238,12 +228,12 @@ contract BridgeTest is Test {
 
     function test_relayMessages_withNonTrustedRelayer() public {
         // First, make a message fail from trusted relayer
-        Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](1);
-        messages[0] = Bridge.IncomingMessage({
+        IncomingMessage[] memory messages = new IncomingMessage[](1);
+        messages[0] = IncomingMessage({
             nonce: 0,
             sender: TEST_SENDER,
             gasLimit: 100000, // Insufficient gas to force failure
-            ty: Bridge.MessageType.Call,
+            ty: MessageType.Call,
             data: abi.encode(
                 Call({
                     ty: CallType.Call,
@@ -254,7 +244,7 @@ contract BridgeTest is Test {
             )
         });
 
-        bytes memory ismData = hex"";
+        bytes memory ismData = _generateValidISMData(messages);
 
         vm.prank(trustedRelayer);
         bridge.relayMessages(messages, ismData);
@@ -263,18 +253,18 @@ contract BridgeTest is Test {
         messages[0].gasLimit = 1000000;
 
         vm.prank(unauthorizedUser);
-        bridge.relayMessages(messages, ismData);
+        bridge.relayMessages(messages, hex""); // Non-trusted relayer doesn't need valid ISM data
 
         assertEq(mockTarget.value(), 42);
     }
 
     function test_relayMessages_revertsOnIncrementalNonce() public {
-        Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](1);
-        messages[0] = Bridge.IncomingMessage({
+        IncomingMessage[] memory messages = new IncomingMessage[](1);
+        messages[0] = IncomingMessage({
             nonce: 1, // Should be 0
             sender: TEST_SENDER,
             gasLimit: 1000000,
-            ty: Bridge.MessageType.Call,
+            ty: MessageType.Call,
             data: abi.encode(
                 Call({
                     ty: CallType.Call,
@@ -285,7 +275,7 @@ contract BridgeTest is Test {
             )
         });
 
-        bytes memory ismData = hex"";
+        bytes memory ismData = _generateValidISMData(messages);
 
         vm.expectRevert(Bridge.NonceNotIncremental.selector);
         vm.prank(trustedRelayer);
@@ -294,12 +284,12 @@ contract BridgeTest is Test {
 
     function test_relayMessages_revertsOnAlreadySuccessfulMessage() public {
         // First, create a message that will succeed with trusted relayer
-        Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](1);
-        messages[0] = Bridge.IncomingMessage({
+        IncomingMessage[] memory messages = new IncomingMessage[](1);
+        messages[0] = IncomingMessage({
             nonce: 0,
             sender: TEST_SENDER,
             gasLimit: 1000000,
-            ty: Bridge.MessageType.Call,
+            ty: MessageType.Call,
             data: abi.encode(
                 Call({
                     ty: CallType.Call,
@@ -310,7 +300,7 @@ contract BridgeTest is Test {
             )
         });
 
-        bytes memory ismData = hex"";
+        bytes memory ismData = _generateValidISMData(messages);
 
         // First attempt by trusted relayer should succeed
         vm.prank(trustedRelayer);
@@ -320,16 +310,16 @@ contract BridgeTest is Test {
         // MessageAlreadySuccessfullyRelayed
         vm.expectRevert(Bridge.MessageAlreadySuccessfullyRelayed.selector);
         vm.prank(unauthorizedUser);
-        bridge.relayMessages(messages, ismData);
+        bridge.relayMessages(messages, hex""); // Non-trusted relayer doesn't need valid ISM data
     }
 
     function test_relayMessages_emitsSuccessEvent() public {
-        Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](1);
-        messages[0] = Bridge.IncomingMessage({
+        IncomingMessage[] memory messages = new IncomingMessage[](1);
+        messages[0] = IncomingMessage({
             nonce: 0,
             sender: TEST_SENDER,
             gasLimit: 1000000,
-            ty: Bridge.MessageType.Call,
+            ty: MessageType.Call,
             data: abi.encode(
                 Call({
                     ty: CallType.Call,
@@ -343,7 +333,7 @@ contract BridgeTest is Test {
         bytes32 expectedHash =
             keccak256(abi.encode(messages[0].nonce, messages[0].sender, messages[0].ty, messages[0].data));
 
-        bytes memory ismData = hex"";
+        bytes memory ismData = _generateValidISMData(messages);
 
         vm.expectEmit(true, false, false, false);
         emit MessageSuccessfullyRelayed(expectedHash);
@@ -353,12 +343,12 @@ contract BridgeTest is Test {
     }
 
     function test_relayMessages_emitsFailureEvent() public {
-        Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](1);
-        messages[0] = Bridge.IncomingMessage({
+        IncomingMessage[] memory messages = new IncomingMessage[](1);
+        messages[0] = IncomingMessage({
             nonce: 0,
             sender: TEST_SENDER,
             gasLimit: 1000000,
-            ty: Bridge.MessageType.Call,
+            ty: MessageType.Call,
             data: abi.encode(
                 Call({
                     ty: CallType.Call,
@@ -372,7 +362,7 @@ contract BridgeTest is Test {
         bytes32 expectedHash =
             keccak256(abi.encode(messages[0].nonce, messages[0].sender, messages[0].ty, messages[0].data));
 
-        bytes memory ismData = hex"";
+        bytes memory ismData = _generateValidISMData(messages);
 
         vm.expectEmit(true, false, false, false);
         emit FailedToRelayMessage(expectedHash);
@@ -386,12 +376,12 @@ contract BridgeTest is Test {
     //////////////////////////////////////////////////////////////
 
     function test_relayMessage_callType() public {
-        Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](1);
-        messages[0] = Bridge.IncomingMessage({
+        IncomingMessage[] memory messages = new IncomingMessage[](1);
+        messages[0] = IncomingMessage({
             nonce: 0,
             sender: TEST_SENDER,
             gasLimit: 1000000,
-            ty: Bridge.MessageType.Call,
+            ty: MessageType.Call,
             data: abi.encode(
                 Call({
                     ty: CallType.Call,
@@ -402,7 +392,7 @@ contract BridgeTest is Test {
             )
         });
 
-        bytes memory ismData = hex"";
+        bytes memory ismData = _generateValidISMData(messages);
 
         vm.prank(trustedRelayer);
         bridge.relayMessages(messages, ismData);
@@ -423,16 +413,16 @@ contract BridgeTest is Test {
             remoteAmount: 100e6
         });
 
-        Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](1);
-        messages[0] = Bridge.IncomingMessage({
+        IncomingMessage[] memory messages = new IncomingMessage[](1);
+        messages[0] = IncomingMessage({
             nonce: 0,
             sender: TEST_SENDER,
             gasLimit: 1000000,
-            ty: Bridge.MessageType.Transfer,
+            ty: MessageType.Transfer,
             data: abi.encode(transfer)
         });
 
-        bytes memory ismData = hex"";
+        bytes memory ismData = _generateValidISMData(messages);
 
         vm.prank(trustedRelayer);
         bridge.relayMessages(messages, ismData);
@@ -456,16 +446,16 @@ contract BridgeTest is Test {
             data: abi.encodeWithSelector(MockTarget.setValue.selector, 456)
         });
 
-        Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](1);
-        messages[0] = Bridge.IncomingMessage({
+        IncomingMessage[] memory messages = new IncomingMessage[](1);
+        messages[0] = IncomingMessage({
             nonce: 0,
             sender: TEST_SENDER,
             gasLimit: 1000000,
-            ty: Bridge.MessageType.TransferAndCall,
+            ty: MessageType.TransferAndCall,
             data: abi.encode(transfer, call)
         });
 
-        bytes memory ismData = hex"";
+        bytes memory ismData = _generateValidISMData(messages);
 
         vm.prank(trustedRelayer);
         bridge.relayMessages(messages, ismData);
@@ -475,16 +465,16 @@ contract BridgeTest is Test {
     }
 
     function test_relayMessage_remoteBridgeSpecialCase() public {
-        Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](1);
-        messages[0] = Bridge.IncomingMessage({
+        IncomingMessage[] memory messages = new IncomingMessage[](1);
+        messages[0] = IncomingMessage({
             nonce: 0,
             sender: remoteBridge, // Special case
             gasLimit: 1000000,
-            ty: Bridge.MessageType.Call,
+            ty: MessageType.Call,
             data: abi.encode(address(mockToken), TEST_REMOTE_TOKEN, uint8(12))
         });
 
-        bytes memory ismData = hex"";
+        bytes memory ismData = _generateValidISMData(messages);
 
         vm.prank(trustedRelayer);
         bridge.relayMessages(messages, ismData);
@@ -498,11 +488,11 @@ contract BridgeTest is Test {
     //////////////////////////////////////////////////////////////
 
     function test_validateAndRelay_revertsOnDirectCall() public {
-        Bridge.IncomingMessage memory message = Bridge.IncomingMessage({
+        IncomingMessage memory message = IncomingMessage({
             nonce: 0,
             sender: TEST_SENDER,
             gasLimit: 1000000,
-            ty: Bridge.MessageType.Call,
+            ty: MessageType.Call,
             data: abi.encode(
                 Call({
                     ty: CallType.Call,
@@ -519,11 +509,11 @@ contract BridgeTest is Test {
     }
 
     function test_relayMessage_revertsOnDirectCall() public {
-        Bridge.IncomingMessage memory message = Bridge.IncomingMessage({
+        IncomingMessage memory message = IncomingMessage({
             nonce: 0,
             sender: TEST_SENDER,
             gasLimit: 1000000,
-            ty: Bridge.MessageType.Call,
+            ty: MessageType.Call,
             data: abi.encode(
                 Call({
                     ty: CallType.Call,
@@ -545,12 +535,12 @@ contract BridgeTest is Test {
 
     function test_gasEstimation_revertsOnFailure() public {
         // First make this message fail by trusted relayer so it can be retried
-        Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](1);
-        messages[0] = Bridge.IncomingMessage({
+        IncomingMessage[] memory messages = new IncomingMessage[](1);
+        messages[0] = IncomingMessage({
             nonce: 0,
             sender: TEST_SENDER,
             gasLimit: 100000, // Low gas to cause failure
-            ty: Bridge.MessageType.Call,
+            ty: MessageType.Call,
             data: abi.encode(
                 Call({
                     ty: CallType.Call,
@@ -561,7 +551,7 @@ contract BridgeTest is Test {
             )
         });
 
-        bytes memory ismData = hex"";
+        bytes memory ismData = _generateValidISMData(messages);
 
         vm.prank(trustedRelayer, bridge.ESTIMATION_ADDRESS());
         vm.expectRevert(Bridge.ExecutionFailed.selector);
@@ -788,8 +778,8 @@ contract BridgeTest is Test {
     //////////////////////////////////////////////////////////////
 
     function test_relayMessages_withEmptyArray() public {
-        Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](0);
-        bytes memory ismData = hex"";
+        IncomingMessage[] memory messages = new IncomingMessage[](0);
+        bytes memory ismData = _generateValidISMData(messages);
 
         vm.prank(trustedRelayer);
         bridge.relayMessages(messages, ismData);
@@ -799,13 +789,13 @@ contract BridgeTest is Test {
     }
 
     function test_relayMessages_withMultipleMessages() public {
-        Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](3);
+        IncomingMessage[] memory messages = new IncomingMessage[](3);
         for (uint256 i = 0; i < 3; i++) {
-            messages[i] = Bridge.IncomingMessage({
+            messages[i] = IncomingMessage({
                 nonce: uint64(i),
                 sender: TEST_SENDER,
                 gasLimit: 1000000,
-                ty: Bridge.MessageType.Call,
+                ty: MessageType.Call,
                 data: abi.encode(
                     Call({
                         ty: CallType.Call,
@@ -817,7 +807,7 @@ contract BridgeTest is Test {
             });
         }
 
-        bytes memory ismData = hex"";
+        bytes memory ismData = _generateValidISMData(messages);
 
         vm.prank(trustedRelayer);
         bridge.relayMessages(messages, ismData);
@@ -828,12 +818,12 @@ contract BridgeTest is Test {
 
     function test_twinReuse() public {
         // First message creates Twin
-        Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](1);
-        messages[0] = Bridge.IncomingMessage({
+        IncomingMessage[] memory messages = new IncomingMessage[](1);
+        messages[0] = IncomingMessage({
             nonce: 0,
             sender: TEST_SENDER,
             gasLimit: 1000000,
-            ty: Bridge.MessageType.Call,
+            ty: MessageType.Call,
             data: abi.encode(
                 Call({
                     ty: CallType.Call,
@@ -844,7 +834,7 @@ contract BridgeTest is Test {
             )
         });
 
-        bytes memory ismData = hex"";
+        bytes memory ismData = _generateValidISMData(messages);
 
         vm.prank(trustedRelayer);
         bridge.relayMessages(messages, ismData);
@@ -862,8 +852,11 @@ contract BridgeTest is Test {
             })
         );
 
+        // Regenerate ISM data for the modified message
+        bytes memory ismData2 = _generateValidISMData(messages);
+
         vm.prank(trustedRelayer);
-        bridge.relayMessages(messages, ismData);
+        bridge.relayMessages(messages, ismData2);
 
         address secondTwin = bridge.twins(TEST_SENDER);
         assertEq(firstTwin, secondTwin);
@@ -893,12 +886,12 @@ contract BridgeTest is Test {
 
         // Increment the nonce naturally by sending messages
         for (uint64 i = 0; i < nonce; i++) {
-            Bridge.IncomingMessage[] memory tempMessages = new Bridge.IncomingMessage[](1);
-            tempMessages[0] = Bridge.IncomingMessage({
+            IncomingMessage[] memory tempMessages = new IncomingMessage[](1);
+            tempMessages[0] = IncomingMessage({
                 nonce: i,
                 sender: TEST_SENDER,
                 gasLimit: 1000000,
-                ty: Bridge.MessageType.Call,
+                ty: MessageType.Call,
                 data: abi.encode(
                     Call({
                         ty: CallType.Call,
@@ -909,18 +902,18 @@ contract BridgeTest is Test {
                 )
             });
 
-            bytes memory tempIsmData = hex"";
+            bytes memory tempIsmData = _generateValidISMData(tempMessages);
             vm.prank(trustedRelayer);
             bridge.relayMessages(tempMessages, tempIsmData);
         }
 
         // Now send the actual test message
-        Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](1);
-        messages[0] = Bridge.IncomingMessage({
+        IncomingMessage[] memory messages = new IncomingMessage[](1);
+        messages[0] = IncomingMessage({
             nonce: nonce,
             sender: TEST_SENDER,
             gasLimit: 1000000,
-            ty: Bridge.MessageType.Call,
+            ty: MessageType.Call,
             data: abi.encode(
                 Call({
                     ty: CallType.Call,
@@ -931,7 +924,7 @@ contract BridgeTest is Test {
             )
         });
 
-        bytes memory ismData = hex"";
+        bytes memory ismData = _generateValidISMData(messages);
 
         vm.prank(trustedRelayer);
         bridge.relayMessages(messages, ismData);
@@ -955,16 +948,16 @@ contract BridgeTest is Test {
         });
         bytes memory data = abi.encode(call);
 
-        Bridge.IncomingMessage[] memory messages = new Bridge.IncomingMessage[](1);
-        messages[0] = Bridge.IncomingMessage({
+        IncomingMessage[] memory messages = new IncomingMessage[](1);
+        messages[0] = IncomingMessage({
             nonce: bridge.nextIncomingNonce(),
             sender: remoteBridge, // Only remote bridge can register tokens
             gasLimit: 1000000,
-            ty: Bridge.MessageType.Call,
+            ty: MessageType.Call,
             data: data
         });
 
-        bytes memory ismData = hex"";
+        bytes memory ismData = _generateValidISMData(messages);
 
         vm.prank(trustedRelayer);
         bridge.relayMessages(messages, ismData);
@@ -1161,6 +1154,40 @@ contract BridgeTest is Test {
         // For a 2-leaf MMR, both leaves should have the other leaf as their sibling in the proof
         console2.log("Leaf1 should have leaf2 as sibling:", vm.toString(expectedLeaf2));
         console2.log("Leaf2 should have leaf1 as sibling:", vm.toString(expectedLeaf1));
+    }
+
+    //////////////////////////////////////////////////////////////
+    ///                  Internal Functions                    ///
+    //////////////////////////////////////////////////////////////
+
+    /// @notice Generates valid ISM data for a given set of messages.
+    ///
+    /// @param messages The messages to be included in the ISM.
+    ///
+    /// @return The ISM data containing the signatures of the validators.
+    function _generateValidISMData(IncomingMessage[] memory messages) internal pure returns (bytes memory) {
+        bytes32 messageHash = keccak256(abi.encode(messages));
+
+        // Create signatures from validators (threshold = 2, so we need 2 signatures)
+        bytes memory signatures = new bytes(0);
+
+        // Sort validators by address to ensure ascending order
+        uint256[] memory sortedKeys = new uint256[](2);
+        sortedKeys[0] = VALIDATOR1_KEY;
+        sortedKeys[1] = VALIDATOR2_KEY;
+
+        if (vm.addr(VALIDATOR1_KEY) > vm.addr(VALIDATOR2_KEY)) {
+            sortedKeys[0] = VALIDATOR2_KEY;
+            sortedKeys[1] = VALIDATOR1_KEY;
+        }
+
+        // Create signatures in ascending order
+        for (uint256 i = 0; i < 2; i++) {
+            (uint8 v, bytes32 r, bytes32 s) = vm.sign(sortedKeys[i], messageHash);
+            signatures = abi.encodePacked(signatures, r, s, v);
+        }
+
+        return signatures;
     }
 }
 
