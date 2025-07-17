@@ -1,66 +1,160 @@
-## Foundry
+# Base Bridge Contracts
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+A cross-chain bridge implementation that enables seamless message passing and token transfers between Base and Solana.
 
-Foundry consists of:
+## Contract Addresses
 
--   **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
--   **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
--   **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
--   **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+- **Base Sepolia Bridge**: `0xfcde89DFe9276Ec059d68e43759a226f0961426F`
 
-## Documentation
+## Overview
 
-https://book.getfoundry.sh/
+The Base Bridge contracts facilitate bidirectional communication between Base and Solana. The system allows:
 
-## Usage
+- Receiving and executing calls sent from Solana
+- Transferring tokens between Base and Solana  
+- Creating wrapped versions of Solana tokens on Base
 
-### Build
+## Architecture
 
-```shell
-$ forge build
+### Core Contracts
+
+- **Bridge**: Main contract that receives calls from Solana and manages message execution via Twin contracts. Bridge is also the entrypoint for sending messages to Solana
+- **Twin**: Execution contract specific to each Solana sender pubkey that processes calls from the bridge
+- **CrossChainERC20**: ERC20 token implementation that can be minted/burned by the bridge for cross-chain transfers
+- **CrossChainERC20Factory**: Factory contract for deploying wrapped tokens representing Solana tokens on Base
+
+## Prerequisites
+
+### Required Tools
+
+- [Foundry](https://book.getfoundry.sh/getting-started/installation)
+- Make
+
+### Environment Setup
+
+1. Install dependencies:
+```bash
+make deps
 ```
 
-### Test
-
-```shell
-$ forge test
+2. Set up wallet account:
+```bash
+# Create or import account for testnet deployments
+cast wallet import testnet-admin --interactive
 ```
 
-### Format
+## Development
 
-```shell
-$ forge fmt
+### Building
+
+```bash
+# Compile contracts
+forge build
 ```
 
-### Gas Snapshots
+### Testing
 
-```shell
-$ forge snapshot
+```bash
+# Run tests
+forge test
+
+# Run tests with coverage
+make coverage
 ```
 
-### Anvil
+## Deployment
 
-```shell
-$ anvil
+### Initial Deployment
+
+Deploy all core contracts:
+
+```bash
+make deploy
 ```
 
-### Deploy
+This will deploy:
+- Bridge contract
+- Twin beacon (for proxy patterns)
+- CrossChainERC20Factory
+- Save deployment addresses to `deployments/{network}.json`
 
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
+### Creating Wrapped Tokens
+
+Create wrapped versions of Solana tokens:
+
+```bash
+# Create wrapped SPL token (requires setting environment variables first)
+# Set REMOTE_SPL as bytes32 representation of SPL mint pubkey on Solana
+# Set TOKEN_NAME and TOKEN_SYMBOL for the wrapped token
+REMOTE_SPL=0x... TOKEN_NAME="MyToken" TOKEN_SYMBOL="MTK" make create-wrapped-spl
 ```
 
-### Cast
-
-```shell
-$ cast <subcommand>
+Custom token creation:
+```bash
+TOKEN_NAME="MyToken" TOKEN_SYMBOL="MTK" REMOTE_TOKEN=0x1234... forge script CreateTokenScript --account testnet-admin --rpc-url $BASE_RPC --broadcast -vvvv
 ```
 
-### Help
+## Operations
 
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
+### Bridging Tokens to Solana
+
+Bridge various token types from Base to Solana:
+
+```bash
+# Bridge SOL (native) to Solana
+make bridge-sol-to-solana
+
+# Bridge SPL tokens to Solana
+make bridge-tokens-to-solana
+
+# Bridge ERC20 tokens to Solana
+make bridge-erc20-to-solana
+
+# Bridge ETH to Solana
+make bridge-eth-to-solana
 ```
+
+Custom bridging:
+```bash
+LOCAL_TOKEN=0x123... REMOTE_TOKEN=0x456... TO=0x789... AMOUNT=1000000 forge script BridgeTokensToSolanaScript --account testnet-admin --rpc-url $BASE_RPC --broadcast -vvvv
+```
+
+### Testing Utilities
+
+```bash
+# Deploy mock ERC20 for testing
+make create-mock-token
+
+# Check bridge state
+make check-root
+```
+
+## Contract Upgrades
+
+The system uses upgradeable beacon proxies. To upgrade contracts:
+
+1. Edit `UpgradeScript.s.sol` and set the appropriate upgrade flags:
+```solidity
+bool upgradeTwin = true;     // Enable to upgrade Twin implementation
+bool upgradeERC20 = true;    // Enable to upgrade CrossChainERC20 implementation  
+bool upgradeERC20Factory = true; // Enable to upgrade factory
+bool upgradeBridge = true;   // Enable to upgrade Bridge implementation
+```
+
+2. Run the upgrade:
+```bash
+forge script UpgradeScript --account testnet-admin --rpc-url $BASE_RPC --broadcast -vvvv
+```
+
+## Scripts Reference
+
+### Main Scripts
+
+- **`Deploy.s.sol`**: Deploys all core bridge contracts and saves addresses
+- **`UpgradeScript.s.sol`**: Upgrades existing deployed contracts using beacon proxy pattern
+
+### Action Scripts
+
+- **`CreateToken.s.sol`**: Creates wrapped ERC20 tokens representing Solana tokens
+- **`BridgeTokensToSolana.s.sol`**: Initiates token transfers from Base to Solana
+- **`DeployERC20.s.sol`**: Deploys mock ERC20 tokens for testing
