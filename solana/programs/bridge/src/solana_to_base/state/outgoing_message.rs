@@ -92,8 +92,12 @@ pub enum Message {
 #[derive(Debug, Eq, PartialEq)]
 pub struct OutgoingMessage {
     /// Sequential number for this message to ensure ordering and prevent replay attacks.
-    /// Each sender maintains their own nonce sequence starting from 0.
+    /// Starts at 1 and is incremented for each new message.
     pub nonce: u64,
+
+    /// The Solana public key of the account that paid for the message.
+    /// This is needed to refund the payer once the message has been relayed to Base.
+    pub original_payer: Pubkey,
 
     /// The Solana public key of the account that initiated this cross-chain message.
     /// This is used for authentication and to identify the message originator on Base.
@@ -109,18 +113,26 @@ pub struct OutgoingMessage {
 }
 
 impl OutgoingMessage {
-    pub fn new_call(nonce: u64, sender: Pubkey, gas_limit: u64, call: Call) -> Self {
+    pub fn new_call(nonce: u64, payer: Pubkey, sender: Pubkey, gas_limit: u64, call: Call) -> Self {
         Self {
             nonce,
+            original_payer: payer,
             sender,
             gas_limit,
             message: Message::Call(call),
         }
     }
 
-    pub fn new_transfer(nonce: u64, sender: Pubkey, gas_limit: u64, transfer: Transfer) -> Self {
+    pub fn new_transfer(
+        nonce: u64,
+        payer: Pubkey,
+        sender: Pubkey,
+        gas_limit: u64,
+        transfer: Transfer,
+    ) -> Self {
         Self {
             nonce,
+            original_payer: payer,
             sender,
             gas_limit,
             message: Message::Transfer(transfer),
