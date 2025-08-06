@@ -6,7 +6,7 @@ use anchor_spl::{
 
 use crate::{
     common::{bridge::Bridge, BRIDGE_SEED},
-    solana_to_base::{Call, CallBuffer, OutgoingMessage, GAS_FEE_RECEIVER},
+    solana_to_base::{Call, CallBuffer, OutgoingMessage},
 };
 
 /// Accounts struct for the bridge_wrapped_token_with_buffered_call instruction that transfers wrapped tokens
@@ -27,12 +27,9 @@ pub struct BridgeWrappedTokenWithBufferedCall<'info> {
     /// Must sign the transaction to authorize burning their tokens.
     pub from: Signer<'info>,
 
-    /// The hardcoded account that receives gas fees for Base operations.
-    /// - Must match the predefined GAS_FEE_RECEIVER address
-    /// - Receives lamports to cover gas costs on Base
-    ///
-    /// CHECK: This is the hardcoded gas fee receiver account.
-    #[account(mut, address = GAS_FEE_RECEIVER @ BridgeWrappedTokenWithBufferedCallError::IncorrectGasFeeReceiver)]
+    /// The account that receives payment for the gas costs of bridging the wrapped token to Base.
+    /// CHECK: This account is validated to be the same as bridge.gas_cost_config.gas_fee_receiver
+    #[account(mut, address = bridge.gas_cost_config.gas_fee_receiver @ BridgeWrappedTokenWithBufferedCallError::IncorrectGasFeeReceiver)]
     pub gas_fee_receiver: AccountInfo<'info>,
 
     /// The wrapped token mint account representing the original Base token.
@@ -142,8 +139,11 @@ mod tests {
             BridgeWrappedTokenWithBufferedCall as BridgeWrappedTokenWithBufferedCallIx,
             InitializeCallBuffer,
         },
-        solana_to_base::{CallType, GAS_FEE_RECEIVER},
-        test_utils::{create_mock_token_account, create_mock_wrapped_mint, setup_bridge_and_svm},
+        solana_to_base::CallType,
+        test_utils::{
+            create_mock_token_account, create_mock_wrapped_mint, setup_bridge_and_svm,
+            TEST_GAS_FEE_RECEIVER,
+        },
         ID,
     };
 
@@ -158,9 +158,6 @@ mod tests {
         // Create owner account (who owns the call buffer)
         let owner = Keypair::new();
         svm.airdrop(&owner.pubkey(), LAMPORTS_PER_SOL).unwrap();
-
-        // Airdrop to gas fee receiver
-        svm.airdrop(&GAS_FEE_RECEIVER, LAMPORTS_PER_SOL).unwrap();
 
         // Create test wrapped token metadata
         let partial_token_metadata = PartialTokenMetadata {
@@ -203,6 +200,7 @@ mod tests {
         // First, initialize the call buffer
         let init_accounts = accounts::InitializeCallBuffer {
             payer: owner.pubkey(),
+            bridge: bridge_pda,
             call_buffer: call_buffer.pubkey(),
             system_program: system_program::ID,
         }
@@ -237,7 +235,7 @@ mod tests {
         let accounts = accounts::BridgeWrappedTokenWithBufferedCall {
             payer: payer.pubkey(),
             from: from.pubkey(),
-            gas_fee_receiver: GAS_FEE_RECEIVER,
+            gas_fee_receiver: TEST_GAS_FEE_RECEIVER,
             mint: wrapped_mint,
             from_token_account,
             bridge: bridge_pda,
@@ -348,9 +346,6 @@ mod tests {
         svm.airdrop(&unauthorized.pubkey(), LAMPORTS_PER_SOL)
             .unwrap();
 
-        // Airdrop to gas fee receiver
-        svm.airdrop(&GAS_FEE_RECEIVER, LAMPORTS_PER_SOL).unwrap();
-
         // Create test wrapped token metadata
         let partial_token_metadata = PartialTokenMetadata {
             name: "Test Token".to_string(),
@@ -381,6 +376,7 @@ mod tests {
         // First, initialize the call buffer with owner
         let init_accounts = accounts::InitializeCallBuffer {
             payer: owner.pubkey(),
+            bridge: bridge_pda,
             call_buffer: call_buffer.pubkey(),
             system_program: system_program::ID,
         }
@@ -418,7 +414,7 @@ mod tests {
         let accounts = accounts::BridgeWrappedTokenWithBufferedCall {
             payer: payer.pubkey(),
             from: from.pubkey(),
-            gas_fee_receiver: GAS_FEE_RECEIVER,
+            gas_fee_receiver: TEST_GAS_FEE_RECEIVER,
             mint: wrapped_mint,
             from_token_account,
             bridge: bridge_pda,
@@ -479,8 +475,6 @@ mod tests {
 
         // Create wrong gas fee receiver
         let wrong_gas_fee_receiver = Keypair::new();
-        svm.airdrop(&wrong_gas_fee_receiver.pubkey(), LAMPORTS_PER_SOL)
-            .unwrap();
 
         // Create test wrapped token metadata
         let partial_token_metadata = PartialTokenMetadata {
@@ -511,6 +505,7 @@ mod tests {
         // Initialize the call buffer
         let init_accounts = accounts::InitializeCallBuffer {
             payer: owner.pubkey(),
+            bridge: bridge_pda,
             call_buffer: call_buffer.pubkey(),
             system_program: system_program::ID,
         }
