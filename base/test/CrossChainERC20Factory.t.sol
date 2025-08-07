@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {Test} from "forge-std/Test.sol";
 import {LibClone} from "solady/utils/LibClone.sol";
 
 import {DeployScript} from "../script/Deploy.s.sol";
@@ -9,16 +8,13 @@ import {DeployScript} from "../script/Deploy.s.sol";
 import {Bridge} from "../src/Bridge.sol";
 import {CrossChainERC20} from "../src/CrossChainERC20.sol";
 import {CrossChainERC20Factory} from "../src/CrossChainERC20Factory.sol";
+import {CommonTest} from "./CommonTest.t.sol";
 
-contract CrossChainERC20FactoryTest is Test {
+contract CrossChainERC20FactoryTest is CommonTest {
     //////////////////////////////////////////////////////////////
     ///                       Test Setup                       ///
     //////////////////////////////////////////////////////////////
-
-    Bridge public bridge;
-    CrossChainERC20Factory public factory;
     address public beacon;
-    address public tokenBridge;
 
     // Test users
     address public deployer = makeAddr("deployer");
@@ -33,11 +29,10 @@ contract CrossChainERC20FactoryTest is Test {
 
     function setUp() public {
         DeployScript deployerScript = new DeployScript();
-        (, bridge, factory,) = deployerScript.run();
+        (,, bridge, factory,) = deployerScript.run();
 
         // Initialize the beacon and tokenBridge variables
         beacon = factory.BEACON();
-        tokenBridge = address(bridge);
     }
 
     //////////////////////////////////////////////////////////////
@@ -273,7 +268,7 @@ contract CrossChainERC20FactoryTest is Test {
         assertEq(token.symbol(), TOKEN_SYMBOL, "Token symbol should match");
         assertEq(token.decimals(), TOKEN_DECIMALS, "Token decimals should match");
         assertEq(token.remoteToken(), REMOTE_TOKEN, "Remote token should match");
-        assertEq(token.bridge(), tokenBridge, "Bridge address should match");
+        assertEq(token.bridge(), address(bridge), "Bridge address should match");
     }
 
     //////////////////////////////////////////////////////////////

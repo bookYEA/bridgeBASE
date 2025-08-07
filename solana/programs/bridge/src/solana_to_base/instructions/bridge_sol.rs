@@ -11,7 +11,7 @@ use crate::{
 /// The bridged SOLs are locked in a vault on Solana and an outgoing message is created to mint
 /// the corresponding tokens and execute the optional call on Base.
 #[derive(Accounts)]
-#[instruction(_gas_limit: u64, _to: [u8; 20], remote_token: [u8; 20], _amount: u64, call: Option<Call>)]
+#[instruction(_to: [u8; 20], remote_token: [u8; 20], _amount: u64, call: Option<Call>)]
 pub struct BridgeSol<'info> {
     /// The account that pays for transaction fees and account creation.
     /// Must be mutable to deduct lamports for account rent and gas fees.
@@ -65,7 +65,6 @@ pub struct BridgeSol<'info> {
 
 pub fn bridge_sol_handler(
     ctx: Context<BridgeSol>,
-    gas_limit: u64,
     to: [u8; 20],
     remote_token: [u8; 20],
     amount: u64,
@@ -73,7 +72,7 @@ pub fn bridge_sol_handler(
 ) -> Result<()> {
     // Check if bridge is paused
     require!(!ctx.accounts.bridge.paused, BridgeSolError::BridgePaused);
-    
+
     bridge_sol_internal(
         &ctx.accounts.payer,
         &ctx.accounts.from,
@@ -82,7 +81,6 @@ pub fn bridge_sol_handler(
         &mut ctx.accounts.bridge,
         &mut ctx.accounts.outgoing_message,
         &ctx.accounts.system_program,
-        gas_limit,
         to,
         remote_token,
         amount,
@@ -134,7 +132,6 @@ mod tests {
         let outgoing_message = Keypair::new();
 
         // Test parameters
-        let gas_limit = 1_000_000u64;
         let to = [1u8; 20]; // Base address
         let remote_token = [2u8; 20]; // Remote token address
         let amount = LAMPORTS_PER_SOL; // 1 SOL
@@ -160,7 +157,6 @@ mod tests {
             program_id: ID,
             accounts,
             data: BridgeSolIx {
-                gas_limit,
                 to,
                 remote_token,
                 amount,
@@ -198,7 +194,6 @@ mod tests {
         assert_eq!(outgoing_message_data.nonce, 1);
         assert_eq!(outgoing_message_data.original_payer, payer.pubkey());
         assert_eq!(outgoing_message_data.sender, from.pubkey());
-        assert_eq!(outgoing_message_data.gas_limit, gas_limit);
 
         // Verify the message content
         match outgoing_message_data.message {
@@ -237,7 +232,6 @@ mod tests {
         let outgoing_message = Keypair::new();
 
         // Test parameters
-        let gas_limit = 1_000_000u64;
         let to = [1u8; 20];
         let remote_token = [2u8; 20];
         let amount = LAMPORTS_PER_SOL / 2; // 0.5 SOL
@@ -271,7 +265,6 @@ mod tests {
             program_id: ID,
             accounts,
             data: BridgeSolIx {
-                gas_limit,
                 to,
                 remote_token,
                 amount,
@@ -329,7 +322,6 @@ mod tests {
         let outgoing_message = Keypair::new();
 
         // Test parameters
-        let gas_limit = 1_000_000u64;
         let to = [1u8; 20];
         let remote_token = [2u8; 20];
         let amount = LAMPORTS_PER_SOL;
@@ -355,7 +347,6 @@ mod tests {
             program_id: ID,
             accounts,
             data: BridgeSolIx {
-                gas_limit,
                 to,
                 remote_token,
                 amount,
@@ -408,7 +399,6 @@ mod tests {
         let outgoing_message = Keypair::new();
 
         // Test parameters
-        let gas_limit = 1_000_000u64;
         let to = [1u8; 20];
         let remote_token = [2u8; 20];
         let amount = LAMPORTS_PER_SOL;
@@ -434,7 +424,6 @@ mod tests {
             program_id: ID,
             accounts,
             data: BridgeSolIx {
-                gas_limit,
                 to,
                 remote_token,
                 amount,

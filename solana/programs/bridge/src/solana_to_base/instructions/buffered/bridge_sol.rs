@@ -14,7 +14,7 @@ use crate::{
 /// the corresponding tokens and execute the call on Base. The call buffer account is closed and
 /// rent returned to the owner.
 #[derive(Accounts)]
-#[instruction(_gas_limit: u64, _to: [u8; 20], remote_token: [u8; 20])]
+#[instruction(_to: [u8; 20], remote_token: [u8; 20])]
 pub struct BridgeSolWithBufferedCall<'info> {
     /// The account that pays for transaction fees and account creation.
     /// Must be mutable to deduct lamports for account rent and gas fees.
@@ -73,7 +73,6 @@ pub struct BridgeSolWithBufferedCall<'info> {
 
 pub fn bridge_sol_with_buffered_call_handler<'a, 'b, 'c, 'info>(
     ctx: Context<'a, 'b, 'c, 'info, BridgeSolWithBufferedCall<'info>>,
-    gas_limit: u64,
     to: [u8; 20],
     remote_token: [u8; 20],
     amount: u64,
@@ -97,7 +96,6 @@ pub fn bridge_sol_with_buffered_call_handler<'a, 'b, 'c, 'info>(
         &mut ctx.accounts.bridge,
         &mut ctx.accounts.outgoing_message,
         &ctx.accounts.system_program,
-        gas_limit,
         to,
         remote_token,
         amount,
@@ -155,7 +153,6 @@ mod tests {
         let call_buffer = Keypair::new();
 
         // Test parameters
-        let gas_limit = 1_000_000u64;
         let to = [1u8; 20];
         let remote_token = [2u8; 20];
         let amount = LAMPORTS_PER_SOL;
@@ -224,7 +221,6 @@ mod tests {
             program_id: ID,
             accounts,
             data: BridgeSolWithBufferedCallIx {
-                gas_limit,
                 to,
                 remote_token,
                 amount,
@@ -261,7 +257,6 @@ mod tests {
         assert_eq!(outgoing_message_data.nonce, 1);
         assert_eq!(outgoing_message_data.original_payer, payer.pubkey());
         assert_eq!(outgoing_message_data.sender, from.pubkey());
-        assert_eq!(outgoing_message_data.gas_limit, gas_limit);
 
         // Verify the message content matches the call buffer data
         match outgoing_message_data.message {
@@ -363,7 +358,6 @@ mod tests {
 
         // Now try to use bridge_sol_with_buffered_call with unauthorized account as owner
         let outgoing_message = Keypair::new();
-        let gas_limit = 1_000_000u64;
         let to = [1u8; 20];
         let remote_token = [2u8; 20];
         let amount = LAMPORTS_PER_SOL;
@@ -391,7 +385,6 @@ mod tests {
             program_id: ID,
             accounts,
             data: BridgeSolWithBufferedCallIx {
-                gas_limit,
                 to,
                 remote_token,
                 amount,
@@ -473,7 +466,6 @@ mod tests {
 
         // Now try bridge_sol_with_buffered_call with wrong gas fee receiver
         let outgoing_message = Keypair::new();
-        let gas_limit = 1_000_000u64;
         let to = [1u8; 20];
         let remote_token = [2u8; 20];
         let amount = LAMPORTS_PER_SOL;
@@ -501,7 +493,6 @@ mod tests {
             program_id: ID,
             accounts,
             data: BridgeSolWithBufferedCallIx {
-                gas_limit,
                 to,
                 remote_token,
                 amount,

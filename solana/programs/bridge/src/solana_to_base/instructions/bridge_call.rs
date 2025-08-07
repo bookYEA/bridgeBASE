@@ -9,7 +9,7 @@ use crate::{
 /// from Solana to Base. This instruction creates an outgoing message containing
 /// the call data and handles gas fee payment for cross-chain execution.
 #[derive(Accounts)]
-#[instruction(_gas_limit: u64, call: Call)]
+#[instruction(call: Call)]
 pub struct BridgeCall<'info> {
     /// The account that pays for the transaction fees and outgoing message account creation.
     /// Must be mutable to deduct lamports for account rent and gas fees.
@@ -49,10 +49,9 @@ pub struct BridgeCall<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn bridge_call_handler(ctx: Context<BridgeCall>, gas_limit: u64, call: Call) -> Result<()> {
+pub fn bridge_call_handler(ctx: Context<BridgeCall>, call: Call) -> Result<()> {
     // Check if bridge is paused
     require!(!ctx.accounts.bridge.paused, BridgeCallError::BridgePaused);
-    
     bridge_call_internal(
         &ctx.accounts.payer,
         &ctx.accounts.from,
@@ -60,7 +59,6 @@ pub fn bridge_call_handler(ctx: Context<BridgeCall>, gas_limit: u64, call: Call)
         &mut ctx.accounts.bridge,
         &mut ctx.accounts.outgoing_message,
         &ctx.accounts.system_program,
-        gas_limit,
         call,
     )
 }
@@ -120,8 +118,6 @@ mod tests {
             data: vec![0x12, 0x34, 0x56, 0x78], // Some test calldata
         };
 
-        let gas_limit = 1_000_000u64;
-
         // Build the BridgeCall instruction accounts
         let accounts = accounts::BridgeCall {
             payer: payer.pubkey(),
@@ -137,11 +133,7 @@ mod tests {
         let ix = Instruction {
             program_id: ID,
             accounts,
-            data: BridgeCallIx {
-                gas_limit,
-                call: call.clone(),
-            }
-            .data(),
+            data: BridgeCallIx { call: call.clone() }.data(),
         };
 
         // Build the transaction
@@ -166,7 +158,6 @@ mod tests {
         assert_eq!(outgoing_message_data.nonce, 1); // First message should have nonce 1
         assert_eq!(outgoing_message_data.original_payer, payer.pubkey());
         assert_eq!(outgoing_message_data.sender, from.pubkey());
-        assert_eq!(outgoing_message_data.gas_limit, gas_limit);
 
         // Verify the message content
         match outgoing_message_data.message {
@@ -209,8 +200,6 @@ mod tests {
             data: vec![0x12, 0x34, 0x56, 0x78],
         };
 
-        let gas_limit = 1_000_000u64;
-
         // Build the BridgeCall instruction accounts with wrong gas fee receiver
         let accounts = accounts::BridgeCall {
             payer: payer.pubkey(),
@@ -226,7 +215,7 @@ mod tests {
         let ix = Instruction {
             program_id: ID,
             accounts,
-            data: BridgeCallIx { gas_limit, call }.data(),
+            data: BridgeCallIx { call }.data(),
         };
 
         // Build the transaction
@@ -273,7 +262,6 @@ mod tests {
         let outgoing_message = Keypair::new();
 
         // Test parameters
-        let gas_limit = 1_000_000u64;
         let call = Call {
             ty: CallType::Call,
             to: [1u8; 20],
@@ -296,7 +284,7 @@ mod tests {
         let ix = Instruction {
             program_id: ID,
             accounts,
-            data: BridgeCallIx { gas_limit, call }.data(),
+            data: BridgeCallIx { call }.data(),
         };
 
         // Build the transaction

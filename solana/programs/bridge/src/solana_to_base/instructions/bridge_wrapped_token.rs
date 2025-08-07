@@ -17,7 +17,7 @@ use crate::{
 /// This instruction burns wrapped tokens on Solana and creates an outgoing message to transfer equivalent
 /// tokens and execute the optional call on Base.
 #[derive(Accounts)]
-#[instruction(_gas_limit: u64, _to: [u8; 20], _amount: u64, call: Option<Call>)]
+#[instruction(_to: [u8; 20], _amount: u64, call: Option<Call>)]
 pub struct BridgeWrappedToken<'info> {
     /// The account that pays for transaction fees and outgoing message account creation.
     /// Must be mutable to deduct lamports for account rent and gas fees.
@@ -72,7 +72,6 @@ pub struct BridgeWrappedToken<'info> {
 
 pub fn bridge_wrapped_token_handler(
     ctx: Context<BridgeWrappedToken>,
-    gas_limit: u64,
     to: [u8; 20],
     amount: u64,
     call: Option<Call>,
@@ -90,7 +89,6 @@ pub fn bridge_wrapped_token_handler(
         &mut ctx.accounts.outgoing_message,
         &ctx.accounts.token_program,
         &ctx.accounts.system_program,
-        gas_limit,
         to,
         amount,
         call,
@@ -171,7 +169,6 @@ mod tests {
         let outgoing_message = Keypair::new();
 
         // Test parameters
-        let gas_limit = 1_000_000u64;
         let to = [1u8; 20]; // Base address
         let amount = 500_000u64; // 0.5 tokens
 
@@ -194,7 +191,6 @@ mod tests {
             program_id: ID,
             accounts,
             data: BridgeWrappedTokenIx {
-                gas_limit,
                 to,
                 amount,
                 call: None,
@@ -224,7 +220,6 @@ mod tests {
         assert_eq!(outgoing_message_data.nonce, 1);
         assert_eq!(outgoing_message_data.original_payer, payer.pubkey());
         assert_eq!(outgoing_message_data.sender, from.pubkey());
-        assert_eq!(outgoing_message_data.gas_limit, gas_limit);
 
         // Verify the message content
         match outgoing_message_data.message {
@@ -285,7 +280,6 @@ mod tests {
         let outgoing_message = Keypair::new();
 
         // Test parameters
-        let gas_limit = 1_000_000u64;
         let to = [1u8; 20];
         let amount = 250_000u64; // 0.25 tokens
 
@@ -316,7 +310,6 @@ mod tests {
             program_id: ID,
             accounts,
             data: BridgeWrappedTokenIx {
-                gas_limit,
                 to,
                 amount,
                 call: Some(call.clone()),
@@ -395,7 +388,6 @@ mod tests {
         let outgoing_message = Keypair::new();
 
         // Test parameters
-        let gas_limit = 1_000_000u64;
         let to = [1u8; 20];
         let amount = 500_000u64;
 
@@ -418,7 +410,6 @@ mod tests {
             program_id: ID,
             accounts,
             data: BridgeWrappedTokenIx {
-                gas_limit,
                 to,
                 amount,
                 call: None,
@@ -492,7 +483,6 @@ mod tests {
         let outgoing_message = Keypair::new();
 
         // Test parameters
-        let gas_limit = 1_000_000u64;
         let to = [1u8; 20];
         let amount = 500_000u64;
 
@@ -515,7 +505,6 @@ mod tests {
             program_id: ID,
             accounts,
             data: BridgeWrappedTokenIx {
-                gas_limit,
                 to,
                 amount,
                 call: None,
