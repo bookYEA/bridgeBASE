@@ -19,12 +19,16 @@ import {
   getPayer,
   getRpc,
 } from "../utils/transaction";
+import { waitAndExecuteOnBase } from "../../utils";
+import { maybeGetAta } from "../utils/ata";
 
 async function main() {
   const target = getTarget();
   const constants = CONSTANTS[target];
   const payer = await getPayer();
   const rpc = getRpc(target);
+
+  const mint = constants.wErc20;
 
   console.log("=".repeat(40));
   console.log(`Target: ${target}`);
@@ -46,8 +50,16 @@ async function main() {
     outgoingMessageKeypair
   );
 
+  const maybeAta = await maybeGetAta(rpc, payer.address, mint);
+  if (!maybeAta.exists) {
+    console.error(
+      `ATA does not exist, use bun tx:spl:create-ata first and fund it with bun tx:spl:mint`
+    );
+    return;
+  }
+
   console.log(`🔗 Bridge: ${bridgeAddress}`);
-  console.log(`🔗 From Token Account: ${constants.wErc20Ata}`);
+  console.log(`🔗 From Token Account: ${maybeAta.address}`);
   console.log(`🔗 Outgoing Message: ${outgoingMessageSigner.address}`);
 
   console.log("🛠️  Building instruction...");
@@ -57,15 +69,14 @@ async function main() {
       payer,
       from: payer,
       gasFeeReceiver: bridge.data.gasCostConfig.gasFeeReceiver,
-      mint: constants.wErc20,
-      fromTokenAccount: constants.wErc20Ata,
+      mint,
+      fromTokenAccount: maybeAta.address,
       bridge: bridgeAddress,
       outgoingMessage: outgoingMessageSigner,
       tokenProgram: TOKEN_2022_PROGRAM_ADDRESS,
       systemProgram: SYSTEM_PROGRAM_ADDRESS,
 
       // Arguments
-      gasLimit: 1_000_000n,
       to: toBytes(constants.recipient),
       amount: 1n,
       call: null,
@@ -75,7 +86,10 @@ async function main() {
 
   console.log("🚀 Sending transaction...");
   await buildAndSendTransaction(target, [ix]);
-  console.log("✅ Done!");
+  console.log("✅ Transaction sent!");
+
+  await waitAndExecuteOnBase(outgoingMessageSigner.address);
+  console.log("✅ Executed on Base!");
 }
 
 main().catch((e) => {

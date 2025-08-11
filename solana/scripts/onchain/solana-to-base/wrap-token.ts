@@ -21,6 +21,7 @@ import {
   getPayer,
   getRpc,
 } from "../utils/transaction";
+import { waitAndExecuteOnBase } from "../../utils";
 
 async function main() {
   const target = getTarget();
@@ -43,7 +44,6 @@ async function main() {
     symbol: "wERC20",
     remoteToken: toBytes(constants.erc20),
     scalerExponent: 9,
-    gasLimit: 1_000_000n,
   };
 
   // Calculate metadata hash
@@ -102,7 +102,10 @@ async function main() {
 
   console.log("🚀 Sending transaction...");
   await buildAndSendTransaction(target, [ix], payer);
-  console.log("✅ Done!");
+  console.log("✅ Transaction sent!");
+
+  await waitAndExecuteOnBase(outgoingMessageSigner.address);
+  console.log("✅ Executed on Base!");
 }
 
 main().catch((e) => {

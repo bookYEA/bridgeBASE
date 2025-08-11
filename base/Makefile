@@ -8,12 +8,12 @@ BASE_RPC=https://base-sepolia.cbhq.net
 # alpha or prod
 ENV_NAME=alpha
 
-SOLANA_SOL_RECEIVER = 0x82c9f09a109bce580bb82c13c310689fd00e2225f8dd22015271620ecc035221
-USER_SPL_ATA = 0x586931089de14bbc55cc4ee29c5d4d9be9db9967ab6770c0fda2337c09091749
-USER_REMOTE_ERC20_ATA = 0x659abca3e23fa5a8212846977d3f8d2593b4b0c565afcc38aa89ea6d184cfb06
-USER_REMOTE_ETH_ATA = 0xf86b5aa217cca19080d4c9fb685bc671bc882e49a1764e0ecfbfaabc360bb661
+SOLANA_SOL_RECEIVER = 0x9827993b7b317eb6c74279d49074a13b33a3495a30637c86a7513922014ba424
+USER_SPL_ATA = 0x6621d2d930ef7ada6260d3e0a5679a8fe81fde41262314f2efbf9c4c828550b1
+USER_REMOTE_ERC20_ATA = 0x2af11ef2bf07c9f34eb038aa042dc375cdeb8519d31464bda410ed72c4087f6f
+USER_REMOTE_ETH_ATA = 0x6ce0eb02e5c9ce90914c1457e6ebb812b96a9d5a4f2cb753c13c4e84eb0703d0
 
-AMOUNT = 1000000
+AMOUNT = 1000000000
 ####################################################################################################
 
 BRIDGE = $(shell jq -r '.Bridge' deployments/base_sepolia_$(ENV_NAME).json)
@@ -22,6 +22,7 @@ REMOTE_SOL = $(shell jq -r '.RemoteSOL' deployments/base_sepolia_$(ENV_NAME).jso
 LOCAL_SPL = $(shell jq -r '.WrappedSPL' deployments/base_sepolia_$(ENV_NAME).json)
 REMOTE_SPL = $(shell jq -r '.RemoteSPL' deployments/base_sepolia_$(ENV_NAME).json)
 REMOTE_ERC20 = $(shell jq -r '.RemoteERC20' deployments/base_sepolia_$(ENV_NAME).json)
+REMOTE_ETH = $(shell jq -r '.RemoteETH' deployments/base_sepolia_$(ENV_NAME).json)
 
 LOCAL_ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE
 LOCAL_ERC20 = 0x62C1332822983B8412A6Ffda0fd77cd7d5733Ee9
@@ -50,11 +51,11 @@ dev-deploy: deploy create-wrapped-sol create-wrapped-spl
 
 .PHONY: deploy
 deploy:
-	BRIDGE_ENVIRONMENT=$(ENV_NAME) forge script DeployScript --account testnet-admin --rpc-url $(BASE_RPC) --sender $(shell cast wallet address --account testnet-admin) -vvvv
+	BRIDGE_ENVIRONMENT=$(ENV_NAME) forge script DeployScript --account testnet-admin --rpc-url $(BASE_RPC) --sender $(shell cast wallet address --account testnet-admin) --broadcast -vvvv
 
 .PHONY: create-wrapped-sol
 create-wrapped-sol:
-	BRIDGE_ENVIRONMENT=$(ENV_NAME) TOKEN_NAME=WrappedSOL TOKEN_SYMBOL=wSOL REMOTE_TOKEN=$(REMOTE_SOL) forge script CreateTokenScript --account testnet-admin --rpc-url $(BASE_RPC) -vvvv
+	BRIDGE_ENVIRONMENT=$(ENV_NAME) TOKEN_NAME=WrappedSOL TOKEN_SYMBOL=wSOL REMOTE_TOKEN=$(REMOTE_SOL) forge script CreateTokenScript --account testnet-admin --rpc-url $(BASE_RPC) --broadcast -vvvv
 
 .PHONY: create-wrapped-spl
 create-wrapped-spl:
@@ -66,14 +67,16 @@ create-mock-token:
 
 .PHONY: bridge-sol-to-solana
 bridge-sol-to-solana:
+	BRIDGE_ENVIRONMENT=$(ENV_NAME) \
 	LOCAL_TOKEN=$(LOCAL_SOL) \
 	REMOTE_TOKEN=$(REMOTE_SOL) \
 	TO=$(SOLANA_SOL_RECEIVER) \
 	AMOUNT=$(AMOUNT) \
 	forge script BridgeTokensToSolanaScript --account testnet-admin --rpc-url $(BASE_RPC) --broadcast -vvvv
 
-.PHONY: bridge-tokens-to-solana
-bridge-tokens-to-solana:
+.PHONY: bridge-spl-to-solana
+bridge-spl-to-solana:
+	BRIDGE_ENVIRONMENT=$(ENV_NAME) \
 	LOCAL_TOKEN=$(LOCAL_SPL) \
 	REMOTE_TOKEN=$(REMOTE_SPL) \
 	TO=$(USER_SPL_ATA) \
@@ -82,6 +85,7 @@ bridge-tokens-to-solana:
 
 .PHONY: bridge-erc20-to-solana
 bridge-erc20-to-solana:
+	BRIDGE_ENVIRONMENT=$(ENV_NAME) \
 	LOCAL_TOKEN=$(LOCAL_ERC20) \
 	REMOTE_TOKEN=$(REMOTE_ERC20) \
 	TO=$(USER_REMOTE_ERC20_ATA) \
@@ -91,6 +95,7 @@ bridge-erc20-to-solana:
 
 .PHONY: bridge-eth-to-solana
 bridge-eth-to-solana:
+	BRIDGE_ENVIRONMENT=$(ENV_NAME) \
 	LOCAL_TOKEN=$(LOCAL_ETH) \
 	REMOTE_TOKEN=$(REMOTE_ETH) \
 	TO=$(USER_REMOTE_ETH_ATA) \
