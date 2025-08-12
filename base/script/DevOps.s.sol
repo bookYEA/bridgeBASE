@@ -2,28 +2,38 @@
 pragma solidity 0.8.28;
 
 import {Script} from "forge-std/Script.sol";
+import {LibString} from "solady/utils/LibString.sol";
 
 contract DevOps is Script {
     string environment = vm.envOr("BRIDGE_ENVIRONMENT", string(""));
-    string fileData;
 
     constructor() {
-        string memory fileName = _generateDeploymentFilename();
-        if (vm.isFile(fileName)) {
-            fileData = vm.readFile(string.concat(vm.projectRoot(), "/", fileName));
+        if (block.chainid != 31337) {
+            string memory fileName = _generateDeploymentFilename();
+            if (!vm.isFile(fileName)) {
+                string memory fileData = vm.readFile(string.concat(vm.projectRoot(), "/deployments/template.json"));
+                vm.writeJson({json: fileData, path: fileName});
+            }
         }
     }
 
-    function _getAddress(string memory key) internal view returns (address) {
+    modifier skipLocal() {
+        if (block.chainid != 31337) {
+            _;
+        }
+    }
+
+    function _getAddress(string memory key) internal skipLocal returns (address) {
+        string memory fileData = vm.readFile(string.concat(vm.projectRoot(), "/", _generateDeploymentFilename()));
         return vm.parseJsonAddress({json: fileData, key: string.concat(".", key)});
     }
 
-    function _serializeAddress(string memory key, address value) internal {
-        fileData = vm.serializeAddress({objectKey: "root", valueKey: key, value: value});
-    }
-
-    function _writeJsonFile() internal {
-        vm.writeJson(fileData, _generateDeploymentFilename());
+    function _serializeAddress(string memory key, address value) internal skipLocal {
+        vm.writeJson({
+            json: LibString.toHexStringChecksummed(value),
+            path: _generateDeploymentFilename(),
+            valueKey: string.concat(".", key)
+        });
     }
 
     function _generateDeploymentFilename() private returns (string memory) {
