@@ -1,13 +1,9 @@
 use anchor_lang::prelude::*;
 
 use crate::common::{
-    bridge::{
-        Bridge, BufferConfig, Eip1559, Eip1559Config, GasConfig, PartnerOracleConfig,
-        ProtocolConfig,
-    },
-    BRIDGE_SEED,
+    bridge::{Bridge, Eip1559},
+    Config, BRIDGE_SEED,
 };
-use crate::common::{state::oracle_signers::OracleSigners, ORACLE_SIGNERS_SEED};
 
 /// Accounts for the initialize instruction that sets up the bridge program's initial state.
 /// This instruction creates the main bridge account for cross-chain operations between Base and
@@ -37,16 +33,6 @@ pub struct Initialize<'info> {
     /// may be distinct signers.
     pub guardian: Signer<'info>,
 
-    /// Oracle signers config account storing Base signers and our required threshold for output root submissions
-    #[account(
-        init,
-        payer = payer,
-        seeds = [ORACLE_SIGNERS_SEED],
-        bump,
-        space = 8 + OracleSigners::INIT_SPACE,
-    )]
-    pub oracle_signers: Account<'info, OracleSigners>,
-
     /// System program required for creating new accounts.
     /// Used internally by Anchor for account initialization.
     pub system_program: Program<'info, System>,
@@ -55,21 +41,11 @@ pub struct Initialize<'info> {
 /// Initializes the `Bridge` state account with the provided configs, sets the guardian to the
 /// provided signer, starts unpaused, zeros counters, sets the EIP-1559 base fee to
 /// `eip1559_config.minimum_base_fee`, and records the current timestamp as the window start.
-pub fn initialize_handler(
-    ctx: Context<Initialize>,
-    eip1559_config: Eip1559Config,
-    gas_config: GasConfig,
-    protocol_config: ProtocolConfig,
-    buffer_config: BufferConfig,
-    partner_oracle_config: PartnerOracleConfig,
-) -> Result<()> {
+pub fn initialize_handler(ctx: Context<Initialize>, cfg: Config) -> Result<()> {
     let current_timestamp = Clock::get()?.unix_timestamp;
-    let minimum_base_fee = eip1559_config.minimum_base_fee;
+    let minimum_base_fee = cfg.eip1559_config.minimum_base_fee;
 
-    require!(
-        partner_oracle_config.required_threshold <= 5,
-        InitializeError::InvalidPartnerThreshold
-    );
+    cfg.validate()?;
 
     *ctx.accounts.bridge = Bridge {
         base_block_number: 0,
@@ -77,24 +53,19 @@ pub fn initialize_handler(
         guardian: ctx.accounts.guardian.key(),
         paused: false, // Initialize bridge as unpaused
         eip1559: Eip1559 {
-            config: eip1559_config,
+            config: cfg.eip1559_config,
             current_base_fee: minimum_base_fee,
             current_window_gas_used: 0,
             window_start_time: current_timestamp,
         },
-        gas_config,
-        protocol_config,
-        buffer_config,
-        partner_oracle_config,
+        gas_config: cfg.gas_config,
+        protocol_config: cfg.protocol_config,
+        buffer_config: cfg.buffer_config,
+        partner_oracle_config: cfg.partner_oracle_config,
+        base_oracle_config: cfg.base_oracle_config,
     };
 
     Ok(())
-}
-
-#[error_code]
-pub enum InitializeError {
-    #[msg("Invalid partner threshold")]
-    InvalidPartnerThreshold,
 }
 
 #[cfg(test)]
@@ -114,7 +85,16 @@ mod tests {
     use solana_signer::Signer;
     use solana_transaction::Transaction;
 
-    use crate::{accounts, instruction::Initialize, test_utils::mock_clock, ID};
+    use crate::{
+        accounts,
+        common::{
+            bridge::{BufferConfig, Eip1559Config, GasConfig, PartnerOracleConfig, ProtocolConfig},
+            BaseOracleConfig,
+        },
+        instruction::Initialize,
+        test_utils::mock_clock,
+        ID,
+    };
 
     const TEST_TIMESTAMP: i64 = 1747440000; // May 16th, 2025
 
@@ -137,14 +117,12 @@ mod tests {
 
         // Find the PDAs
         let bridge_pda = Pubkey::find_program_address(&[BRIDGE_SEED], &ID).0;
-        let oracle_signers_pda = Pubkey::find_program_address(&[ORACLE_SIGNERS_SEED], &ID).0;
 
         // Build the Initialize instruction accounts
         let accounts = accounts::Initialize {
             payer: payer_pk,
             bridge: bridge_pda,
             guardian: guardian_pk,
-            oracle_signers: oracle_signers_pda,
             system_program: system_program::ID,
         }
         .to_account_metas(None);
@@ -164,11 +142,14 @@ mod tests {
             program_id: ID,
             accounts,
             data: Initialize {
-                eip1559_config: Eip1559Config::test_new(),
-                gas_config: GasConfig::test_new(gas_fee_receiver),
-                protocol_config: ProtocolConfig::test_new(),
-                buffer_config: BufferConfig::test_new(),
-                partner_oracle_config: PartnerOracleConfig::default(),
+                cfg: Config {
+                    eip1559_config: Eip1559Config::test_new(),
+                    gas_config: GasConfig::test_new(gas_fee_receiver),
+                    protocol_config: ProtocolConfig::test_new(),
+                    buffer_config: BufferConfig::test_new(),
+                    partner_oracle_config: PartnerOracleConfig::default(),
+                    base_oracle_config: BaseOracleConfig::test_new(),
+                },
             }
             .data(),
         };
@@ -207,6 +188,7 @@ mod tests {
                 protocol_config: ProtocolConfig::test_new(),
                 buffer_config: BufferConfig::test_new(),
                 partner_oracle_config: PartnerOracleConfig::default(),
+                base_oracle_config: BaseOracleConfig::test_new(),
             }
         );
     }
@@ -222,14 +204,15 @@ mod tests {
             program_id: ID,
             accounts,
             data: Initialize {
-                eip1559_config: Eip1559Config::test_new(),
-                gas_config: GasConfig::test_new(gas_fee_receiver),
-                protocol_config: ProtocolConfig::test_new(),
-                buffer_config: BufferConfig::test_new(),
-                partner_oracle_config: PartnerOracleConfig {
-                    program_id: Pubkey::default(),
-                    signers_account: Pubkey::default(),
-                    required_threshold: 6,
+                cfg: Config {
+                    eip1559_config: Eip1559Config::test_new(),
+                    gas_config: GasConfig::test_new(gas_fee_receiver),
+                    protocol_config: ProtocolConfig::test_new(),
+                    buffer_config: BufferConfig::test_new(),
+                    partner_oracle_config: PartnerOracleConfig {
+                        required_threshold: 6,
+                    },
+                    base_oracle_config: BaseOracleConfig::test_new(),
                 },
             }
             .data(),
@@ -243,6 +226,163 @@ mod tests {
         );
 
         // Send the transaction and expect failure
+        let result = svm.send_transaction(tx);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_initialize_base_oracle_threshold_zero_fails() {
+        let (mut svm, payer, guardian, _bridge_pda, accounts) = setup_env();
+        let payer_pk = payer.pubkey();
+
+        // Build the Initialize instruction with an invalid base oracle threshold (== 0)
+        let gas_fee_receiver = Pubkey::new_unique();
+        let mut base_oracle_config = BaseOracleConfig::test_new();
+        base_oracle_config.threshold = 0;
+
+        let ix = Instruction {
+            program_id: ID,
+            accounts,
+            data: Initialize {
+                cfg: Config {
+                    eip1559_config: Eip1559Config::test_new(),
+                    gas_config: GasConfig::test_new(gas_fee_receiver),
+                    protocol_config: ProtocolConfig::test_new(),
+                    buffer_config: BufferConfig::test_new(),
+                    partner_oracle_config: PartnerOracleConfig::default(),
+                    base_oracle_config,
+                },
+            }
+            .data(),
+        };
+
+        // Build the transaction with both payer and guardian as signers
+        let tx = Transaction::new(
+            &[&payer, &guardian],
+            Message::new(&[ix], Some(&payer_pk)),
+            svm.latest_blockhash(),
+        );
+
+        // Send the transaction and expect failure
+        let result = svm.send_transaction(tx);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_initialize_base_oracle_threshold_gt_signer_count_fails() {
+        let (mut svm, payer, guardian, _bridge_pda, accounts) = setup_env();
+        let payer_pk = payer.pubkey();
+
+        // Build the Initialize instruction with threshold > signer_count
+        let gas_fee_receiver = Pubkey::new_unique();
+        let mut base_oracle_config = BaseOracleConfig::test_new();
+        base_oracle_config.threshold = base_oracle_config.signer_count + 1; // 2 > 1
+
+        let ix = Instruction {
+            program_id: ID,
+            accounts,
+            data: Initialize {
+                cfg: Config {
+                    eip1559_config: Eip1559Config::test_new(),
+                    gas_config: GasConfig::test_new(gas_fee_receiver),
+                    protocol_config: ProtocolConfig::test_new(),
+                    buffer_config: BufferConfig::test_new(),
+                    partner_oracle_config: PartnerOracleConfig::default(),
+                    base_oracle_config,
+                },
+            }
+            .data(),
+        };
+
+        // Build the transaction with both payer and guardian as signers
+        let tx = Transaction::new(
+            &[&payer, &guardian],
+            Message::new(&[ix], Some(&payer_pk)),
+            svm.latest_blockhash(),
+        );
+
+        // Send the transaction and expect failure
+        let result = svm.send_transaction(tx);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_initialize_base_oracle_signer_count_exceeds_array_len_fails() {
+        let (mut svm, payer, guardian, _bridge_pda, accounts) = setup_env();
+        let payer_pk = payer.pubkey();
+
+        // Build the Initialize instruction with signer_count > signers.len()
+        let gas_fee_receiver = Pubkey::new_unique();
+        let mut base_oracle_config = BaseOracleConfig::test_new();
+        base_oracle_config.signer_count = (base_oracle_config.signers.len() + 1) as u8; // exceed fixed array length
+        base_oracle_config.threshold = 1; // keep valid threshold
+
+        let ix = Instruction {
+            program_id: ID,
+            accounts,
+            data: Initialize {
+                cfg: Config {
+                    eip1559_config: Eip1559Config::test_new(),
+                    gas_config: GasConfig::test_new(gas_fee_receiver),
+                    protocol_config: ProtocolConfig::test_new(),
+                    buffer_config: BufferConfig::test_new(),
+                    partner_oracle_config: PartnerOracleConfig::default(),
+                    base_oracle_config,
+                },
+            }
+            .data(),
+        };
+
+        // Build the transaction with both payer and guardian as signers
+        let tx = Transaction::new(
+            &[&payer, &guardian],
+            Message::new(&[ix], Some(&payer_pk)),
+            svm.latest_blockhash(),
+        );
+
+        // Send the transaction and expect failure
+        let result = svm.send_transaction(tx);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_initialize_base_oracle_duplicate_signers_fails() {
+        let (mut svm, payer, guardian, _bridge_pda, accounts) = setup_env();
+        let payer_pk = payer.pubkey();
+
+        // Build the Initialize instruction with duplicate signer addresses among the provided entries
+        let gas_fee_receiver = Pubkey::new_unique();
+        let mut base_oracle_config = BaseOracleConfig::test_new();
+        base_oracle_config.signer_count = 2; // consider first two entries
+        base_oracle_config.threshold = 1; // keep valid threshold
+
+        // Force a duplicate among the first `signer_count` addresses
+        base_oracle_config.signers[1] = base_oracle_config.signers[0];
+
+        let ix = Instruction {
+            program_id: ID,
+            accounts,
+            data: Initialize {
+                cfg: Config {
+                    eip1559_config: Eip1559Config::test_new(),
+                    gas_config: GasConfig::test_new(gas_fee_receiver),
+                    protocol_config: ProtocolConfig::test_new(),
+                    buffer_config: BufferConfig::test_new(),
+                    partner_oracle_config: PartnerOracleConfig::default(),
+                    base_oracle_config,
+                },
+            }
+            .data(),
+        };
+
+        // Build the transaction with both payer and guardian as signers
+        let tx = Transaction::new(
+            &[&payer, &guardian],
+            Message::new(&[ix], Some(&payer_pk)),
+            svm.latest_blockhash(),
+        );
+
+        // Send the transaction and expect failure due to duplicate signer detection
         let result = svm.send_transaction(tx);
         assert!(result.is_err());
     }
