@@ -57,15 +57,6 @@ pub fn register_output_root_handler(
     total_leaf_count: u64,
     signatures: Vec<[u8; 65]>,
 ) -> Result<()> {
-    // Validate partner_config PDA using seed with the partner program id
-    let expected_partner_cfg =
-        Pubkey::find_program_address(&[PARTNER_SIGNERS_ACCOUNT_SEED], &PARTNER_PROGRAM_ID).0;
-    require_keys_eq!(
-        ctx.accounts.partner_config.key(),
-        expected_partner_cfg,
-        anchor_lang::error::ErrorCode::ConstraintSeeds
-    );
-
     // Check if bridge is paused
     require!(
         !ctx.accounts.bridge.paused,
@@ -90,15 +81,26 @@ pub fn register_output_root_handler(
         RegisterOutputRootError::InsufficientBaseSignatures
     );
 
-    // Verify partner approvals using partner's signers (deserialize manually)
-    let partner_oracle_config = &ctx.accounts.bridge.partner_oracle_config;
-    let partner_config =
-        PartnerConfig::try_deserialize(&mut &ctx.accounts.partner_config.data.borrow()[..])?;
-    let partner_approved_count = partner_config.count_approvals(&unique_signers);
-    require!(
-        partner_approved_count as u8 >= partner_oracle_config.required_threshold,
-        RegisterOutputRootError::InsufficientPartnerSignatures
-    );
+    if ctx.accounts.bridge.partner_oracle_config.required_threshold > 0 {
+        // Validate partner_config PDA using seed with the partner program id
+        let expected_partner_cfg =
+            Pubkey::find_program_address(&[PARTNER_SIGNERS_ACCOUNT_SEED], &PARTNER_PROGRAM_ID).0;
+        require_keys_eq!(
+            ctx.accounts.partner_config.key(),
+            expected_partner_cfg,
+            anchor_lang::error::ErrorCode::ConstraintSeeds
+        );
+
+        // Verify partner approvals using partner's signers (deserialize manually)
+        let partner_oracle_config = &ctx.accounts.bridge.partner_oracle_config;
+        let partner_config =
+            PartnerConfig::try_deserialize(&mut &ctx.accounts.partner_config.data.borrow()[..])?;
+        let partner_approved_count = partner_config.count_approvals(&unique_signers);
+        require!(
+            partner_approved_count as u8 >= partner_oracle_config.required_threshold,
+            RegisterOutputRootError::InsufficientPartnerSignatures
+        );
+    }
 
     require!(
         base_block_number > ctx.accounts.bridge.base_block_number
