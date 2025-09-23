@@ -7,7 +7,8 @@ use anchor_spl::{
 use crate::{
     common::{bridge::Bridge, BRIDGE_SEED, DISCRIMINATOR_LEN},
     solana_to_base::{
-        internal::bridge_wrapped_token::bridge_wrapped_token_internal, Call, OutgoingMessage, Transfer,
+        internal::bridge_wrapped_token::bridge_wrapped_token_internal, Call, OutgoingMessage,
+        Transfer, OUTGOING_MESSAGE_SEED,
     },
 };
 
@@ -17,7 +18,7 @@ use crate::{
 /// This instruction burns wrapped tokens on Solana and creates an outgoing message to transfer equivalent
 /// tokens and execute the optional call on Base.
 #[derive(Accounts)]
-#[instruction(_to: [u8; 20], _amount: u64, call: Option<Call>)]
+#[instruction(outgoing_message_salt: [u8; 32], _to: [u8; 20], _amount: u64, call: Option<Call>)]
 pub struct BridgeWrappedToken<'info> {
     /// The account that pays for transaction fees and outgoing message account creation.
     /// Must be mutable to deduct lamports for account rent and gas fees.
@@ -58,6 +59,8 @@ pub struct BridgeWrappedToken<'info> {
     #[account(
         init,       
         payer = payer,
+        seeds = [OUTGOING_MESSAGE_SEED, outgoing_message_salt.as_ref()],
+        bump,
         space = DISCRIMINATOR_LEN + OutgoingMessage::space::<Transfer>(call.as_ref().map(|c| c.data.len()).unwrap_or_default()),
     )]
     pub outgoing_message: Account<'info, OutgoingMessage>,
@@ -73,12 +76,16 @@ pub struct BridgeWrappedToken<'info> {
 
 pub fn bridge_wrapped_token_handler(
     ctx: Context<BridgeWrappedToken>,
+    _outgoing_message_salt: [u8; 32],
     to: [u8; 20],
     amount: u64,
     call: Option<Call>,
 ) -> Result<()> {
     // Check if bridge is paused
-    require!(!ctx.accounts.bridge.paused, BridgeWrappedTokenError::BridgePaused);
+    require!(
+        !ctx.accounts.bridge.paused,
+        BridgeWrappedTokenError::BridgePaused
+    );
 
     bridge_wrapped_token_internal(
         &ctx.accounts.payer,
@@ -124,7 +131,7 @@ mod tests {
         instruction::BridgeWrappedToken as BridgeWrappedTokenIx,
         solana_to_base::{Call, CallType},
         test_utils::{
-            create_mock_wrapped_mint, create_mock_token_account, setup_bridge_and_svm,
+            create_mock_token_account, create_mock_wrapped_mint, create_outgoing_message, setup_bridge_and_svm,
             TEST_GAS_FEE_RECEIVER,
         },
         ID,
@@ -138,8 +145,6 @@ mod tests {
         let from = Keypair::new();
         svm.airdrop(&from.pubkey(), LAMPORTS_PER_SOL * 5).unwrap();
 
-        
-
         // Create test wrapped token metadata
         let partial_token_metadata = PartialTokenMetadata {
             name: "Test Token".to_string(),
@@ -150,7 +155,8 @@ mod tests {
 
         // Create wrapped token mint
         let initial_amount = 1_000_000u64; // 1 token with 6 decimals
-        let wrapped_mint = create_mock_wrapped_mint(&mut svm, initial_amount, 6, &partial_token_metadata);
+        let wrapped_mint =
+            create_mock_wrapped_mint(&mut svm, initial_amount, 6, &partial_token_metadata);
 
         // Create token account for the from user
         let from_token_account = Keypair::new().pubkey();
@@ -163,7 +169,8 @@ mod tests {
         );
 
         // Create outgoing message account
-        let outgoing_message = Keypair::new();
+        let (outgoing_message_salt, outgoing_message) =
+                create_outgoing_message();
 
         // Test parameters
         let to = [1u8; 20]; // Base address
@@ -177,7 +184,7 @@ mod tests {
             mint: wrapped_mint,
             from_token_account,
             bridge: bridge_pda,
-            outgoing_message: outgoing_message.pubkey(),
+            outgoing_message,
             token_program: anchor_spl::token_2022::ID,
             system_program: system_program::ID,
         }
@@ -188,6 +195,7 @@ mod tests {
             program_id: ID,
             accounts,
             data: BridgeWrappedTokenIx {
+                outgoing_message_salt,
                 to,
                 amount,
                 call: None,
@@ -197,7 +205,7 @@ mod tests {
 
         // Build the transaction
         let tx = Transaction::new(
-            &[&payer, &from, &outgoing_message],
+            &[&payer, &from],
             Message::new(&[ix], Some(&payer.pubkey())),
             svm.latest_blockhash(),
         );
@@ -207,7 +215,7 @@ mod tests {
             .expect("Failed to send bridge_wrapped_token transaction");
 
         // Verify the OutgoingMessage account was created correctly
-        let outgoing_message_account = svm.get_account(&outgoing_message.pubkey()).unwrap();
+        let outgoing_message_account = svm.get_account(&outgoing_message).unwrap();
         assert_eq!(outgoing_message_account.owner, ID);
 
         let outgoing_message_data =
@@ -260,7 +268,8 @@ mod tests {
 
         // Create wrapped token mint
         let initial_amount = 1_000_000u64; // 1 token with 6 decimals
-        let wrapped_mint = create_mock_wrapped_mint(&mut svm, initial_amount, 6, &partial_token_metadata);
+        let wrapped_mint =
+            create_mock_wrapped_mint(&mut svm, initial_amount, 6, &partial_token_metadata);
 
         // Create token account for the from user
         let from_token_account = Keypair::new().pubkey();
@@ -273,7 +282,8 @@ mod tests {
         );
 
         // Create outgoing message account
-        let outgoing_message = Keypair::new();
+        let (outgoing_message_salt, outgoing_message) =
+            create_outgoing_message();
 
         // Test parameters
         let to = [1u8; 20];
@@ -295,7 +305,7 @@ mod tests {
             mint: wrapped_mint,
             from_token_account,
             bridge: bridge_pda,
-            outgoing_message: outgoing_message.pubkey(),
+            outgoing_message,
             token_program: anchor_spl::token_2022::ID,
             system_program: system_program::ID,
         }
@@ -306,6 +316,7 @@ mod tests {
             program_id: ID,
             accounts,
             data: BridgeWrappedTokenIx {
+                outgoing_message_salt,
                 to,
                 amount,
                 call: Some(call.clone()),
@@ -315,7 +326,7 @@ mod tests {
 
         // Build the transaction
         let tx = Transaction::new(
-            &[&payer, &from, &outgoing_message],
+            &[&payer, &from],
             Message::new(&[ix], Some(&payer.pubkey())),
             svm.latest_blockhash(),
         );
@@ -325,7 +336,7 @@ mod tests {
             .expect("Failed to send bridge_wrapped_token transaction with call");
 
         // Verify the OutgoingMessage account was created correctly
-        let outgoing_message_account = svm.get_account(&outgoing_message.pubkey()).unwrap();
+        let outgoing_message_account = svm.get_account(&outgoing_message).unwrap();
         let outgoing_message_data =
             OutgoingMessage::try_deserialize(&mut &outgoing_message_account.data[..]).unwrap();
 
@@ -368,7 +379,8 @@ mod tests {
 
         // Create wrapped token mint
         let initial_amount = 1_000_000u64; // 1 token with 6 decimals
-        let wrapped_mint = create_mock_wrapped_mint(&mut svm, initial_amount, 6, &partial_token_metadata);
+        let wrapped_mint =
+            create_mock_wrapped_mint(&mut svm, initial_amount, 6, &partial_token_metadata);
 
         // Create token account for the from user
         let from_token_account = Keypair::new().pubkey();
@@ -381,7 +393,8 @@ mod tests {
         );
 
         // Create outgoing message account
-        let outgoing_message = Keypair::new();
+        let (outgoing_message_salt, outgoing_message) =
+            create_outgoing_message();
 
         // Test parameters
         let to = [1u8; 20];
@@ -395,7 +408,7 @@ mod tests {
             mint: wrapped_mint,
             from_token_account,
             bridge: bridge_pda,
-            outgoing_message: outgoing_message.pubkey(),
+            outgoing_message,
             token_program: anchor_spl::token_2022::ID,
             system_program: system_program::ID,
         }
@@ -406,6 +419,7 @@ mod tests {
             program_id: ID,
             accounts,
             data: BridgeWrappedTokenIx {
+                outgoing_message_salt,
                 to,
                 amount,
                 call: None,
@@ -415,7 +429,7 @@ mod tests {
 
         // Build the transaction
         let tx = Transaction::new(
-            &[&payer, &from, &outgoing_message],
+            &[&payer, &from],
             Message::new(&[ix], Some(&payer.pubkey())),
             svm.latest_blockhash(),
         );
@@ -463,7 +477,8 @@ mod tests {
 
         // Create wrapped token mint
         let initial_amount = 1_000_000u64;
-        let wrapped_mint = create_mock_wrapped_mint(&mut svm, initial_amount, 6, &partial_token_metadata);
+        let wrapped_mint =
+            create_mock_wrapped_mint(&mut svm, initial_amount, 6, &partial_token_metadata);
 
         // Create token account for the from user
         let from_token_account = Keypair::new().pubkey();
@@ -476,7 +491,8 @@ mod tests {
         );
 
         // Create outgoing message account
-        let outgoing_message = Keypair::new();
+        let (outgoing_message_salt, outgoing_message) =
+            create_outgoing_message();
 
         // Test parameters
         let to = [1u8; 20];
@@ -490,7 +506,7 @@ mod tests {
             mint: wrapped_mint,
             from_token_account,
             bridge: bridge_pda,
-            outgoing_message: outgoing_message.pubkey(),
+            outgoing_message,
             token_program: anchor_spl::token_2022::ID,
             system_program: system_program::ID,
         }
@@ -501,6 +517,7 @@ mod tests {
             program_id: ID,
             accounts,
             data: BridgeWrappedTokenIx {
+                outgoing_message_salt,
                 to,
                 amount,
                 call: None,
@@ -510,7 +527,7 @@ mod tests {
 
         // Build the transaction
         let tx = Transaction::new(
-            &[&payer, &from, &outgoing_message],
+            &[&payer, &from],
             Message::new(&[ix], Some(&payer.pubkey())),
             svm.latest_blockhash(),
         );

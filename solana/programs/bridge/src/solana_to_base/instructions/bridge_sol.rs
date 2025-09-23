@@ -2,7 +2,10 @@ use anchor_lang::prelude::*;
 
 use crate::{
     common::{bridge::Bridge, BRIDGE_SEED, DISCRIMINATOR_LEN, SOL_VAULT_SEED},
-    solana_to_base::{internal::bridge_sol::bridge_sol_internal, Call, OutgoingMessage, Transfer},
+    solana_to_base::{
+        internal::bridge_sol::bridge_sol_internal, Call, OutgoingMessage, Transfer,
+        OUTGOING_MESSAGE_SEED,
+    },
 };
 
 /// Accounts struct for the bridge_sol instruction that transfers native SOL from Solana to Base
@@ -11,7 +14,7 @@ use crate::{
 /// The bridged SOLs are locked in a vault on Solana and an outgoing message is created to mint
 /// the corresponding tokens and execute the optional call on Base.
 #[derive(Accounts)]
-#[instruction(_to: [u8; 20], remote_token: [u8; 20], _amount: u64, call: Option<Call>)]
+#[instruction(outgoing_message_salt: [u8; 32],_to: [u8; 20], remote_token: [u8; 20], _amount: u64, call: Option<Call>)]
 pub struct BridgeSol<'info> {
     /// The account that pays for transaction fees and account creation.
     /// Must be mutable to deduct lamports for account rent and gas fees.
@@ -54,6 +57,8 @@ pub struct BridgeSol<'info> {
     #[account(
         init,
         payer = payer,
+        seeds = [OUTGOING_MESSAGE_SEED, outgoing_message_salt.as_ref()],
+        bump,
         space = DISCRIMINATOR_LEN + OutgoingMessage::space::<Transfer>(call.map(|c| c.data.len()).unwrap_or_default()),
     )]
     pub outgoing_message: Account<'info, OutgoingMessage>,
@@ -65,6 +70,7 @@ pub struct BridgeSol<'info> {
 
 pub fn bridge_sol_handler(
     ctx: Context<BridgeSol>,
+    _outgoing_message_salt: [u8; 32],
     to: [u8; 20],
     remote_token: [u8; 20],
     amount: u64,
@@ -116,7 +122,7 @@ mod tests {
         common::{bridge::Bridge, SOL_VAULT_SEED},
         instruction::BridgeSol as BridgeSolIx,
         solana_to_base::{Call, CallType, NATIVE_SOL_PUBKEY},
-        test_utils::{setup_bridge_and_svm, TEST_GAS_FEE_RECEIVER},
+        test_utils::{create_outgoing_message, setup_bridge_and_svm, TEST_GAS_FEE_RECEIVER},
         ID,
     };
 
@@ -129,7 +135,7 @@ mod tests {
         svm.airdrop(&from.pubkey(), LAMPORTS_PER_SOL * 5).unwrap();
 
         // Create outgoing message account
-        let outgoing_message = Keypair::new();
+        let (outgoing_message_salt, outgoing_message) = create_outgoing_message();
 
         // Test parameters
         let to = [1u8; 20]; // Base address
@@ -147,7 +153,7 @@ mod tests {
             gas_fee_receiver: TEST_GAS_FEE_RECEIVER,
             sol_vault,
             bridge: bridge_pda,
-            outgoing_message: outgoing_message.pubkey(),
+            outgoing_message,
             system_program: system_program::ID,
         }
         .to_account_metas(None);
@@ -157,6 +163,7 @@ mod tests {
             program_id: ID,
             accounts,
             data: BridgeSolIx {
+                outgoing_message_salt,
                 to,
                 remote_token,
                 amount,
@@ -167,7 +174,7 @@ mod tests {
 
         // Build the transaction
         let tx = Transaction::new(
-            &[&payer, &from, &outgoing_message],
+            &[&payer, &from],
             Message::new(&[ix], Some(&payer.pubkey())),
             svm.latest_blockhash(),
         );
@@ -184,7 +191,7 @@ mod tests {
             .expect("Failed to send bridge_sol transaction");
 
         // Verify the OutgoingMessage account was created correctly
-        let outgoing_message_account = svm.get_account(&outgoing_message.pubkey()).unwrap();
+        let outgoing_message_account = svm.get_account(&outgoing_message).unwrap();
         assert_eq!(outgoing_message_account.owner, ID);
 
         let outgoing_message_data =
@@ -228,7 +235,7 @@ mod tests {
         svm.airdrop(&from.pubkey(), LAMPORTS_PER_SOL * 5).unwrap();
 
         // Create outgoing message account
-        let outgoing_message = Keypair::new();
+        let (outgoing_message_salt, outgoing_message) = create_outgoing_message();
 
         // Test parameters
         let to = [1u8; 20];
@@ -254,7 +261,7 @@ mod tests {
             gas_fee_receiver: TEST_GAS_FEE_RECEIVER,
             sol_vault,
             bridge: bridge_pda,
-            outgoing_message: outgoing_message.pubkey(),
+            outgoing_message,
             system_program: system_program::ID,
         }
         .to_account_metas(None);
@@ -264,6 +271,7 @@ mod tests {
             program_id: ID,
             accounts,
             data: BridgeSolIx {
+                outgoing_message_salt,
                 to,
                 remote_token,
                 amount,
@@ -274,7 +282,7 @@ mod tests {
 
         // Build the transaction
         let tx = Transaction::new(
-            &[&payer, &from, &outgoing_message],
+            &[&payer, &from],
             Message::new(&[ix], Some(&payer.pubkey())),
             svm.latest_blockhash(),
         );
@@ -284,7 +292,7 @@ mod tests {
             .expect("Failed to send bridge_sol transaction with call");
 
         // Verify the OutgoingMessage account was created correctly
-        let outgoing_message_account = svm.get_account(&outgoing_message.pubkey()).unwrap();
+        let outgoing_message_account = svm.get_account(&outgoing_message).unwrap();
         let outgoing_message_data =
             OutgoingMessage::try_deserialize(&mut &outgoing_message_account.data[..]).unwrap();
 
@@ -318,7 +326,7 @@ mod tests {
         let wrong_gas_fee_receiver = Keypair::new();
 
         // Create outgoing message account
-        let outgoing_message = Keypair::new();
+        let (outgoing_message_salt, outgoing_message) = create_outgoing_message();
 
         // Test parameters
         let to = [1u8; 20];
@@ -336,7 +344,7 @@ mod tests {
             gas_fee_receiver: wrong_gas_fee_receiver.pubkey(), // Wrong receiver
             sol_vault,
             bridge: bridge_pda,
-            outgoing_message: outgoing_message.pubkey(),
+            outgoing_message,
             system_program: system_program::ID,
         }
         .to_account_metas(None);
@@ -346,6 +354,7 @@ mod tests {
             program_id: ID,
             accounts,
             data: BridgeSolIx {
+                outgoing_message_salt,
                 to,
                 remote_token,
                 amount,
@@ -356,7 +365,7 @@ mod tests {
 
         // Build the transaction
         let tx = Transaction::new(
-            &[&payer, &from, &outgoing_message],
+            &[&payer, &from],
             Message::new(&[ix], Some(&payer.pubkey())),
             svm.latest_blockhash(),
         );
@@ -395,7 +404,7 @@ mod tests {
         svm.airdrop(&from.pubkey(), LAMPORTS_PER_SOL * 5).unwrap();
 
         // Create outgoing message account
-        let outgoing_message = Keypair::new();
+        let (outgoing_message_salt, outgoing_message) = create_outgoing_message();
 
         // Test parameters
         let to = [1u8; 20];
@@ -413,7 +422,7 @@ mod tests {
             gas_fee_receiver: TEST_GAS_FEE_RECEIVER,
             sol_vault,
             bridge: bridge_pda,
-            outgoing_message: outgoing_message.pubkey(),
+            outgoing_message,
             system_program: system_program::ID,
         }
         .to_account_metas(None);
@@ -423,6 +432,7 @@ mod tests {
             program_id: ID,
             accounts,
             data: BridgeSolIx {
+                outgoing_message_salt,
                 to,
                 remote_token,
                 amount,
@@ -433,7 +443,7 @@ mod tests {
 
         // Build the transaction
         let tx = Transaction::new(
-            &[&payer, &from, &outgoing_message],
+            &[&payer, &from],
             Message::new(&[ix], Some(&payer.pubkey())),
             svm.latest_blockhash(),
         );

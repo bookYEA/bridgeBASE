@@ -4,6 +4,7 @@ use crate::{
     common::{bridge::Bridge, BRIDGE_SEED, DISCRIMINATOR_LEN},
     solana_to_base::{
         internal::bridge_call::bridge_call_internal, Call, CallBuffer, OutgoingMessage,
+        OUTGOING_MESSAGE_SEED,
     },
 };
 
@@ -12,6 +13,7 @@ use crate::{
 /// the call data from a `CallBuffer` account (which is consumed and closed) instead of from
 /// instruction data.
 #[derive(Accounts)]
+#[instruction(outgoing_message_salt: [u8; 32])]
 pub struct BridgeCallBuffered<'info> {
     /// The account that pays for outgoing message account creation and the gas fee.
     /// Must be mutable to deduct lamports for rent and the EIP-1559-based gas fee.
@@ -59,6 +61,8 @@ pub struct BridgeCallBuffered<'info> {
     #[account(
         init,
         payer = payer,
+        seeds = [OUTGOING_MESSAGE_SEED, outgoing_message_salt.as_ref()],
+        bump,
         space = DISCRIMINATOR_LEN + OutgoingMessage::space::<Call>(call_buffer.data.len()),
     )]
     pub outgoing_message: Account<'info, OutgoingMessage>,
@@ -70,6 +74,7 @@ pub struct BridgeCallBuffered<'info> {
 
 pub fn bridge_call_buffered_handler<'a, 'b, 'c, 'info>(
     ctx: Context<'a, 'b, 'c, 'info, BridgeCallBuffered<'info>>,
+    _outgoing_message_salt: [u8; 32],
 ) -> Result<()> {
     // Check if bridge is paused
     require!(
@@ -124,7 +129,7 @@ mod tests {
         common::bridge::Bridge,
         instruction::{BridgeCallBuffered as BridgeCallBufferedIx, InitializeCallBuffer},
         solana_to_base::CallType,
-        test_utils::{setup_bridge_and_svm, TEST_GAS_FEE_RECEIVER},
+        test_utils::{create_outgoing_message, setup_bridge_and_svm, TEST_GAS_FEE_RECEIVER},
         ID,
     };
 
@@ -181,7 +186,7 @@ mod tests {
         let from = Keypair::new();
         svm.airdrop(&from.pubkey(), LAMPORTS_PER_SOL).unwrap();
 
-        let outgoing_message = Keypair::new();
+        let (outgoing_message_salt, outgoing_message) = create_outgoing_message();
 
         // Build the BridgeCallBuffered instruction accounts
         let accounts = accounts::BridgeCallBuffered {
@@ -191,7 +196,7 @@ mod tests {
             bridge: bridge_pda,
             owner: owner.pubkey(),
             call_buffer: call_buffer.pubkey(),
-            outgoing_message: outgoing_message.pubkey(),
+            outgoing_message,
             system_program: system_program::ID,
         }
         .to_account_metas(None);
@@ -200,12 +205,15 @@ mod tests {
         let ix = Instruction {
             program_id: ID,
             accounts,
-            data: BridgeCallBufferedIx {}.data(),
+            data: BridgeCallBufferedIx {
+                outgoing_message_salt,
+            }
+            .data(),
         };
 
         // Build the transaction
         let tx = Transaction::new(
-            &[&payer, &from, &owner, &outgoing_message],
+            &[&payer, &from, &owner],
             Message::new(&[ix], Some(&payer.pubkey())),
             svm.latest_blockhash(),
         );
@@ -215,7 +223,7 @@ mod tests {
             .expect("Failed to send bridge_call_buffered transaction");
 
         // Assert the OutgoingMessage account was created correctly
-        let outgoing_message_account = svm.get_account(&outgoing_message.pubkey()).unwrap();
+        let outgoing_message_account = svm.get_account(&outgoing_message).unwrap();
         assert_eq!(outgoing_message_account.owner, ID);
 
         let outgoing_message_data =
@@ -310,7 +318,7 @@ mod tests {
         let from = Keypair::new();
         svm.airdrop(&from.pubkey(), LAMPORTS_PER_SOL).unwrap();
 
-        let outgoing_message = Keypair::new();
+        let (outgoing_message_salt, outgoing_message) = create_outgoing_message();
 
         // Build the BridgeCallBuffered instruction accounts with unauthorized owner
         let accounts = accounts::BridgeCallBuffered {
@@ -320,7 +328,7 @@ mod tests {
             bridge: bridge_pda,
             owner: unauthorized.pubkey(), // Wrong owner
             call_buffer: call_buffer.pubkey(),
-            outgoing_message: outgoing_message.pubkey(),
+            outgoing_message,
             system_program: system_program::ID,
         }
         .to_account_metas(None);
@@ -329,12 +337,15 @@ mod tests {
         let ix = Instruction {
             program_id: ID,
             accounts,
-            data: BridgeCallBufferedIx {}.data(),
+            data: BridgeCallBufferedIx {
+                outgoing_message_salt,
+            }
+            .data(),
         };
 
         // Build the transaction
         let tx = Transaction::new(
-            &[&payer, &from, &unauthorized, &outgoing_message],
+            &[&payer, &from, &unauthorized],
             Message::new(&[ix], Some(&payer.pubkey())),
             svm.latest_blockhash(),
         );
@@ -404,7 +415,7 @@ mod tests {
         let from = Keypair::new();
         svm.airdrop(&from.pubkey(), LAMPORTS_PER_SOL).unwrap();
 
-        let outgoing_message = Keypair::new();
+        let (outgoing_message_salt, outgoing_message) = create_outgoing_message();
 
         // Build the BridgeCallBuffered instruction accounts with wrong gas fee receiver
         let accounts = accounts::BridgeCallBuffered {
@@ -414,7 +425,7 @@ mod tests {
             bridge: bridge_pda,
             owner: owner.pubkey(),
             call_buffer: call_buffer.pubkey(),
-            outgoing_message: outgoing_message.pubkey(),
+            outgoing_message,
             system_program: system_program::ID,
         }
         .to_account_metas(None);
@@ -423,12 +434,15 @@ mod tests {
         let ix = Instruction {
             program_id: ID,
             accounts,
-            data: BridgeCallBufferedIx {}.data(),
+            data: BridgeCallBufferedIx {
+                outgoing_message_salt,
+            }
+            .data(),
         };
 
         // Build the transaction
         let tx = Transaction::new(
-            &[&payer, &from, &owner, &outgoing_message],
+            &[&payer, &from, &owner],
             Message::new(&[ix], Some(&payer.pubkey())),
             svm.latest_blockhash(),
         );
