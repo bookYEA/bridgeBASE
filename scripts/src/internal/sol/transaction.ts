@@ -1,5 +1,7 @@
 import {
   appendTransactionMessageInstructions,
+  assertIsSendableTransaction,
+  assertIsTransactionWithBlockhashLifetime,
   createSolanaRpc,
   createSolanaRpcSubscriptions,
   createTransactionMessage,
@@ -14,17 +16,25 @@ import {
   type TransactionSigner,
 } from "@solana/kit";
 import { addSignersToTransactionMessage } from "@solana/signers";
+
 import { CONFIGS, type DeployEnv } from "../constants";
 
 export async function buildAndSendTransaction(
-  deployEnv: DeployEnv,
+  rpcConfig:
+    | { type: "deploy-env"; value: DeployEnv }
+    | { type: "rpc-url"; value: string },
   instructions: Instruction[],
   payer: TransactionSigner
 ) {
-  const config = CONFIGS[deployEnv];
-  const rpc = createSolanaRpc(`https://${config.solana.rpcUrl}`);
+  const rpcUrl =
+    rpcConfig.type === "deploy-env"
+      ? CONFIGS[rpcConfig.value].solana.rpcUrl
+      : rpcConfig.value;
+
+  const rpcHostName = rpcUrl.replace("https://", "");
+  const rpc = createSolanaRpc(`https://${rpcHostName}`);
   const rpcSubscriptions = createSolanaRpcSubscriptions(
-    devnet(`wss://${config.solana.rpcUrl}`)
+    devnet(`wss://${rpcHostName}`)
   );
 
   const sendAndConfirmTx = sendAndConfirmTransactionFactory({
@@ -46,6 +56,9 @@ export async function buildAndSendTransaction(
     await signTransactionMessageWithSigners(transactionMessage);
 
   const signature = getSignatureFromTransaction(signedTransaction);
+
+  assertIsSendableTransaction(signedTransaction);
+  assertIsTransactionWithBlockhashLifetime(signedTransaction);
 
   await sendAndConfirmTx(signedTransaction, {
     commitment: "confirmed",
