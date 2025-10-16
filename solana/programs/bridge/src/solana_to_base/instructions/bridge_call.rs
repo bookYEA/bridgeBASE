@@ -5,6 +5,7 @@ use crate::{
     solana_to_base::{
         internal::bridge_call::bridge_call_internal, Call, OutgoingMessage, OUTGOING_MESSAGE_SEED,
     },
+    BridgeError,
 };
 
 /// Accounts struct for the `bridge_call` instruction that enables contract calls
@@ -26,7 +27,7 @@ pub struct BridgeCall<'info> {
 
     /// The account that receives payment for the gas costs of bridging the call to Base.
     /// CHECK: This account is validated to be the same as bridge.gas_config.gas_fee_receiver
-    #[account(mut, address = bridge.gas_config.gas_fee_receiver @ BridgeCallError::IncorrectGasFeeReceiver)]
+    #[account(mut, address = bridge.gas_config.gas_fee_receiver @ BridgeError::IncorrectGasFeeReceiver)]
     pub gas_fee_receiver: AccountInfo<'info>,
 
     /// The main bridge state account containing global bridge configuration.
@@ -67,7 +68,7 @@ pub fn bridge_call_handler(
     call: Call,
 ) -> Result<()> {
     // Check if bridge is paused
-    require!(!ctx.accounts.bridge.paused, BridgeCallError::BridgePaused);
+    require!(!ctx.accounts.bridge.paused, BridgeError::BridgePaused);
     bridge_call_internal(
         &ctx.accounts.payer,
         &ctx.accounts.from,
@@ -77,14 +78,6 @@ pub fn bridge_call_handler(
         &ctx.accounts.system_program,
         call,
     )
-}
-
-#[error_code]
-pub enum BridgeCallError {
-    #[msg("Incorrect gas fee receiver")]
-    IncorrectGasFeeReceiver,
-    #[msg("Bridge is paused")]
-    BridgePaused,
 }
 
 #[cfg(test)]
@@ -105,13 +98,20 @@ mod tests {
         common::bridge::Bridge,
         instruction::BridgeCall as BridgeCallIx,
         solana_to_base::CallType,
-        test_utils::{create_outgoing_message, setup_bridge_and_svm, TEST_GAS_FEE_RECEIVER},
+        test_utils::{
+            create_outgoing_message, setup_bridge, SetupBridgeResult, TEST_GAS_FEE_RECEIVER,
+        },
         ID,
     };
 
     #[test]
     fn test_bridge_call_success() {
-        let (mut svm, payer, bridge_pda) = setup_bridge_and_svm();
+        let SetupBridgeResult {
+            mut svm,
+            payer,
+            bridge_pda,
+            ..
+        } = setup_bridge();
 
         // Create from account
         let from = Keypair::new();
@@ -195,7 +195,12 @@ mod tests {
 
     #[test]
     fn test_bridge_call_incorrect_gas_fee_receiver() {
-        let (mut svm, payer, bridge_pda) = setup_bridge_and_svm();
+        let SetupBridgeResult {
+            mut svm,
+            payer,
+            bridge_pda,
+            ..
+        } = setup_bridge();
 
         // Create from account
         let from = Keypair::new();
@@ -264,7 +269,12 @@ mod tests {
 
     #[test]
     fn test_bridge_call_fails_when_paused() {
-        let (mut svm, payer, bridge_pda) = setup_bridge_and_svm();
+        let SetupBridgeResult {
+            mut svm,
+            payer,
+            bridge_pda,
+            ..
+        } = setup_bridge();
 
         // Pause the bridge first
         let mut bridge_account = svm.get_account(&bridge_pda).unwrap();

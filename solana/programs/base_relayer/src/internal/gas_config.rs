@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::state::Cfg;
+use crate::{state::Cfg, RelayerError};
 
 #[derive(Debug, Clone, PartialEq, Eq, InitSpace, AnchorSerialize, AnchorDeserialize)]
 pub struct GasConfig {
@@ -30,11 +30,11 @@ pub fn check_and_pay_for_gas<'info>(
 fn check_gas_limit(gas_limit: u64, cfg: &Cfg) -> Result<()> {
     require!(
         gas_limit >= cfg.gas_config.min_gas_limit_per_message,
-        GasConfigError::GasLimitTooLow
+        RelayerError::GasLimitTooLow
     );
     require!(
         gas_limit <= cfg.gas_config.max_gas_limit_per_message,
-        GasConfigError::GasLimitExceeded
+        RelayerError::GasLimitExceeded
     );
 
     Ok(())
@@ -70,20 +70,12 @@ fn pay_for_gas<'info>(
     Ok(())
 }
 
-#[error_code]
-pub enum GasConfigError {
-    #[msg("Gas limit too low")]
-    GasLimitTooLow,
-    #[msg("Gas limit exceeded")]
-    GasLimitExceeded,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::internal::{Eip1559, Eip1559Config};
     use crate::state::Cfg;
-    use crate::test_utils::{mock_clock, setup_program_and_svm, TEST_GAS_FEE_RECEIVER};
+    use crate::test_utils::{mock_clock, setup_relayer, SetupRelayerResult, TEST_GAS_FEE_RECEIVER};
     use crate::{accounts, instruction};
     use anchor_lang::solana_program::{instruction::Instruction, system_program};
     use anchor_lang::InstructionData;
@@ -134,7 +126,12 @@ mod tests {
 
     #[test]
     fn check_and_pay_transfers_scaled_amount() {
-        let (mut svm, payer, guardian, cfg_pda) = setup_program_and_svm();
+        let SetupRelayerResult {
+            mut svm,
+            payer,
+            guardian,
+            cfg_pda,
+        } = setup_relayer();
         let payer_pk = payer.pubkey();
 
         // Ensure receiver exists for transfer
@@ -210,7 +207,12 @@ mod tests {
 
     #[test]
     fn check_and_pay_uses_refreshed_base_fee_after_window_expiry() {
-        let (mut svm, payer, guardian, cfg_pda) = setup_program_and_svm();
+        let SetupRelayerResult {
+            mut svm,
+            payer,
+            guardian,
+            cfg_pda,
+        } = setup_relayer();
         let payer_pk = payer.pubkey();
 
         // Ensure receiver exists

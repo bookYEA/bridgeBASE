@@ -4,6 +4,7 @@ use anchor_spl::{
     token_interface::{self, Mint, TokenAccount},
 };
 
+use crate::BridgeError;
 use crate::{
     common::{PartialTokenMetadata, WRAPPED_TOKEN_SEED},
     ID,
@@ -51,14 +52,14 @@ impl FinalizeBridgeWrappedToken {
         require_keys_eq!(
             mint.key(),
             self.local_token,
-            FinalizeBridgeWrappedTokenError::MintDoesNotMatchLocalToken
+            BridgeError::MintDoesNotMatchLocalToken
         );
 
         // Check that the to is correct given the to address
         require_keys_eq!(
             to_token_account.key(),
             self.to,
-            FinalizeBridgeWrappedTokenError::TokenAccountDoesNotMatchTo,
+            BridgeError::TokenAccountDoesNotMatchTo,
         );
 
         // Get the partial token metadata
@@ -95,12 +96,4 @@ impl FinalizeBridgeWrappedToken {
 
         Ok(())
     }
-}
-
-#[error_code]
-pub enum FinalizeBridgeWrappedTokenError {
-    #[msg("Token account does not match to address")]
-    TokenAccountDoesNotMatchTo,
-    #[msg("Mint does not match local token")]
-    MintDoesNotMatchLocalToken,
 }

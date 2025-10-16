@@ -7,6 +7,7 @@ use crate::{
         internal::bridge_spl::bridge_spl_internal, Call, CallBuffer, OutgoingMessage, Transfer,
         OUTGOING_MESSAGE_SEED,
     },
+    BridgeError,
 };
 
 /// Accounts struct for the bridge_spl_with_buffered_call instruction that transfers SPL tokens
@@ -31,7 +32,7 @@ pub struct BridgeSplWithBufferedCall<'info> {
 
     /// The account that receives payment for the gas costs of bridging the SPL token to Base.
     /// CHECK: This account is validated to be the same as bridge.gas_config.gas_fee_receiver
-    #[account(mut, address = bridge.gas_config.gas_fee_receiver @ BridgeSplWithBufferedCallError::IncorrectGasFeeReceiver)]
+    #[account(mut, address = bridge.gas_config.gas_fee_receiver @ BridgeError::IncorrectGasFeeReceiver)]
     pub gas_fee_receiver: AccountInfo<'info>,
 
     /// The SPL token mint account for the token being bridged.
@@ -77,7 +78,7 @@ pub struct BridgeSplWithBufferedCall<'info> {
     #[account(
         mut,
         close = owner,
-        has_one = owner @ BridgeSplWithBufferedCallError::Unauthorized,
+        has_one = owner @ BridgeError::BufferUnauthorizedClose,
     )]
     pub call_buffer: Account<'info, CallBuffer>,
 
@@ -108,10 +109,7 @@ pub fn bridge_spl_with_buffered_call_handler<'a, 'b, 'c, 'info>(
     amount: u64,
 ) -> Result<()> {
     // Check if bridge is paused
-    require!(
-        !ctx.accounts.bridge.paused,
-        BridgeSplWithBufferedCallError::BridgePaused
-    );
+    require!(!ctx.accounts.bridge.paused, BridgeError::BridgePaused);
 
     let call_buffer = &ctx.accounts.call_buffer;
     let call = Some(Call {
@@ -139,16 +137,6 @@ pub fn bridge_spl_with_buffered_call_handler<'a, 'b, 'c, 'info>(
     )
 }
 
-#[error_code]
-pub enum BridgeSplWithBufferedCallError {
-    #[msg("Incorrect gas fee receiver")]
-    IncorrectGasFeeReceiver,
-    #[msg("Only the owner can close this call buffer")]
-    Unauthorized,
-    #[msg("Bridge is currently paused")]
-    BridgePaused,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -171,15 +159,20 @@ mod tests {
         },
         solana_to_base::CallType,
         test_utils::{
-            create_mock_mint, create_mock_token_account, create_outgoing_message,
-            setup_bridge_and_svm, TEST_GAS_FEE_RECEIVER,
+            create_mock_mint, create_mock_token_account, create_outgoing_message, setup_bridge,
+            SetupBridgeResult, TEST_GAS_FEE_RECEIVER,
         },
         ID,
     };
 
     #[test]
     fn test_bridge_spl_with_buffered_call_success() {
-        let (mut svm, payer, bridge_pda) = setup_bridge_and_svm();
+        let SetupBridgeResult {
+            mut svm,
+            payer,
+            bridge_pda,
+            ..
+        } = setup_bridge();
 
         // Create from account
         let from = Keypair::new();
@@ -372,7 +365,12 @@ mod tests {
 
     #[test]
     fn test_bridge_spl_with_buffered_call_unauthorized() {
-        let (mut svm, payer, bridge_pda) = setup_bridge_and_svm();
+        let SetupBridgeResult {
+            mut svm,
+            payer,
+            bridge_pda,
+            ..
+        } = setup_bridge();
 
         // Create from account
         let from = Keypair::new();
@@ -510,7 +508,12 @@ mod tests {
 
     #[test]
     fn test_bridge_spl_with_buffered_call_incorrect_gas_fee_receiver() {
-        let (mut svm, payer, bridge_pda) = setup_bridge_and_svm();
+        let SetupBridgeResult {
+            mut svm,
+            payer,
+            bridge_pda,
+            ..
+        } = setup_bridge();
 
         // Create from account
         let from = Keypair::new();

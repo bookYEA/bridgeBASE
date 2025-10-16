@@ -1,5 +1,6 @@
 use anchor_lang::{prelude::*, solana_program::keccak};
 
+use crate::BridgeError;
 use crate::{
     base_to_solana::{
         constants::INCOMING_MESSAGE_SEED, internal::mmr, state::IncomingMessage, Message,
@@ -41,7 +42,7 @@ pub struct ProveMessageBuffered<'info> {
     #[account(
         mut,
         close = owner,
-        has_one = owner @ ProveMessageBufferedError::Unauthorized,
+        has_one = owner @ BridgeError::BufferUnauthorizedClose,
     )]
     pub prove_buffer: Account<'info, ProveBuffer>,
 
@@ -55,17 +56,14 @@ pub fn prove_message_buffered_handler(
     message_hash: [u8; 32],
 ) -> Result<()> {
     // Pause
-    require!(
-        !ctx.accounts.bridge.paused,
-        ProveMessageBufferedError::BridgePaused
-    );
+    require!(!ctx.accounts.bridge.paused, BridgeError::BridgePaused);
 
     // Verify hash
     let data = &ctx.accounts.prove_buffer.data;
     let computed_hash = hash_message(&nonce.to_be_bytes(), &sender, data);
     require!(
         message_hash == computed_hash,
-        ProveMessageBufferedError::InvalidMessageHash
+        BridgeError::InvalidMessageHash
     );
 
     // Verify proof
@@ -96,16 +94,6 @@ fn hash_message(nonce: &[u8], sender: &[u8; 20], data: &[u8]) -> [u8; 32] {
     keccak::hash(&data_to_hash).0
 }
 
-#[error_code]
-pub enum ProveMessageBufferedError {
-    #[msg("Invalid message hash")]
-    InvalidMessageHash,
-    #[msg("Only the owner can close this prove buffer")]
-    Unauthorized,
-    #[msg("Bridge is currently paused")]
-    BridgePaused,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -128,7 +116,7 @@ mod tests {
             AppendToProveBufferData, AppendToProveBufferProof, InitializeProveBuffer,
             ProveMessageBuffered as ProveMessageBufferedIx,
         },
-        test_utils::setup_bridge_and_svm,
+        test_utils::{setup_bridge, SetupBridgeResult},
         ID,
     };
 
@@ -269,7 +257,12 @@ mod tests {
 
     #[test]
     fn test_prove_message_buffered_success_creates_incoming_message_and_closes_buffer() {
-        let (mut svm, payer, bridge_pda) = setup_bridge_and_svm();
+        let SetupBridgeResult {
+            mut svm,
+            payer,
+            bridge_pda,
+            ..
+        } = setup_bridge();
 
         let (message_hash, output_root_pk, owner, prove_buffer, nonce, sender, message_bytes) =
             buffered_message_setup(&mut svm, bridge_pda);
@@ -333,7 +326,12 @@ mod tests {
 
     #[test]
     fn test_prove_message_buffered_fails_with_unauthorized_owner() {
-        let (mut svm, payer, bridge_pda) = setup_bridge_and_svm();
+        let SetupBridgeResult {
+            mut svm,
+            payer,
+            bridge_pda,
+            ..
+        } = setup_bridge();
 
         let (message_hash, output_root_pk, _, prove_buffer, nonce, sender, _) =
             buffered_message_setup(&mut svm, bridge_pda);
@@ -386,7 +384,12 @@ mod tests {
 
     #[test]
     fn test_prove_message_buffered_fails_with_invalid_message_hash() {
-        let (mut svm, payer, bridge_pda) = setup_bridge_and_svm();
+        let SetupBridgeResult {
+            mut svm,
+            payer,
+            bridge_pda,
+            ..
+        } = setup_bridge();
 
         let owner = Keypair::new();
         svm.airdrop(&owner.pubkey(), 1_000_000_000).unwrap();
@@ -487,7 +490,12 @@ mod tests {
 
     #[test]
     fn test_prove_message_buffered_fails_when_bridge_paused() {
-        let (mut svm, payer, bridge_pda) = setup_bridge_and_svm();
+        let SetupBridgeResult {
+            mut svm,
+            payer,
+            bridge_pda,
+            ..
+        } = setup_bridge();
 
         let (_, output_root_pk, owner, prove_buffer, _, _, _) =
             buffered_message_setup(&mut svm, bridge_pda);

@@ -3,6 +3,7 @@ use anchor_lang::prelude::*;
 use crate::{
     common::{bridge::Bridge, BRIDGE_SEED, DISCRIMINATOR_LEN},
     solana_to_base::{CallBuffer, CallType},
+    BridgeError,
 };
 
 /// Accounts for initializing a `CallBuffer` that can store large call data.
@@ -31,7 +32,7 @@ pub struct InitializeCallBuffer<'info> {
         init,
         payer = payer,
         space = DISCRIMINATOR_LEN + CallBuffer::space(max_data_len as usize),
-        constraint = bridge.buffer_config.max_call_buffer_size >= max_data_len @ InitializeCallBufferError::MaxSizeExceeded,
+        constraint = bridge.buffer_config.max_call_buffer_size >= max_data_len @ BridgeError::BufferMaxSizeExceeded,
     )]
     pub call_buffer: Account<'info, CallBuffer>,
 
@@ -62,14 +63,6 @@ pub fn initialize_call_buffer_handler(
     Ok(())
 }
 
-#[error_code]
-pub enum InitializeCallBufferError {
-    #[msg("Call buffer size exceeds maximum allowed size")]
-    MaxSizeExceeded,
-    #[msg("Invalid buffer size provided")]
-    InvalidBufferSize,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -84,13 +77,20 @@ mod tests {
     use solana_transaction::Transaction;
 
     use crate::{
-        accounts, instruction::InitializeCallBuffer as InitializeCallBufferIx,
-        solana_to_base::CallType, test_utils::setup_bridge_and_svm, ID,
+        accounts,
+        instruction::InitializeCallBuffer as InitializeCallBufferIx,
+        solana_to_base::CallType,
+        test_utils::{setup_bridge, SetupBridgeResult},
+        ID,
     };
 
     #[test]
     fn test_initialize_call_buffer_success() {
-        let (mut svm, _payer, bridge_pda) = setup_bridge_and_svm();
+        let SetupBridgeResult {
+            mut svm,
+            bridge_pda,
+            ..
+        } = setup_bridge();
 
         // Create payer account
         let payer = Keypair::new();
@@ -157,7 +157,11 @@ mod tests {
 
     #[test]
     fn test_initialize_call_buffer_max_size_exceeded() {
-        let (mut svm, _payer, bridge_pda) = setup_bridge_and_svm();
+        let SetupBridgeResult {
+            mut svm,
+            bridge_pda,
+            ..
+        } = setup_bridge();
 
         // Create payer account
         let payer = Keypair::new();

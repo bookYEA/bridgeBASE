@@ -3,10 +3,12 @@
 use anchor_lang::prelude::*;
 
 mod constants;
+mod errors;
 mod instructions;
 mod internal;
 mod state;
 
+pub use errors::*;
 use instructions::*;
 use internal::*;
 use state::*;
@@ -14,7 +16,7 @@ use state::*;
 #[cfg(test)]
 mod test_utils;
 
-declare_id!("2UuNqre3Sif4ueMfCRZqwQG7LrH4H4xJsxDf7QmGCeya");
+declare_id!("HPLodLSVpcUX73cXxT7NNss1frnr2XWf6yK3KPChRTjJ");
 
 #[program]
 pub mod base_relayer {

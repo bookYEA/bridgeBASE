@@ -10,6 +10,7 @@ use crate::{
         internal::bridge_wrapped_token::bridge_wrapped_token_internal, Call, OutgoingMessage,
         Transfer, OUTGOING_MESSAGE_SEED,
     },
+    BridgeError,
 };
 
 /// Accounts struct for the bridge wrapped token instruction that transfers wrapped tokens from Solana to Base
@@ -31,7 +32,7 @@ pub struct BridgeWrappedToken<'info> {
 
     /// The account that receives payment for the gas costs of bridging the token on Base.
     /// CHECK: This account is validated to be the same as bridge.gas_config.gas_fee_receiver
-    #[account(mut, address = bridge.gas_config.gas_fee_receiver @ BridgeWrappedTokenError::IncorrectGasFeeReceiver)]
+    #[account(mut, address = bridge.gas_config.gas_fee_receiver @ BridgeError::IncorrectGasFeeReceiver)]
     pub gas_fee_receiver: AccountInfo<'info>,
 
     /// The wrapped token mint account representing the original Base token.
@@ -57,7 +58,7 @@ pub struct BridgeWrappedToken<'info> {
     /// - Space allocated based on call data size
     /// - Will be read by Base relayers to complete the bridge operation
     #[account(
-        init,       
+        init,
         payer = payer,
         seeds = [OUTGOING_MESSAGE_SEED, outgoing_message_salt.as_ref()],
         bump,
@@ -82,10 +83,7 @@ pub fn bridge_wrapped_token_handler(
     call: Option<Call>,
 ) -> Result<()> {
     // Check if bridge is paused
-    require!(
-        !ctx.accounts.bridge.paused,
-        BridgeWrappedTokenError::BridgePaused
-    );
+    require!(!ctx.accounts.bridge.paused, BridgeError::BridgePaused);
 
     bridge_wrapped_token_internal(
         &ctx.accounts.payer,
@@ -101,14 +99,6 @@ pub fn bridge_wrapped_token_handler(
         amount,
         call,
     )
-}
-
-#[error_code]
-pub enum BridgeWrappedTokenError {
-    #[msg("Incorrect gas fee receiver")]
-    IncorrectGasFeeReceiver,
-    #[msg("Bridge is paused")]
-    BridgePaused,
 }
 
 #[cfg(test)]
@@ -131,15 +121,20 @@ mod tests {
         instruction::BridgeWrappedToken as BridgeWrappedTokenIx,
         solana_to_base::{Call, CallType},
         test_utils::{
-            create_mock_token_account, create_mock_wrapped_mint, create_outgoing_message, setup_bridge_and_svm,
-            TEST_GAS_FEE_RECEIVER,
+            create_mock_token_account, create_mock_wrapped_mint, create_outgoing_message,
+            setup_bridge, SetupBridgeResult, TEST_GAS_FEE_RECEIVER,
         },
         ID,
     };
 
     #[test]
     fn test_bridge_wrapped_token_success_without_call() {
-        let (mut svm, payer, bridge_pda) = setup_bridge_and_svm();
+        let SetupBridgeResult {
+            mut svm,
+            payer,
+            bridge_pda,
+            ..
+        } = setup_bridge();
 
         // Create from account
         let from = Keypair::new();
@@ -169,8 +164,7 @@ mod tests {
         );
 
         // Create outgoing message account
-        let (outgoing_message_salt, outgoing_message) =
-                create_outgoing_message();
+        let (outgoing_message_salt, outgoing_message) = create_outgoing_message();
 
         // Test parameters
         let to = [1u8; 20]; // Base address
@@ -252,7 +246,12 @@ mod tests {
 
     #[test]
     fn test_bridge_wrapped_token_success_with_call() {
-        let (mut svm, payer, bridge_pda) = setup_bridge_and_svm();
+        let SetupBridgeResult {
+            mut svm,
+            payer,
+            bridge_pda,
+            ..
+        } = setup_bridge();
 
         // Create from account
         let from = Keypair::new();
@@ -282,8 +281,7 @@ mod tests {
         );
 
         // Create outgoing message account
-        let (outgoing_message_salt, outgoing_message) =
-            create_outgoing_message();
+        let (outgoing_message_salt, outgoing_message) = create_outgoing_message();
 
         // Test parameters
         let to = [1u8; 20];
@@ -360,7 +358,12 @@ mod tests {
 
     #[test]
     fn test_bridge_wrapped_token_incorrect_gas_fee_receiver() {
-        let (mut svm, payer, bridge_pda) = setup_bridge_and_svm();
+        let SetupBridgeResult {
+            mut svm,
+            payer,
+            bridge_pda,
+            ..
+        } = setup_bridge();
 
         // Create from account
         let from = Keypair::new();
@@ -393,8 +396,7 @@ mod tests {
         );
 
         // Create outgoing message account
-        let (outgoing_message_salt, outgoing_message) =
-            create_outgoing_message();
+        let (outgoing_message_salt, outgoing_message) = create_outgoing_message();
 
         // Test parameters
         let to = [1u8; 20];
@@ -452,7 +454,12 @@ mod tests {
 
     #[test]
     fn test_bridge_wrapped_token_fails_when_paused() {
-        let (mut svm, payer, bridge_pda) = setup_bridge_and_svm();
+        let SetupBridgeResult {
+            mut svm,
+            payer,
+            bridge_pda,
+            ..
+        } = setup_bridge();
 
         // Pause the bridge first
         let mut bridge_account = svm.get_account(&bridge_pda).unwrap();
@@ -491,8 +498,7 @@ mod tests {
         );
 
         // Create outgoing message account
-        let (outgoing_message_salt, outgoing_message) =
-            create_outgoing_message();
+        let (outgoing_message_salt, outgoing_message) = create_outgoing_message();
 
         // Test parameters
         let to = [1u8; 20];

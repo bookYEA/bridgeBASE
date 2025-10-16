@@ -1,6 +1,8 @@
 use anchor_lang::{
     prelude::*,
-    solana_program::{instruction::Instruction, native_token::LAMPORTS_PER_SOL},
+    solana_program::{
+        bpf_loader_upgradeable, instruction::Instruction, native_token::LAMPORTS_PER_SOL,
+    },
     system_program, InstructionData,
 };
 use anchor_spl::{
@@ -22,6 +24,7 @@ use anchor_spl::{
 use litesvm::LiteSVM;
 use solana_account::Account;
 use solana_keypair::Keypair;
+use solana_loader_v3_interface::state::UpgradeableLoaderState;
 use solana_message::Message;
 use solana_signer::Signer;
 use solana_transaction::Transaction;
@@ -100,29 +103,138 @@ impl PartnerSigner {
     }
 }
 
-pub fn setup_bridge_and_svm() -> (LiteSVM, solana_keypair::Keypair, Pubkey) {
+/// Result from deploying the bridge program without initializing it
+pub struct DeployBridgeResult {
+    pub svm: LiteSVM,
+    pub payer: Keypair,
+    pub guardian: Keypair,
+    pub bridge_pda: Pubkey,
+    pub program_data_pda: Pubkey,
+}
+
+/// Deploys the bridge program as upgradeable but does NOT initialize it.
+pub fn deploy_bridge() -> DeployBridgeResult {
     let mut svm = LiteSVM::new();
-    svm.add_program_from_file(ID, "../../target/deploy/bridge.so")
-        .unwrap();
 
     // Create test accounts
     let payer = Keypair::new();
-    let payer_pk = payer.pubkey();
-    svm.airdrop(&payer_pk, LAMPORTS_PER_SOL * 10).unwrap();
+    svm.airdrop(&payer.pubkey(), LAMPORTS_PER_SOL * 100)
+        .unwrap();
+
+    let guardian = Keypair::new();
+    svm.airdrop(&guardian.pubkey(), LAMPORTS_PER_SOL * 100)
+        .unwrap();
+
+    let program_bytes = include_bytes!("../../../../target/deploy/bridge.so");
 
     // Mock the clock
-    let timestamp = 1747440000; // May 16th, 2025
-    mock_clock(&mut svm, timestamp);
+    mock_clock(&mut svm, 1747440000); // May 16th, 2025
 
-    // Find the Bridge PDA
+    // Find PDAs
     let bridge_pda = Pubkey::find_program_address(&[BRIDGE_SEED], &ID).0;
+    let (program_data_pda, _) =
+        Pubkey::find_program_address(&[ID.as_ref()], &bpf_loader_upgradeable::ID);
 
-    // Initialize the bridge first
-    let guardian = Keypair::new();
+    // Mock ProgramData account
+    {
+        let programdata_state = UpgradeableLoaderState::ProgramData {
+            slot: 1747440000,
+            upgrade_authority_address: Some(payer.pubkey()),
+        };
+
+        // Serialize metadata
+        let metadata = bincode::serialize(&programdata_state).unwrap();
+        assert_eq!(
+            metadata.len(),
+            UpgradeableLoaderState::size_of_programdata_metadata()
+        );
+
+        // Allocate buffer: [metadata][program bytes]
+        let mut programdata_data = Vec::with_capacity(metadata.len() + program_bytes.len());
+        programdata_data.extend_from_slice(&metadata);
+        programdata_data.extend_from_slice(program_bytes);
+
+        // Calculate rent
+        let rent = svm.minimum_balance_for_rent_exemption(programdata_data.len());
+
+        svm.set_account(
+            program_data_pda,
+            Account {
+                lamports: rent,
+                data: programdata_data,
+                owner: bpf_loader_upgradeable::ID,
+                executable: false,
+                rent_epoch: 0,
+            },
+        )
+        .unwrap();
+    }
+
+    // Mock Program account
+    {
+        let program_state = UpgradeableLoaderState::Program {
+            programdata_address: program_data_pda,
+        };
+
+        let program_data = bincode::serialize(&program_state).unwrap();
+        assert_eq!(
+            program_data.len(),
+            UpgradeableLoaderState::size_of_program()
+        );
+
+        // Calculate rent
+        let rent = svm.minimum_balance_for_rent_exemption(program_data.len());
+
+        svm.set_account(
+            ID,
+            Account {
+                lamports: rent,
+                data: program_data,
+                owner: bpf_loader_upgradeable::ID,
+                executable: true,
+                rent_epoch: 0,
+            },
+        )
+        .unwrap();
+    }
+
+    DeployBridgeResult {
+        svm,
+        payer,
+        guardian,
+        bridge_pda,
+        program_data_pda,
+    }
+}
+
+/// Result from setting up a fully initialized bridge
+pub struct SetupBridgeResult {
+    pub svm: LiteSVM,
+    pub payer: Keypair,
+    pub guardian: Keypair,
+    pub bridge_pda: Pubkey,
+}
+
+/// Deploys the bridge program AND initializes it with default test config.
+pub fn setup_bridge() -> SetupBridgeResult {
+    let DeployBridgeResult {
+        mut svm,
+        payer,
+        guardian,
+        bridge_pda,
+        program_data_pda,
+    } = deploy_bridge();
+
+    let payer_pk = payer.pubkey();
+    let guardian_pk = guardian.pubkey();
+
+    // Initialize the bridge
     let accounts = accounts::Initialize {
+        upgrade_authority: payer_pk,
         payer: payer_pk,
         bridge: bridge_pda,
-        guardian: guardian.pubkey(),
+        program_data: program_data_pda,
+        program: ID,
         system_program: system_program::ID,
     }
     .to_account_metas(None);
@@ -131,6 +243,7 @@ pub fn setup_bridge_and_svm() -> (LiteSVM, solana_keypair::Keypair, Pubkey) {
         program_id: ID,
         accounts,
         data: Initialize {
+            guardian: guardian_pk,
             cfg: Config {
                 eip1559_config: Eip1559Config::test_new(),
                 gas_config: GasConfig::test_new(TEST_GAS_FEE_RECEIVER),
@@ -144,14 +257,19 @@ pub fn setup_bridge_and_svm() -> (LiteSVM, solana_keypair::Keypair, Pubkey) {
     };
 
     let tx = Transaction::new(
-        &[&payer, &guardian],
+        &[&payer],
         Message::new(&[ix], Some(&payer_pk)),
         svm.latest_blockhash(),
     );
 
     svm.send_transaction(tx).unwrap();
 
-    (svm, payer, bridge_pda)
+    SetupBridgeResult {
+        svm,
+        payer,
+        guardian,
+        bridge_pda,
+    }
 }
 
 pub fn create_outgoing_message() -> ([u8; 32], Pubkey) {

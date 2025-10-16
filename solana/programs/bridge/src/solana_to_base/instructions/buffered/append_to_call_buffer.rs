@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::solana_to_base::CallBuffer;
+use crate::{solana_to_base::CallBuffer, BridgeError};
 
 /// Accounts struct for appending data to an existing call buffer account.
 /// This allows building up large call data over multiple transactions.
@@ -17,7 +17,7 @@ pub struct AppendToCallBuffer<'info> {
     /// serialization would exceed the account's allocated size.
     #[account(
         mut,
-        has_one = owner @ AppendToCallBufferError::Unauthorized,
+        has_one = owner @ BridgeError::BufferUnauthorizedAppend,
     )]
     pub call_buffer: Account<'info, CallBuffer>,
 }
@@ -37,17 +37,11 @@ pub fn append_to_call_buffer_handler(
     Ok(())
 }
 
-#[error_code]
-pub enum AppendToCallBufferError {
-    #[msg("Only the owner can append to this call buffer")]
-    Unauthorized,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    use crate::common::BRIDGE_SEED;
+    use crate::{common::BRIDGE_SEED, test_utils::SetupBridgeResult};
     use anchor_lang::{
         solana_program::{instruction::Instruction, native_token::LAMPORTS_PER_SOL},
         system_program, InstructionData,
@@ -61,7 +55,7 @@ mod tests {
         accounts,
         instruction::{AppendToCallBuffer as AppendToCallBufferIx, InitializeCallBuffer},
         solana_to_base::CallType,
-        test_utils::setup_bridge_and_svm,
+        test_utils::setup_bridge,
         ID,
     };
 
@@ -106,7 +100,7 @@ mod tests {
 
     #[test]
     fn test_append_to_call_buffer_success() {
-        let (mut svm, _payer, _bridge_pda) = setup_bridge_and_svm();
+        let SetupBridgeResult { mut svm, .. } = setup_bridge();
 
         // Create owner account
         let owner = Keypair::new();
@@ -162,7 +156,7 @@ mod tests {
 
     #[test]
     fn test_append_to_call_buffer_unauthorized() {
-        let (mut svm, _payer, _bridge_pda) = setup_bridge_and_svm();
+        let SetupBridgeResult { mut svm, .. } = setup_bridge();
 
         // Create owner account
         let owner = Keypair::new();

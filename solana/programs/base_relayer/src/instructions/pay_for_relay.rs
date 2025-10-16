@@ -4,6 +4,7 @@ use crate::{
     constants::{CFG_SEED, DISCRIMINATOR_LEN, MTR_SEED},
     internal::check_and_pay_for_gas,
     state::{Cfg, MessageToRelay},
+    RelayerError,
 };
 
 #[derive(Accounts)]
@@ -22,7 +23,7 @@ pub struct PayForRelay<'info> {
 
     /// The account that receives payment for the gas costs of bridging SOL to Base.
     /// CHECK: This account is validated to be the same as cfg.gas_config.gas_fee_receiver
-    #[account(mut, address = cfg.gas_config.gas_fee_receiver @ PayForRelayError::IncorrectGasFeeReceiver)]
+    #[account(mut, address = cfg.gas_config.gas_fee_receiver @ RelayerError::IncorrectGasFeeReceiver)]
     pub gas_fee_receiver: AccountInfo<'info>,
 
     #[account(init, payer = payer, seeds = [MTR_SEED, mtr_salt.as_ref()], bump, space = DISCRIMINATOR_LEN + MessageToRelay::INIT_SPACE)]
@@ -57,16 +58,10 @@ pub fn pay_for_relay_handler(
     Ok(())
 }
 
-#[error_code]
-pub enum PayForRelayError {
-    #[msg("Incorrect gas fee receiver")]
-    IncorrectGasFeeReceiver,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::{setup_program_and_svm, TEST_GAS_FEE_RECEIVER};
+    use crate::test_utils::{setup_relayer, SetupRelayerResult, TEST_GAS_FEE_RECEIVER};
     use crate::{accounts, state::MessageToRelay};
     use anchor_lang::{
         solana_program::{instruction::Instruction, system_program},
@@ -78,7 +73,12 @@ mod tests {
 
     #[test]
     fn pay_for_relay_initializes_message_and_transfers_gas() {
-        let (mut svm, payer, _guardian, config_pda) = setup_program_and_svm();
+        let SetupRelayerResult {
+            mut svm,
+            payer,
+            guardian: _,
+            cfg_pda,
+        } = setup_relayer();
         let payer_pk = payer.pubkey();
 
         // // Ensure gas fee receiver account exists so system transfer succeeds
@@ -97,7 +97,7 @@ mod tests {
 
         let accounts = accounts::PayForRelay {
             payer: payer_pk,
-            cfg: config_pda,
+            cfg: cfg_pda,
             gas_fee_receiver: TEST_GAS_FEE_RECEIVER,
             message_to_relay,
             system_program: system_program::ID,

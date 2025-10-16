@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 
 use crate::base_to_solana::ProveBuffer;
+use crate::BridgeError;
 
 /// Append chunk of MMR proof nodes to the `ProveBuffer`.
 #[derive(Accounts)]
@@ -11,7 +12,7 @@ pub struct AppendToProveBufferProof<'info> {
     /// Prove buffer account to append proof nodes to
     #[account(
         mut,
-        has_one = owner @ AppendToProveBufferProofError::Unauthorized,
+        has_one = owner @ BridgeError::BufferUnauthorizedAppend,
     )]
     pub prove_buffer: Account<'info, ProveBuffer>,
 }
@@ -23,12 +24,6 @@ pub fn append_to_prove_buffer_proof_handler(
     let buf = &mut ctx.accounts.prove_buffer;
     buf.proof.extend_from_slice(&proof_chunk);
     Ok(())
-}
-
-#[error_code]
-pub enum AppendToProveBufferProofError {
-    #[msg("Only the owner can modify this prove buffer")]
-    Unauthorized,
 }
 
 #[cfg(test)]
@@ -50,7 +45,7 @@ mod tests {
         instruction::{
             AppendToProveBufferProof as AppendToProveBufferProofIx, InitializeProveBuffer,
         },
-        test_utils::setup_bridge_and_svm,
+        test_utils::{setup_bridge, SetupBridgeResult},
         ID,
     };
 
@@ -93,7 +88,7 @@ mod tests {
 
     #[test]
     fn test_append_to_prove_buffer_proof_success() {
-        let (mut svm, _payer, _bridge_pda) = setup_bridge_and_svm();
+        let SetupBridgeResult { mut svm, .. } = setup_bridge();
 
         let owner = Keypair::new();
         svm.airdrop(&owner.pubkey(), LAMPORTS_PER_SOL).unwrap();
@@ -134,7 +129,7 @@ mod tests {
 
     #[test]
     fn test_append_to_prove_buffer_proof_unauthorized() {
-        let (mut svm, _payer, _bridge_pda) = setup_bridge_and_svm();
+        let SetupBridgeResult { mut svm, .. } = setup_bridge();
 
         let owner = Keypair::new();
         svm.airdrop(&owner.pubkey(), LAMPORTS_PER_SOL).unwrap();
