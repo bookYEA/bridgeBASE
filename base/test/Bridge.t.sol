@@ -38,7 +38,7 @@ contract BridgeTest is CommonTest {
 
     function setUp() public {
         DeployScript deployer = new DeployScript();
-        (twinBeacon, bridgeValidator, bridge, factory, relayerOrchestrator, helperConfig) = deployer.run();
+        (twinBeacon, bridgeValidator, bridge, factory, relayerOrchestrator, helperConfig,) = deployer.run();
 
         cfg = helperConfig.getConfig();
 

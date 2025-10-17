@@ -18,7 +18,7 @@ contract DeployScript is DevOps {
 
     function run()
         public
-        returns (Twin, BridgeValidator, Bridge, CrossChainERC20Factory, RelayerOrchestrator, HelperConfig)
+        returns (Twin, BridgeValidator, Bridge, CrossChainERC20Factory, RelayerOrchestrator, HelperConfig, address)
     {
         HelperConfig helperConfig = new HelperConfig();
         HelperConfig.NetworkConfig memory cfg = helperConfig.getConfig();
@@ -28,12 +28,14 @@ contract DeployScript is DevOps {
         vm.startBroadcast(msg.sender);
         address twinBeacon = _deployTwinBeacon({cfg: cfg, precomputedBridgeAddress: precomputedBridgeAddress});
         address factory = _deployFactory({cfg: cfg, precomputedBridgeAddress: precomputedBridgeAddress});
+
         address bridgeValidator = _deployBridgeValidator({cfg: cfg, bridge: precomputedBridgeAddress});
         address bridge = _deployBridge({
             cfg: cfg, twinBeacon: twinBeacon, crossChainErc20Factory: factory, bridgeValidator: bridgeValidator
         });
         address relayerOrchestrator =
             _deployRelayerOrchestrator({cfg: cfg, bridge: bridge, bridgeValidator: bridgeValidator});
+        address localSol = CrossChainERC20Factory(factory).deploySolWrapper();
         vm.stopBroadcast();
 
         require(address(bridge) == precomputedBridgeAddress, "Bridge address mismatch");
@@ -50,7 +52,8 @@ contract DeployScript is DevOps {
             Bridge(bridge),
             CrossChainERC20Factory(factory),
             RelayerOrchestrator(relayerOrchestrator),
-            helperConfig
+            helperConfig,
+            localSol
         );
     }
 
